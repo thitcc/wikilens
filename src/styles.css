@@ -1,0 +1,227 @@
+/* Transparent background is REQUIRED by the window's `transparent: true`;
+   without it the webview paints a black rectangle. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+:root {
+  --fg: #e8e8ee;
+  --fg-muted: #9a9aa8;
+  --accent: #8ab4ff;
+  --border: rgba(255, 255, 255, 0.08);
+  --error-bg: rgba(120, 30, 40, 0.35);
+  --error-fg: #ffb3bd;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Full-height glass panel docked to the right edge. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  padding: 14px;
+  gap: 12px;
+  background: rgba(18, 18, 24, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+
+.game-picker {
+  flex: 0 1 auto;
+  max-width: 60%;
+  padding: 5px 8px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.game-picker:disabled {
+  opacity: 0.6;
+}
+
+.prompt-input {
+  width: 100%;
+  resize: none;
+  padding: 10px 12px;
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.prompt-input::placeholder {
+  color: var(--fg-muted);
+}
+
+.prompt-input:disabled {
+  opacity: 0.6;
+}
+
+/* Scrollable answer/sources region fills the remaining height. */
+.content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.placeholder {
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.placeholder kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: 12px;
+}
+
+.error {
+  padding: 10px 12px;
+  color: var(--error-fg);
+  background: var(--error-bg);
+  border: 1px solid rgba(255, 120, 140, 0.25);
+  border-radius: 10px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+/* Markdown answer styling — kept compact for an in-game glance. */
+.answer {
+  line-height: 1.55;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.answer p {
+  margin: 0 0 8px;
+}
+
+.answer ul,
+.answer ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.answer li {
+  margin: 2px 0;
+}
+
+.answer strong {
+  color: #fff;
+}
+
+.answer a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.answer a:hover {
+  text-decoration: underline;
+}
+
+.answer code {
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.answer pre {
+  padding: 10px;
+  overflow-x: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+}
+
+.answer pre code {
+  padding: 0;
+  background: none;
+}
+
+.sources {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.sources-label {
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.sources ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.source-link {
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
