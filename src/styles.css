@@ -55,9 +55,17 @@ body {
   color: var(--fg);
 }
 
-.game-picker {
+.picker-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.game-picker,
+.provider-picker {
   flex: 0 1 auto;
-  max-width: 60%;
+  min-width: 0;
   padding: 5px 8px;
   color: var(--fg);
   background: rgba(255, 255, 255, 0.06);
@@ -66,7 +74,8 @@ body {
   font: inherit;
 }
 
-.game-picker:disabled {
+.game-picker:disabled,
+.provider-picker:disabled {
   opacity: 0.6;
 }
 

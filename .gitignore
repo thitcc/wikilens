@@ -15,7 +15,7 @@ dist-ssr
 # Rust / Tauri build output (also ignored in src-tauri/.gitignore)
 src-tauri/target
 
-# Secrets — never commit the Anthropic API key
+# Secrets — never commit provider API keys (.env holds the ANTHROPIC / DEEPSEEK / OPENROUTER keys)
 .env
 .env.*
 !.env.example

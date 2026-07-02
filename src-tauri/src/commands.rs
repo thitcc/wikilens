@@ -9,11 +9,19 @@ use tauri::{AppHandle, Emitter, State};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::wiki::{fetch, games, search};
-use crate::{llm, window};
+use crate::{llm, providers, window};
 
 /// A supported game, as sent to the frontend game picker.
 #[derive(Debug, Clone, Serialize)]
 pub struct GameInfo {
+    pub id: String,
+    pub name: String,
+}
+
+/// A supported LLM provider, as sent to the frontend provider picker.
+/// Deliberately `{id, name}` only — it never reports which keys are configured.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderInfo {
     pub id: String,
     pub name: String,
 }
@@ -44,6 +52,18 @@ pub fn list_games() -> Vec<GameInfo> {
         .collect()
 }
 
+/// List the supported LLM providers (id + display name).
+#[tauri::command]
+pub fn list_providers() -> Vec<ProviderInfo> {
+    providers::PROVIDERS
+        .iter()
+        .map(|p| ProviderInfo {
+            id: p.id.to_string(),
+            name: p.name.to_string(),
+        })
+        .collect()
+}
+
 /// Hide the overlay (used by the frontend `Esc` handler).
 #[tauri::command]
 pub fn hide_overlay(app: AppHandle) {
@@ -62,6 +82,7 @@ pub async fn ask(
     app: AppHandle,
     state: State<'_, AppState>,
     game_id: String,
+    provider_id: String,
     question: String,
 ) -> Result<AskResult, String> {
     // Concurrency guard: claim the slot, or reject if one is already running.
@@ -71,7 +92,7 @@ pub async fn ask(
     // Releases the slot on every exit path, including cancellation (drop).
     let _guard = AskGuard(&state.ask_in_progress);
 
-    run_ask(&app, &state, &game_id, &question)
+    run_ask(&app, &state, &game_id, &provider_id, &question)
         .await
         .map_err(String::from)
 }
@@ -90,6 +111,7 @@ async fn run_ask(
     app: &AppHandle,
     state: &AppState,
     game_id: &str,
+    provider_id: &str,
     question: &str,
 ) -> Result<AskResult, AppError> {
     let question = question.trim();
@@ -97,10 +119,24 @@ async fn run_ask(
         return Err(AppError::EmptyQuestion);
     }
     let wiki = games::find_game(game_id).ok_or_else(|| AppError::UnknownGame(game_id.to_string()))?;
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .ok()
-        .filter(|k| !k.trim().is_empty())
-        .ok_or(AppError::MissingApiKey)?;
+
+    // Resolve provider → key → model up front, before any status event, so a
+    // missing key fails instantly (no stuck "Searching…"). The AskGuard still
+    // releases the concurrency slot on this early return.
+    // The frontend always sends a provider, but fall back to the default if it
+    // ever sends a blank one (commands are a trust boundary).
+    let provider_id = if provider_id.trim().is_empty() {
+        providers::DEFAULT_PROVIDER_ID
+    } else {
+        provider_id
+    };
+    let provider = providers::find_provider(provider_id)
+        .ok_or_else(|| AppError::UnknownProvider(provider_id.to_string()))?;
+    let api_key = provider.api_key().ok_or(AppError::MissingApiKey {
+        provider: provider.name,
+        env_var: provider.api_key_env,
+    })?;
+    let model = provider.model();
 
     let _ = app.emit("ask://status", "searching");
     let titles = search::search(&state.http, wiki, question, search::DEFAULT_SEARCH_LIMIT).await?;
@@ -126,9 +162,17 @@ async fn run_ask(
 
     let _ = app.emit("ask://status", "answering");
     let delta_app = app.clone();
-    let answer = llm::answer_streaming(&state.http, &api_key, question, &pages, move |delta| {
-        let _ = delta_app.emit("ask://delta", delta);
-    })
+    let answer = llm::answer_streaming(
+        &state.http,
+        provider,
+        &model,
+        &api_key,
+        question,
+        &pages,
+        move |delta| {
+            let _ = delta_app.emit("ask://delta", delta);
+        },
+    )
     .await?;
 
     let sources = pages

@@ -18,10 +18,11 @@ wikilens/
 │   ├── main.tsx                  # React entry
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
-│   ├── types.ts                  # Shared types: GameInfo, Source, AskResult, AskStatus, StreamEvent
+│   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, Source, AskResult, AskStatus
 │   ├── styles.css                # Transparent body + glass dark panel
 │   └── components/
 │       ├── GamePicker.tsx        # <select> of supported games
+│       ├── ProviderPicker.tsx    # <select> of LLM providers
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       └── SourceList.tsx        # wiki source links (open in system browser)
@@ -30,14 +31,15 @@ wikilens/
     ├── capabilities/default.json # webview permissions (no http/fs)
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
-        ├── lib.rs                # builder: plugins, tray, hotkey handler, commands, state
+        ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
         ├── state.rs              # AppState: shared reqwest::Client + ask-in-progress flag
         ├── window.rs             # toggle/show/hide + right-edge, DPI-aware positioning
         ├── hotkey.rs             # Shift+C registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
-        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games
+        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / list_providers
         ├── error.rs              # AppError (thiserror) + Into<String>
-        ├── llm.rs                # Anthropic Messages API (streaming SSE)
+        ├── providers.rs          # LLM provider registry (Anthropic, DeepSeek, OpenRouter)
+        ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
         └── wiki/{mod,games,search,fetch}.rs  # registry + MediaWiki search + plaintext extracts
 ```
 
@@ -57,8 +59,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 - **All HTTP happens in Rust.** The webview has no network/http/fs permissions
   (see `capabilities/default.json`).
-- **API key:** `ANTHROPIC_API_KEY` env var, read Rust-side in `commands::ask`.
-  Never log it, never send it to the frontend.
+- **API keys:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`,
+  from a `.env` file (dotenvy, loaded at the top of `run()`) or OS env vars (which
+  take precedence). Read Rust-side only in `commands::run_ask`; never logged, never
+  sent to the frontend. `ProviderInfo` (id+name) is the only provider data crossing
+  IPC — it deliberately does not report which keys are configured.
+- **Model per provider:** built-in `default_model`, overridable via
+  `WIKILENS_<PROVIDER>_MODEL` (e.g. `WIKILENS_DEEPSEEK_MODEL`) — no code change.
 - **Frontend → Rust only via `src/api.ts`.** Components never import
   `@tauri-apps/*` directly.
 - **Commands return `Result<T, String>`** with user-readable messages; internal
@@ -68,6 +75,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   - `ask://status` — `"searching" | "reading" | "answering"`.
   - `ask://delta` — `string` chunk of the streamed answer.
 - **Adding a game** = one `GameWiki` entry in `wiki/games.rs`. Nothing else.
+- **Adding an LLM provider** = one `Provider` entry in `providers.rs`; behavior
+  differences collapse to `ProviderKind` (Anthropic native vs OpenAI-compatible,
+  shared by DeepSeek/OpenRouter). `llm.rs` branches request-build + SSE parse on it.
 - Concurrency: `ask` rejects if one is already running (`AppState::ask_in_progress`).
 
 ## 5. Gotchas
@@ -89,6 +99,11 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Opening links needs both the opener command **and** a URL scope: the capability
   grants `opener:allow-open-url` **with** an inline `http(s)://*` scope. Without the
   scope, `open_url` returns `ForbiddenUrl` at runtime (compiles fine).
+- `.env` is loaded via dotenvy at the top of `run()` for dev; a **packaged app's
+  cwd is unpredictable**, so shipped installs should supply keys via OS env vars.
+- OpenAI-compatible SSE (DeepSeek/OpenRouter) emits `:` comment/keep-alive lines
+  and can report errors mid-stream on an HTTP-200 body; `parse_openai_sse_line`
+  (via the `SseLine` enum) handles `[DONE]`, comments, null content, and errors.
 
 ## 6. Roadmap (do not implement unless asked)
 

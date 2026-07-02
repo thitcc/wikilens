@@ -7,6 +7,7 @@ mod commands;
 mod error;
 mod hotkey;
 mod llm;
+mod providers;
 mod state;
 mod tray;
 mod window;
@@ -19,6 +20,11 @@ use state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load a `.env` (dev convenience) before anything reads a provider key. Real
+    // OS env vars are NOT overwritten, so exported/`setx` vars take precedence.
+    // `.ok()` ignores "no .env found". See CLAUDE.md for the packaged-app caveat.
+    dotenvy::dotenv().ok();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -48,6 +54,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_games,
+            commands::list_providers,
             commands::hide_overlay,
             commands::ask,
         ])

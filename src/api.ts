@@ -5,7 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { AskResult, AskStatus, GameInfo } from "./types";
+import type { AskResult, AskStatus, GameInfo, ProviderInfo } from "./types";
 
 // ---- Commands -------------------------------------------------------------
 
@@ -14,15 +14,25 @@ export function listGames(): Promise<GameInfo[]> {
   return invoke<GameInfo[]>("list_games");
 }
 
+/** List the supported LLM providers (id + display name). */
+export function listProviders(): Promise<ProviderInfo[]> {
+  return invoke<ProviderInfo[]>("list_providers");
+}
+
 /** Hide the overlay window (focus returns to the game). */
 export function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
 
-/** Ask a question about a game; resolves with the full answer and its sources. */
-export function ask(gameId: string, question: string): Promise<AskResult> {
-  // Tauri maps camelCase JS keys to the command's snake_case params.
-  return invoke<AskResult>("ask", { gameId, question });
+/** Ask a question about a game using a chosen provider; resolves with the answer and sources. */
+export function ask(
+  gameId: string,
+  providerId: string,
+  question: string,
+): Promise<AskResult> {
+  // Tauri maps camelCase JS keys to the command's snake_case params
+  // (providerId → provider_id).
+  return invoke<AskResult>("ask", { gameId, providerId, question });
 }
 
 /** Open a URL in the user's default browser (source links). */

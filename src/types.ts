@@ -6,6 +6,12 @@ export interface GameInfo {
   name: string;
 }
 
+/** A supported LLM provider, from the `list_providers` command. */
+export interface ProviderInfo {
+  id: string;
+  name: string;
+}
+
 /** A wiki page used as a source for an answer. */
 export interface Source {
   title: string;

@@ -3,18 +3,21 @@ import {
   ask,
   hideOverlay,
   listGames,
+  listProviders,
   onAskDelta,
   onAskStatus,
   onOverlayShown,
 } from "./api";
-import type { AskStatus, GameInfo, Source } from "./types";
+import type { AskStatus, GameInfo, ProviderInfo, Source } from "./types";
 import { GamePicker } from "./components/GamePicker";
+import { ProviderPicker } from "./components/ProviderPicker";
 import { PromptInput } from "./components/PromptInput";
 import { AnswerView } from "./components/AnswerView";
 import { SourceList } from "./components/SourceList";
 import "./styles.css";
 
 const GAME_STORAGE_KEY = "wikilens.selectedGame";
+const PROVIDER_STORAGE_KEY = "wikilens.selectedProvider";
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
@@ -26,6 +29,10 @@ function App() {
   const [games, setGames] = useState<GameInfo[]>([]);
   const [selectedGame, setSelectedGame] = useState<string>(
     () => localStorage.getItem(GAME_STORAGE_KEY) ?? "",
+  );
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>(
+    () => localStorage.getItem(PROVIDER_STORAGE_KEY) ?? "",
   );
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -45,6 +52,24 @@ function App() {
         setGames(list);
         setSelectedGame((current) => {
           if (current && list.some((g) => g.id === current)) return current;
+          return list[0]?.id ?? "";
+        });
+      })
+      .catch((e) => setError(String(e)));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Load the LLM providers once; default the selection to the first provider.
+  useEffect(() => {
+    let active = true;
+    listProviders()
+      .then((list) => {
+        if (!active) return;
+        setProviders(list);
+        setSelectedProvider((current) => {
+          if (current && list.some((p) => p.id === current)) return current;
           return list[0]?.id ?? "";
         });
       })
@@ -90,9 +115,14 @@ function App() {
     localStorage.setItem(GAME_STORAGE_KEY, gameId);
   }
 
+  function handleProviderChange(providerId: string) {
+    setSelectedProvider(providerId);
+    localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
+  }
+
   async function handleSubmit() {
     const trimmed = question.trim();
-    if (busy || !trimmed || !selectedGame) return;
+    if (busy || !trimmed || !selectedGame || !selectedProvider) return;
 
     setBusy(true);
     setError(null);
@@ -101,7 +131,7 @@ function App() {
     setStatus("searching");
 
     try {
-      const result = await ask(selectedGame, trimmed);
+      const result = await ask(selectedGame, selectedProvider, trimmed);
       setAnswer(result.answer);
       setSources(result.sources);
     } catch (e) {
@@ -118,12 +148,20 @@ function App() {
     <div className="panel">
       <header className="panel-header">
         <span className="brand">WikiLens</span>
-        <GamePicker
-          games={games}
-          value={selectedGame}
-          onChange={handleGameChange}
-          disabled={busy}
-        />
+        <div className="picker-group">
+          <ProviderPicker
+            providers={providers}
+            value={selectedProvider}
+            onChange={handleProviderChange}
+            disabled={busy}
+          />
+          <GamePicker
+            games={games}
+            value={selectedGame}
+            onChange={handleGameChange}
+            disabled={busy}
+          />
+        </div>
       </header>
 
       <PromptInput

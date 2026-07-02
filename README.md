@@ -23,31 +23,55 @@ permissions and never sees your API key.
   missing, install the [Evergreen WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 - **Node.js ≥ 18** and npm.
 - **Rust** (stable toolchain) + Cargo.
-- An **Anthropic API key**.
+- An **API key** for at least one supported LLM provider — **Anthropic**,
+  **DeepSeek**, or **OpenRouter**.
 
-## Setup: the Anthropic API key
+## Setup: API keys
 
-WikiLens reads your key from the `ANTHROPIC_API_KEY` environment variable **in the
-Rust process only** — it is never sent to the frontend or logged. If the variable
-is missing, the app shows a clear setup message instead of answering.
+WikiLens supports three LLM providers — choose one from the provider dropdown in
+the panel. Keys are read **in the Rust process only**; they are never sent to the
+frontend or logged. You only need a key for the provider you actually use.
 
-Set it in the terminal you launch WikiLens from:
+| Provider | Env var | Default model | Model override var |
+|---|---|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | `WIKILENS_ANTHROPIC_MODEL` |
+| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-chat` | `WIKILENS_DEEPSEEK_MODEL` |
+| OpenRouter | `OPENROUTER_API_KEY` | `openai/gpt-4o-mini` | `WIKILENS_OPENROUTER_MODEL` |
+
+**Option A — `.env` file (easiest for development):** copy the template and fill
+in the keys you have.
+
+```bash
+cp .env.example .env
+# then edit .env and paste your key(s)
+```
+
+`.env` is gitignored and loaded on startup; it works for `npm run tauri dev`.
+
+**Option B — OS environment variables** (required for the *packaged* app, whose
+working directory is unpredictable, so `.env` may not be found):
 
 ```powershell
 # PowerShell (current session)
-$env:ANTHROPIC_API_KEY = "sk-ant-..."
-
-# Or persist it for your user account (new terminals only)
+$env:DEEPSEEK_API_KEY = "sk-..."
+# Or persist for your user account (new terminals only)
 setx ANTHROPIC_API_KEY "sk-ant-..."
 ```
 
 ```bash
 # bash / Git Bash
-export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENROUTER_API_KEY="sk-or-..."
 ```
 
-The key is read at the moment you ask a question. If you set it after launching,
-restart WikiLens (a process can't see env vars set after it started).
+OS environment variables **take precedence** over `.env` values. Keys are read when
+you ask a question; if you set one after launching, restart WikiLens. If the
+selected provider's key is missing, the app shows a clear "set `<PROVIDER>_API_KEY`"
+message instead of answering.
+
+**Changing the model:** each provider ships a sensible default; override it without
+touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matters
+because model ids drift over time (e.g. DeepSeek may move `deepseek-chat` →
+`deepseek-v4-flash`).
 
 ## Commands
 
@@ -65,6 +89,8 @@ Run frontend/Tauri commands from the repo root; run `cargo` commands in `src-tau
 ## Using it
 
 - **Shift+C** — show/hide the overlay from anywhere (also available from the tray).
+- Pick your **LLM provider** and **game** from the dropdowns in the header; both
+  choices are remembered between sessions.
 - When shown, the panel takes focus so you can type immediately.
 - **Enter** sends your question; **Shift+Enter** adds a newline.
 - **Esc** (or Shift+C again) hides the panel; focus returns to the game.
@@ -92,15 +118,18 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 The best game to demo end-to-end today is **Conan Exiles** (its wiki supports full
 text extraction).
 
-1. Set your key: `$env:ANTHROPIC_API_KEY = "sk-ant-..."`.
+1. Set a key: `cp .env.example .env` and fill in one provider's key (or export it,
+   e.g. `$env:ANTHROPIC_API_KEY = "sk-ant-..."`).
 2. From the repo root: `npm install` then `npm run tauri dev`.
 3. Wait for the tray icon to appear (the window starts hidden), then press **Shift+C**.
 4. The panel slides in from the right and focuses the input.
-5. Pick **Conan Exiles** and ask something like *"how do I make steel bars?"*.
+5. Choose your **provider** (the one you set a key for) and game **Conan Exiles**,
+   then ask something like *"how do I make steel bars?"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer
    to **stream in** as markdown, and **2–4 source links** to appear beneath it.
    Clicking a source opens the wiki page in your browser.
-7. Press **Esc** to hide the panel.
+7. Try the other providers (whichever keys you set) — the same question should
+   stream an answer from each. Press **Esc** to hide the panel.
 
 > The scaffold plan's original example (*Stardew Valley → "best crops for winter"*)
 > will search but return "couldn't read the pages" until a text-extraction
@@ -123,10 +152,10 @@ text extraction).
 
 ## Security & privacy
 
-- Your Anthropic API key stays in the Rust process; it is never exposed to the
+- Your provider API keys stay in the Rust process; they are never exposed to the
   webview or written to logs.
 - The webview is locked down by CSP to talk only to the local Tauri IPC — it has
   no direct network, HTTP, or filesystem access. Every outbound request (wiki +
-  Anthropic) is made from Rust.
-- Your question and the fetched wiki excerpts are sent to the Anthropic API to
-  generate the answer.
+  the selected LLM provider) is made from Rust.
+- Your question and the fetched wiki excerpts are sent to the LLM provider you
+  select, to generate the answer.

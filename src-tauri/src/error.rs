@@ -16,14 +16,24 @@ pub enum AppError {
     #[error("Unknown game: {0}")]
     UnknownGame(String),
 
+    #[error("Unknown provider: {0}")]
+    UnknownProvider(String),
+
     #[error("Please type a question first.")]
     EmptyQuestion,
 
-    #[error("Anthropic API key not found. Set the ANTHROPIC_API_KEY environment variable, then restart WikiLens.")]
-    MissingApiKey,
+    #[error("{provider} API key not found. Set the {env_var} environment variable (or add it to a .env file), then restart WikiLens.")]
+    MissingApiKey {
+        provider: &'static str,
+        env_var: &'static str,
+    },
 
-    #[error("The Anthropic API returned an error ({status}): {body}")]
-    Anthropic { status: u16, body: String },
+    #[error("The {provider} API returned an error ({status}): {body}")]
+    Llm {
+        provider: &'static str,
+        status: u16,
+        body: String,
+    },
 }
 
 /// Lets `#[tauri::command] -> Result<T, String>` use `?` on `AppError` values.
