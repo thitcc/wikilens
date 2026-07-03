@@ -22,7 +22,8 @@ Why this exists; what triggered it.
 Steps, sequencing, open questions.
 
 ## Decisions & trade-offs
-Anything worth remembering (or split into a `type: decision` doc).
+Anything worth remembering. A real fork (a rejected alternative) → split into a
+decision doc (`/decision-doc`) and link it in `related:`.
 
 ## Status log
 - {{date:YYYY-MM-DD}} — created.
