@@ -1,4 +1,11 @@
-//! MediaWiki `prop=extracts` client: fetch clean plaintext for a set of titles.
+//! MediaWiki plaintext client for a set of titles.
+//!
+//! Fetches raw wikitext (`prop=revisions`, one batched request for all titles)
+//! and converts it to plaintext via [`crate::wiki::wikitext`]. Wikitext works on
+//! every MediaWiki wiki, unlike `prop=extracts` (the TextExtracts extension),
+//! which many game wikis lack (Core Keeper, Stardew) and which also caps
+//! whole-article requests to a single page — so a batched extracts request would
+//! silently drop all but one of the pages.
 
 use serde::Serialize;
 
@@ -16,10 +23,10 @@ pub struct WikiPage {
     pub url: String,
 }
 
-/// Fetch plaintext extracts for the given titles in one API call.
+/// Fetch plaintext for the given titles in one batched request.
 ///
-/// MediaWiki etiquette: this issues a *single* batched request for all titles
-/// rather than one request per page — do not parallelize this.
+/// MediaWiki etiquette: this issues a *single* request for all titles rather
+/// than one request per page — do not parallelize this.
 pub async fn fetch_pages(
     client: &reqwest::Client,
     wiki: &GameWiki,
@@ -34,9 +41,9 @@ pub async fn fetch_pages(
         .get(wiki.api_url)
         .query(&[
             ("action", "query"),
-            ("prop", "extracts"),
-            ("explaintext", "1"),
-            ("exsectionformat", "plain"),
+            ("prop", "revisions"),
+            ("rvprop", "content"),
+            ("rvslots", "main"),
             ("redirects", "1"),
             ("titles", joined.as_str()),
             ("format", "json"),
@@ -47,16 +54,17 @@ pub async fn fetch_pages(
         .text()
         .await?;
 
-    parse_pages_response(&body, wiki, titles)
+    parse_revisions_response(&body, wiki, titles)
 }
 
-/// Parse a `prop=extracts` JSON body into `WikiPage`s. Split out for unit testing.
+/// Parse a `prop=revisions` body, converting each page's raw wikitext to
+/// plaintext. Split out for unit testing.
 ///
 /// `query.pages` comes back keyed by page id in no useful order, so results are
 /// re-sorted to follow `titles` (the search-relevance ranking). Any page whose
 /// title isn't in `titles` — e.g. one reached through a redirect — is appended
 /// after the ranked ones.
-pub fn parse_pages_response(
+pub fn parse_revisions_response(
     body: &str,
     wiki: &GameWiki,
     titles: &[String],
@@ -72,37 +80,46 @@ pub fn parse_pages_response(
 
     let mut out = Vec::new();
     for page in pages.values() {
-        // Titles the wiki couldn't resolve are marked `missing`; skip them.
         if page.get("missing").is_some() {
             continue;
         }
         let Some(title) = page.get("title").and_then(|t| t.as_str()) else {
             continue;
         };
-        let text = page
-            .get("extract")
-            .and_then(|e| e.as_str())
+        // revisions[0].slots.main["*"] holds the raw wikitext (non-formatversion-2).
+        let wikitext = page
+            .get("revisions")
+            .and_then(|r| r.as_array())
+            .and_then(|revs| revs.first())
+            .and_then(|rev| rev.get("slots"))
+            .and_then(|slots| slots.get("main"))
+            .and_then(|main| main.get("*"))
+            .and_then(|content| content.as_str())
             .unwrap_or_default();
-        // Pages with an empty extract carry no signal for the LLM; skip them.
-        if text.is_empty() {
+
+        let text = crate::wiki::wikitext::to_plaintext(wikitext);
+        if text.trim().is_empty() {
             continue;
         }
         out.push(WikiPage {
             title: title.to_string(),
-            text: truncate_text(text),
+            text: truncate_text(&text),
             url: build_page_url(wiki, title),
         });
     }
 
-    // Restore search-relevance order (titles not in the ranking sort to the end).
-    out.sort_by_key(|page| {
+    sort_by_relevance(&mut out, titles);
+    Ok(out)
+}
+
+/// Restore search-relevance order (titles not in the ranking sort to the end).
+fn sort_by_relevance(pages: &mut [WikiPage], titles: &[String]) {
+    pages.sort_by_key(|page| {
         titles
             .iter()
             .position(|t| t == &page.title)
             .unwrap_or(usize::MAX)
     });
-
-    Ok(out)
 }
 
 /// Truncate to `MAX_PAGE_CHARS` on a char boundary, appending a marker if cut.
@@ -201,39 +218,20 @@ mod tests {
     }
 
     #[test]
-    fn parses_pages_and_skips_missing_and_empty() {
+    fn revisions_follow_search_relevance_order_not_pageid() {
+        // pageids sort lexically as "1","10","2" -> Copper, Iron, Tin; the search
+        // ranking is Iron, Copper, Tin — the output must follow the ranking.
         let sample = r#"{
             "query": {
                 "pages": {
-                    "1": { "pageid": 1, "title": "Winter", "extract": "Winter is a season." },
-                    "2": { "pageid": 2, "title": "Nonexistent Page", "missing": "" },
-                    "3": { "pageid": 3, "title": "Blank", "extract": "" }
-                }
-            }
-        }"#;
-        let titles = vec!["Winter".to_string(), "Nonexistent Page".to_string(), "Blank".to_string()];
-        let pages = parse_pages_response(sample, &STARDEW, &titles).unwrap();
-        assert_eq!(pages.len(), 1);
-        assert_eq!(pages[0].title, "Winter");
-        assert_eq!(pages[0].text, "Winter is a season.");
-        assert_eq!(pages[0].url, "https://stardewvalleywiki.com/Winter");
-    }
-
-    #[test]
-    fn pages_follow_search_relevance_order_not_pageid() {
-        // pageids sort lexically as "1","10","2" -> Copper, Iron, Tin; the
-        // search ranking is Iron, Copper, Tin — the output must follow ranking.
-        let sample = r#"{
-            "query": {
-                "pages": {
-                    "1": { "pageid": 1, "title": "Copper Ore", "extract": "copper" },
-                    "10": { "pageid": 10, "title": "Iron Ore", "extract": "iron" },
-                    "2": { "pageid": 2, "title": "Tin Ore", "extract": "tin" }
+                    "1": { "pageid": 1, "title": "Copper Ore", "revisions": [ { "slots": { "main": { "*": "copper prose" } } } ] },
+                    "10": { "pageid": 10, "title": "Iron Ore", "revisions": [ { "slots": { "main": { "*": "iron prose" } } } ] },
+                    "2": { "pageid": 2, "title": "Tin Ore", "revisions": [ { "slots": { "main": { "*": "tin prose" } } } ] }
                 }
             }
         }"#;
         let titles = vec!["Iron Ore".to_string(), "Copper Ore".to_string(), "Tin Ore".to_string()];
-        let pages = parse_pages_response(sample, &STARDEW, &titles).unwrap();
+        let pages = parse_revisions_response(sample, &STARDEW, &titles).unwrap();
         let ordered: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
         assert_eq!(ordered, vec!["Iron Ore", "Copper Ore", "Tin Ore"]);
     }
@@ -241,8 +239,50 @@ mod tests {
     #[test]
     fn missing_pages_key_is_parse_error() {
         assert!(matches!(
-            parse_pages_response(r#"{ "query": {} }"#, &STARDEW, &[]),
+            parse_revisions_response(r#"{ "query": {} }"#, &STARDEW, &[]),
             Err(AppError::Parse(_))
         ));
+    }
+
+    #[test]
+    fn revisions_clean_wikitext_to_plaintext() {
+        // Shape of a real `prop=revisions&rvslots=main` response (Core Keeper).
+        let sample = r#"{
+            "query": {
+                "pages": {
+                    "411": {
+                        "pageid": 411,
+                        "title": "Wood",
+                        "revisions": [
+                            { "slots": { "main": { "*": "{{Object infobox|auto=Wood}}\n\n'''Wood''' is a [[crafting material]] found in the [[Undergrounds]].\n\n== Obtaining ==\n{{Obtaining}}" } } }
+                        ]
+                    }
+                }
+            }
+        }"#;
+        let titles = vec!["Wood".to_string()];
+        let pages = parse_revisions_response(sample, &CORE_KEEPER, &titles).unwrap();
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].title, "Wood");
+        assert!(pages[0].text.contains("Wood is a crafting material found in the Undergrounds"));
+        assert!(!pages[0].text.contains("{{"));
+        assert!(!pages[0].text.contains("[["));
+        assert_eq!(pages[0].url, "https://core-keeper.fandom.com/wiki/Wood");
+    }
+
+    #[test]
+    fn revisions_skips_missing_and_empty_pages() {
+        let sample = r#"{
+            "query": {
+                "pages": {
+                    "1": { "pageid": 1, "title": "Gone", "missing": "" },
+                    "2": { "pageid": 2, "title": "Templatey", "revisions": [ { "slots": { "main": { "*": "{{stub}}" } } } ] }
+                }
+            }
+        }"#;
+        let titles = vec!["Gone".to_string(), "Templatey".to_string()];
+        let pages = parse_revisions_response(sample, &CORE_KEEPER, &titles).unwrap();
+        // "Gone" is missing; "Templatey" cleans to empty (only a template) — both skipped.
+        assert!(pages.is_empty());
     }
 }

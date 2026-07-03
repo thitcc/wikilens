@@ -103,37 +103,37 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 
 | Game | Wiki | Search | Answer content | Notes |
 |---|---|---|---|---|
-| **Conan Exiles** | Fandom | ✅ | ✅ | Full support (wiki exposes the MediaWiki *TextExtracts* API). |
-| **Stardew Valley** | Self-hosted | ✅ (keyword) | ⚠️ not yet | Wiki lacks the *TextExtracts* extension, so page text can't be pulled; search works best with short keyword queries (its legacy search backend is strict about multi-word phrases). |
-| **Core Keeper** | Fandom | ✅ | ⚠️ not yet | This Fandom instance doesn't have *TextExtracts* enabled, so page text can't be pulled. |
+| **Conan Exiles** | Fandom | ✅ | ✅ | Full support. |
+| **Core Keeper** | Fandom | ✅ | ✅ | Full support. |
+| **Stardew Valley** | Self-hosted | ✅ (keyword) | ✅ | Search works best with short keyword queries (its legacy search backend is strict about multi-word phrases). |
 
-> **Why the ⚠️?** WikiLens fetches clean plaintext via MediaWiki's `prop=extracts`
-> (the *TextExtracts* extension). Wikis without that extension return search
-> results but no extractable text, so answers for those games will say the pages
-> couldn't be read. Adding a fallback (wikitext or rendered-HTML extraction) for
-> those wikis is on the roadmap — see `CLAUDE.md`. Endpoints verified 2026-07-02.
+> **How content is read.** WikiLens fetches each page's raw wikitext
+> (`prop=revisions`, one batched request) and converts it to plaintext. This works
+> on **every** MediaWiki wiki — unlike `prop=extracts` (the *TextExtracts*
+> extension), which many game wikis lack (Core Keeper, Stardew) *and* which caps
+> whole-article requests to a single page. The conversion keeps article **prose**
+> but drops template/infobox tables, so a stat that lives only in an infobox may
+> be missing. Endpoints verified 2026-07-02.
 
 ## Manual smoke test
-
-The best game to demo end-to-end today is **Conan Exiles** (its wiki supports full
-text extraction).
 
 1. Set a key: `cp .env.example .env` and fill in one provider's key (or export it,
    e.g. `$env:ANTHROPIC_API_KEY = "sk-ant-..."`).
 2. From the repo root: `npm install` then `npm run tauri dev`.
 3. Wait for the tray icon to appear (the window starts hidden), then press **Shift+C**.
 4. The panel slides in from the right and focuses the input.
-5. Choose your **provider** (the one you set a key for) and game **Conan Exiles**,
-   then ask something like *"how do I make steel bars?"*.
+5. Choose your **provider** (the one you set a key for) and a **game**, then ask a
+   question — e.g. **Conan Exiles** → *"how do I make steel bars?"*, or **Core
+   Keeper** → *"best way to get wood"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer
    to **stream in** as markdown, and **2–4 source links** to appear beneath it.
    Clicking a source opens the wiki page in your browser.
 7. Try the other providers (whichever keys you set) — the same question should
    stream an answer from each. Press **Esc** to hide the panel.
 
-> The scaffold plan's original example (*Stardew Valley → "best crops for winter"*)
-> will search but return "couldn't read the pages" until a text-extraction
-> fallback is added — see the Supported games note above.
+> **Stardew Valley** search works best with short keyword queries (e.g. *"cauliflower"*
+> rather than a full sentence), because its self-hosted wiki uses the legacy search
+> backend. Its page content reads fine via the wikitext fallback.
 
 ## Caveats
 

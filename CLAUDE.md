@@ -40,7 +40,7 @@ wikilens/
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── providers.rs          # LLM provider registry (Anthropic, DeepSeek, OpenRouter)
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
-        └── wiki/{mod,games,search,fetch}.rs  # registry + MediaWiki search + plaintext extracts
+        └── wiki/{mod,games,search,fetch,wikitext}.rs  # registry + search + fetch wikitext → plaintext
 ```
 
 **Data flow:** `hotkey → window toggle → frontend prompt → ask command → wiki
@@ -89,9 +89,11 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
   fetches are a single batched request — don't parallelize them.
-- Content extraction uses `prop=extracts` (*TextExtracts*). Wikis without that
-  extension (Stardew Valley, Core Keeper here) return search hits but empty text;
-  see the roadmap.
+- Content is read as raw wikitext (`prop=revisions`, one batched request) and
+  cleaned by `wiki::wikitext::to_plaintext`. This is used for **all** wikis, not
+  `prop=extracts`: many game wikis lack TextExtracts, and a whole-article extracts
+  request is capped to one page (it would silently drop the other search hits).
+  The cleaner keeps prose but strips template/infobox tables.
 - The spec'd **Shift+C** is a bare Shift+letter global hotkey: on Windows it
   swallows Shift+C system-wide, so a capital `C` can't be typed into the prompt.
   Search is case-insensitive so lowercase works; prefer a Ctrl/Alt combo when the
@@ -107,7 +109,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 ## 6. Roadmap (do not implement unless asked)
 
-- Text-extraction fallback (wikitext or rendered-HTML) for wikis lacking *TextExtracts*.
+- Rendered-HTML extraction (`action=parse&prop=text`) so infobox/stat tables are
+  captured too — the current wikitext fallback keeps prose but drops those tables.
 - Foreground-window game auto-detection.
 - SQLite cache of fetched wiki pages.
 - User-configurable hotkey.
