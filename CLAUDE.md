@@ -54,6 +54,7 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Dev app: `npm run tauri dev`
 - Frontend build: `npm run build` · Type-check: `npx tsc --noEmit`
 - Rust: `cd src-tauri && cargo check` · `cd src-tauri && cargo test`
+- Verify all: `/check` bundles the type-check + `cargo check` + `cargo test`
 - Release: `npm run tauri build`
 
 ## 4. Conventions
@@ -136,6 +137,10 @@ vault (not the repo root — that would index `node_modules`).
 - **Vocabularies:** `type` ∈ {plan, decision, research, fix, retro, note};
   `status` ∈ {idea, todo, active, blocked, done, dropped}. Reuse topic tags from the
   registry in `vault/index.md` — don't invent synonyms (e.g. use `llm`, not `ai`).
+- **Linting:** the `vault-lint` skill (or `/vault-lint`) validates every doc against
+  these conventions — vocab, registry tags, `YYYY-MM-DD_slug` filenames, ISO dates,
+  quoted/resolvable wikilinks. Run it after creating or closing a doc and before
+  committing `vault/` changes; engine is `.claude/skills/vault-lint/lint.mjs`.
 - Filenames are permanent IDs — don't rename. Wikilinks in frontmatter must be
   quoted (`"[[...]]"`); dates are bare ISO. No secrets in notes.
 - `README.md` and this file are user/dev guides and are **not** part of the vault.
