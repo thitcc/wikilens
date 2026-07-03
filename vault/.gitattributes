@@ -1,0 +1,2 @@
+# Keep vault markdown at LF so editors re-saving as CRLF don't create churn.
+*.md text eol=lf
