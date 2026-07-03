@@ -115,3 +115,25 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - SQLite cache of fetched wiki pages.
 - User-configurable hotkey.
 - Answer history.
+
+## 7. Planning vault
+
+Plans, decisions, research, and retros live in **`vault/`** as
+`YYYY-MM-DD_<kebab-slug>.md` with YAML frontmatter (`title, type, status, created,
+updated, tags, related, commit`). Open the `vault/` folder itself as the Obsidian
+vault (not the repo root — that would index `node_modules`).
+
+- **Before non-trivial work:** create a `type: plan` doc from `vault/templates/plan.md`
+  and set `status: active`. For an architecturally-significant choice, create a
+  `type: decision` doc (MADR-lite) from `vault/templates/decision.md`.
+- **On finishing:** set `status: done`, bump `updated:`, add the `commit:` hash, and
+  add `related:` wikilinks. Done means: frontmatter complete, `status` accurate,
+  `updated` bumped, ≥1 `related` link or tag, `commit` set when tied to code.
+- **Vocabularies:** `type` ∈ {plan, decision, research, fix, retro, note};
+  `status` ∈ {idea, todo, active, blocked, done, dropped}. Reuse topic tags from the
+  registry in `vault/index.md` — don't invent synonyms (e.g. use `llm`, not `ai`).
+- Filenames are permanent IDs — don't rename. Wikilinks in frontmatter must be
+  quoted (`"[[...]]"`); dates are bare ISO. No secrets in notes.
+- `README.md` and this file are user/dev guides and are **not** part of the vault.
+- The roadmap above (§6) is the single source of truth for future ideas; promote an
+  item to a full `plan` doc only when work on it starts.

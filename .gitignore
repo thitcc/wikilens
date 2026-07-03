@@ -30,3 +30,9 @@ src-tauri/target
 *.njsproj
 *.sln
 *.sw?
+
+# Obsidian per-machine UI state (churny, merge-conflict-prone, no real data).
+# Everything else under vault/.obsidian/ is committed so the vault is reproducible.
+vault/.obsidian/workspace.json
+vault/.obsidian/workspace-mobile.json
+vault/.obsidian/cache
