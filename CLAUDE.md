@@ -14,6 +14,7 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 ```
 wikilens/
 ├── index.html, vite.config.ts, tsconfig*.json   # Vite/TS config
+├── vault/                        # planning vault: plans, decisions, notes (see §7)
 ├── src/                          # Frontend (React + TS)
 │   ├── main.tsx                  # React entry
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow
