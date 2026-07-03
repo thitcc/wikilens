@@ -68,13 +68,13 @@ SORT updated DESC
 
 - **Active / blocked:** (none)
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]]
-- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]]
+- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]]
 
 Pure-grep, no Obsidian:
 `grep -rl 'status: active' .` · `grep -rl 'type: decision' .`
 
 ## Tag registry (closed — add a tag here before using it)
 
-`wiki` · `llm` · `rag` · `frontend` · `rust` · `tauri` · `overlay` · `hotkey` · `security` · `build`
+`wiki` · `llm` · `rag` · `frontend` · `rust` · `tauri` · `overlay` · `hotkey` · `security` · `build` · `vault`
 
-Reserved for when that work starts: `cache`, `perf`.
+`vault` = the planning vault's own tooling and conventions. Reserved for when that work starts: `cache`, `perf`.
