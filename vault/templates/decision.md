@@ -1,12 +1,12 @@
 ---
 title: {{title}}
-type: decision
-status: active
+type: decision   # plan | decision | research | fix | retro | note
+status: active   # idea | todo | active | blocked | done | dropped
 created: {{date:YYYY-MM-DD}}
 updated: {{date:YYYY-MM-DD}}
 tags: []
 related: []
-commit:
+commit:          # optional: single hash 85aca6c, or a list [h1, h2] for multiple
 ---
 
 # {{title}}

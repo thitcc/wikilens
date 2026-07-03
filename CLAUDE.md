@@ -126,8 +126,9 @@ vault (not the repo root — that would index `node_modules`).
 - **Before non-trivial work:** create a `type: plan` doc from `vault/templates/plan.md`
   and set `status: active`. For an architecturally-significant choice, create a
   `type: decision` doc (MADR-lite) from `vault/templates/decision.md`.
-- **On finishing:** set `status: done`, bump `updated:`, add the `commit:` hash, and
-  add `related:` wikilinks. Done means: frontmatter complete, `status` accurate,
+- **On finishing:** set `status: done`, bump `updated:`, add the `commit:` ref (a single
+  hash, or a `[list, of, hashes]` when the work spans several commits), and add
+  `related:` wikilinks. Done means: frontmatter complete, `status` accurate,
   `updated` bumped, ≥1 `related` link or tag, `commit` set when tied to code.
 - **Vocabularies:** `type` ∈ {plan, decision, research, fix, retro, note};
   `status` ∈ {idea, todo, active, blocked, done, dropped}. Reuse topic tags from the

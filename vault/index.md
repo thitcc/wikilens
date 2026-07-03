@@ -14,11 +14,23 @@ Plans, decisions, research, and retros for WikiLens. **Open this `vault/` folder
 the Obsidian vault** (not the repo root — that would index `node_modules`).
 
 - **Naming:** `YYYY-MM-DD_<kebab-slug>.md` (creation date; treat as a permanent ID — don't rename).
-- **Frontmatter:** `title, type, status, created, updated, tags, related, commit`.
+- **Frontmatter:** typed properties on every doc — full reference in the table below.
 - **New doc:** copy `templates/plan.md` (or `templates/decision.md`) and fill it in.
 - **Vocabularies:** `type` ∈ {plan, decision, research, fix, retro, note};
   `status` ∈ {idea, todo, active, blocked, done, dropped}. Tags: use the registry below.
 - **No secrets** in notes — this project holds provider API keys.
+
+## Frontmatter fields
+
+| field | value |
+|---|---|
+| `title` | human sentence (also the `#` H1) |
+| `type` | plan · decision · research · fix · retro · note |
+| `status` | idea · todo · active · blocked · done · dropped |
+| `created` / `updated` | bare ISO date `YYYY-MM-DD`; bump `updated` on every edit |
+| `tags` | topics from the registry below (closed set) |
+| `related` | quoted wikilinks, e.g. `"[[2026-07-02_scaffold]]"` |
+| `commit` | the code this doc tracks — a single hash `85aca6c`, or a list `[a1b2c3d, e4f5g6h]` when it spans several commits. Optional. (Quote an all-digit hash so YAML keeps it a string.) |
 
 > The dashboards below use [Dataview](https://github.com/blacksmithgu/obsidian-dataview).
 > Without it they render as inert code blocks — the manual index and `grep` still work.
