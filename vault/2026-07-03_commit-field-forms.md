@@ -1,5 +1,5 @@
 ---
-title: Document the vault commit: field forms (hash or list)
+title: Document the vault commit field forms (hash or list)
 type: plan
 status: done
 created: 2026-07-03
@@ -9,7 +9,7 @@ related: []
 commit: d273bbd
 ---
 
-# Document the vault `commit:` field forms (hash or list)
+# Document the vault commit field forms (hash or list)
 
 ## Context / problem
 The vault's `commit:` frontmatter field (introduced with the vault in `29a5b71`)

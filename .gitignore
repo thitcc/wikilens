@@ -31,8 +31,9 @@ src-tauri/target
 *.sln
 *.sw?
 
-# Obsidian per-machine UI state (churny, merge-conflict-prone, no real data).
-# Everything else under vault/.obsidian/ is committed so the vault is reproducible.
+# Obsidian: track the config JSON (app / appearance / community-plugins / …) so the
+# vault is reproducible, but ignore per-machine UI state and third-party plugin code.
 vault/.obsidian/workspace.json
 vault/.obsidian/workspace-mobile.json
 vault/.obsidian/cache
+vault/.obsidian/plugins/
