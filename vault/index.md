@@ -68,7 +68,7 @@ SORT updated DESC
 
 - **Active / blocked:** (none)
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]]
-- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]]
+- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]]
 
 Pure-grep, no Obsidian:
 `grep -rl 'status: active' .` · `grep -rl 'type: decision' .`
