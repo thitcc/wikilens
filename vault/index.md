@@ -66,8 +66,8 @@ SORT updated DESC
 
 ## Index (manual fallback — grep `status:` if this drifts)
 
-- **Active / blocked:** (none)
-- **Todo:** [[2026-07-05_design-tokens-claude-design-sync]]
+- **Active / blocked:** [[2026-07-05_design-tokens-claude-design-sync]]
+- **Todo:** (none)
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-04_rendered-html-fetch-strategy]]
 - **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]] · [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]] · [[2026-07-04_rendered-html-fetch-strategy]]
 

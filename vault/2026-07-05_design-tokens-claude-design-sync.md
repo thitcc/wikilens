@@ -1,11 +1,12 @@
 ---
 title: Design tokens and a Claude Design sync loop for the overlay UI
 type: plan
-status: todo
+status: blocked
 created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]
 related: []
+commit: 65b7f4d
 ---
 
 # Design tokens and a Claude Design sync loop for the overlay UI
@@ -78,3 +79,9 @@ constraints are specific to WikiLens and must shape any design work:
 ## Status log
 - 2026-07-05 — created from the design-enhancement discussion; preview pages
   dropped from scope for now; queued as todo.
+- 2026-07-05 — step 1 (token extraction) landed in `65b7f4d`: complete `:root`
+  token layer (ink, glass surfaces, status, shape, type, rhythm, states); only
+  hairline `1px` border widths stay literal. Zero visual diff verified by value
+  tally on the git diff; Vite build + tsc clean. Status → blocked: steps 2–4
+  (DesignSync project, sync loop, design pass) wait until the user returns with
+  their Claude Design setup.
