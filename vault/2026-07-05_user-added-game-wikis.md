@@ -1,11 +1,12 @@
 ---
 title: User-added game wikis with probe validation
 type: plan
-status: todo
+status: done
 created: 2026-07-05
 updated: 2026-07-05
 tags: [wiki, rust, frontend]
-related: ["[[2026-07-05_builtin-game-registry-expansion]]"]
+related: ["[[2026-07-05_builtin-game-registry-expansion]]", "[[2026-07-05_model-picker-menu]]"]
+commit: 513c072
 ---
 
 # User-added game wikis with probe validation
@@ -88,3 +89,30 @@ Rust-side: `ask` should never fetch a URL the frontend supplies per-request
   curated built-ins + validated user additions; web-search discovery
   rejected). Queued as todo; execute after
   [[2026-07-05_builtin-game-registry-expansion]].
+- 2026-07-05 — placement settled in discussion before execution: the flow
+  lives in an "Add a game" popover off a "+" button by the picker (ModelMenu
+  pattern, top-anchored); **no settings panel** until a second real setting
+  exists (configurable hotkey would be the trigger); no design gate — the
+  menu pattern and tokens already exist, a Claude Design pass on the probe
+  states can follow once they're real.
+- 2026-07-05 — executed and landed in `513c072`. The ownership question went
+  **owned `GameWiki`** (String fields, `LazyLock` registry, `find_game`
+  signature unchanged) — mechanical and contained (~4 files), so no separate
+  decision doc. Probe learnings: `/mediawiki/api.php` joined the candidate
+  paths (stardewvalleywiki.com is live proof), endpoints are derived from
+  siteinfo's `server`+`scriptpath`+`articlepath` (protocol-relative servers
+  fixed up; redirect aliases dedupe on the canonical api_url), and both
+  joined+hyphenated slugs are probed (dave-the-diver.fandom.com). All three
+  live probe tests passed first run — minecraft.wiki (`/w/`, root
+  scriptpath), stardew (`/mediawiki`), suggest("Terraria") → terraria.wiki.gg
+  — and the golden suite reran clean after the refactor. Adversarial review
+  (28 agents, 4 lenses, 3-refuter panels): 8 raw findings → 7 upheld → 5
+  distinct defects, all fixed: startup read-error emptied the store and the
+  next add clobbered wikis.json (now: only NotFound ⇒ empty; other errors ⇒
+  mutations refused); a future built-in claiming a stored id made it
+  undeletable (remove_game now consults the store first, list_games hides
+  shadowed entries); stale suggestions survived a name edit; double-click
+  remove painted a bogus error (busy state + synchronous row drop); slugify
+  dropped accents ("Pokémon" probed dead domains — now folded to ASCII).
+  Offline: 89 tests. In-app smoke (add a real wiki, ask, remove) stays with
+  the user.
