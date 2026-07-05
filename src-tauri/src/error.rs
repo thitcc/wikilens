@@ -34,6 +34,19 @@ pub enum AppError {
         status: u16,
         body: String,
     },
+
+    /// Probe validation failed for a user-added wiki. The message is already
+    /// complete user-facing text ("Couldn't find a MediaWiki API at …").
+    #[error("{0}")]
+    Probe(String),
+
+    /// A user-added game request that is wrong before any network I/O
+    /// (duplicate name, removing a built-in, …). Message shown verbatim.
+    #[error("{0}")]
+    InvalidGame(String),
+
+    #[error("Couldn't save your games: {0}")]
+    Storage(String),
 }
 
 /// Lets `#[tauri::command] -> Result<T, String>` use `?` on `AppError` values.

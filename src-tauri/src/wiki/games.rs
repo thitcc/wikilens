@@ -1,150 +1,162 @@
-//! Static registry of supported game wikis.
+//! Registry of built-in game wikis.
 //!
-//! Adding a new game = add one `GameWiki` entry to `GAMES`. Nothing else in the
-//! codebase needs to change.
+//! Adding a built-in game = add one entry to `GAMES`. Nothing else in the
+//! codebase needs to change. User-added wikis (`wiki/user.rs`) share this
+//! same `GameWiki` type — which is why the fields are owned `String`s — and
+//! are merged in by the command layer, never here.
 
-/// A supported game's MediaWiki endpoints.
-#[derive(Debug, Clone, Copy)]
+use std::sync::LazyLock;
+
+use serde::{Deserialize, Serialize};
+
+/// A game's MediaWiki endpoints. Owned so built-in and user-added (loaded
+/// from `wikis.json` at runtime) entries are the same type; `Deserialize` is
+/// for that store — built-ins are constructed below, endpoints verified live.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameWiki {
     /// Stable identifier used by the frontend and the `ask` command (e.g. "stardew").
-    pub id: &'static str,
+    pub id: String,
     /// Human-readable name shown in the game picker.
-    pub name: &'static str,
+    pub name: String,
     /// MediaWiki `api.php` endpoint used for search + extracts.
-    pub api_url: &'static str,
+    pub api_url: String,
     /// Base URL for human-readable pages; a page URL is `page_url + Encoded_Title`.
     /// Derive it from the wiki's real `articlepath` — some wikis serve pages
     /// under `/w/`, not `/wiki/` (minecraft.wiki, wiki.warframe.com).
-    pub page_url: &'static str,
+    pub page_url: String,
     /// Restrict search to these namespace ids (pipe-separated, e.g. `"134"`).
     /// For shared wikis that keep each game's pages in their own namespace
     /// (UESP) — the default namespaces there return zero or cross-game hits.
-    /// `None` = the wiki's default namespaces.
-    pub search_namespace: Option<&'static str>,
+    /// `None` = the wiki's default namespaces (and the field is omitted from
+    /// stored user entries, which never set it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_namespace: Option<String>,
 }
 
-/// The supported wikis. Every endpoint is verified live before it lands here
+/// One-liner constructor keeping the registry entries readable.
+fn wiki(id: &str, name: &str, api_url: &str, page_url: &str) -> GameWiki {
+    GameWiki {
+        id: id.to_string(),
+        name: name.to_string(),
+        api_url: api_url.to_string(),
+        page_url: page_url.to_string(),
+        search_namespace: None,
+    }
+}
+
+/// The built-in wikis. Every endpoint is verified live before it lands here
 /// (siteinfo + a game-specific search — see the registry-expansion plan doc);
 /// if one stops responding, keep it here and note it in the README.
 /// Curation rule: prefer the official/independent wiki over a stale Fandom
 /// copy when both exist (Warframe, Terraria, and Minecraft all migrated).
-pub static GAMES: &[GameWiki] = &[
-    GameWiki {
-        id: "stardew",
-        name: "Stardew Valley",
-        api_url: "https://stardewvalleywiki.com/mediawiki/api.php",
-        page_url: "https://stardewvalleywiki.com/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "corekeeper",
-        name: "Core Keeper",
-        api_url: "https://core-keeper.fandom.com/api.php",
-        page_url: "https://core-keeper.fandom.com/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "conanexiles",
-        name: "Conan Exiles",
-        api_url: "https://conanexiles.fandom.com/api.php",
-        page_url: "https://conanexiles.fandom.com/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "warframe",
-        name: "Warframe",
+pub static GAMES: LazyLock<Vec<GameWiki>> = LazyLock::new(|| {
+    vec![
+        wiki(
+            "stardew",
+            "Stardew Valley",
+            "https://stardewvalleywiki.com/mediawiki/api.php",
+            "https://stardewvalleywiki.com/",
+        ),
+        wiki(
+            "corekeeper",
+            "Core Keeper",
+            "https://core-keeper.fandom.com/api.php",
+            "https://core-keeper.fandom.com/wiki/",
+        ),
+        wiki(
+            "conanexiles",
+            "Conan Exiles",
+            "https://conanexiles.fandom.com/api.php",
+            "https://conanexiles.fandom.com/wiki/",
+        ),
         // The official wiki (community migrated off Fandom); pages under /w/.
-        api_url: "https://wiki.warframe.com/api.php",
-        page_url: "https://wiki.warframe.com/w/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "gw2",
-        name: "Guild Wars 2",
-        api_url: "https://wiki.guildwars2.com/api.php",
-        page_url: "https://wiki.guildwars2.com/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "poe",
-        name: "Path of Exile",
-        api_url: "https://www.poewiki.net/w/api.php",
-        page_url: "https://www.poewiki.net/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "poe2",
-        name: "Path of Exile 2",
-        api_url: "https://www.poe2wiki.net/w/api.php",
-        page_url: "https://www.poe2wiki.net/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "abioticfactor",
-        name: "Abiotic Factor",
-        api_url: "https://abioticfactor.wiki.gg/api.php",
-        page_url: "https://abioticfactor.wiki.gg/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "davethediver",
-        name: "Dave the Diver",
-        api_url: "https://dave-the-diver.fandom.com/api.php",
-        page_url: "https://dave-the-diver.fandom.com/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "skyrim",
-        name: "The Elder Scrolls V: Skyrim",
+        wiki(
+            "warframe",
+            "Warframe",
+            "https://wiki.warframe.com/api.php",
+            "https://wiki.warframe.com/w/",
+        ),
+        wiki(
+            "gw2",
+            "Guild Wars 2",
+            "https://wiki.guildwars2.com/api.php",
+            "https://wiki.guildwars2.com/wiki/",
+        ),
+        wiki(
+            "poe",
+            "Path of Exile",
+            "https://www.poewiki.net/w/api.php",
+            "https://www.poewiki.net/wiki/",
+        ),
+        wiki(
+            "poe2",
+            "Path of Exile 2",
+            "https://www.poe2wiki.net/w/api.php",
+            "https://www.poe2wiki.net/wiki/",
+        ),
+        wiki(
+            "abioticfactor",
+            "Abiotic Factor",
+            "https://abioticfactor.wiki.gg/api.php",
+            "https://abioticfactor.wiki.gg/wiki/",
+        ),
+        wiki(
+            "davethediver",
+            "Dave the Diver",
+            "https://dave-the-diver.fandom.com/api.php",
+            "https://dave-the-diver.fandom.com/wiki/",
+        ),
         // UESP covers every Elder Scrolls game; Skyrim lives in namespace 134
         // ("Skyrim:*" titles). Without the filter, search returns zero hits.
-        api_url: "https://en.uesp.net/w/api.php",
-        page_url: "https://en.uesp.net/wiki/",
-        search_namespace: Some("134"),
-    },
-    GameWiki {
-        id: "fallout4",
-        name: "Fallout 4",
+        GameWiki {
+            search_namespace: Some("134".to_string()),
+            ..wiki(
+                "skyrim",
+                "The Elder Scrolls V: Skyrim",
+                "https://en.uesp.net/w/api.php",
+                "https://en.uesp.net/wiki/",
+            )
+        },
         // Nukapedia covers every Fallout game in one namespace; cross-game
         // bleed is accepted for now and measured by the golden queries.
-        api_url: "https://fallout.fandom.com/api.php",
-        page_url: "https://fallout.fandom.com/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "grounded",
-        name: "Grounded",
-        api_url: "https://grounded.wiki.gg/api.php",
-        page_url: "https://grounded.wiki.gg/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "grounded2",
-        name: "Grounded 2",
+        wiki(
+            "fallout4",
+            "Fallout 4",
+            "https://fallout.fandom.com/api.php",
+            "https://fallout.fandom.com/wiki/",
+        ),
+        wiki(
+            "grounded",
+            "Grounded",
+            "https://grounded.wiki.gg/api.php",
+            "https://grounded.wiki.gg/wiki/",
+        ),
         // No standalone wiki exists: Grounded 2 pages live on Grounded's
         // Fandom wiki with "(Grounded 2)"-suffixed titles.
-        api_url: "https://grounded.fandom.com/api.php",
-        page_url: "https://grounded.fandom.com/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "terraria",
-        name: "Terraria",
-        api_url: "https://terraria.wiki.gg/api.php",
-        page_url: "https://terraria.wiki.gg/wiki/",
-        search_namespace: None,
-    },
-    GameWiki {
-        id: "minecraft",
-        name: "Minecraft",
+        wiki(
+            "grounded2",
+            "Grounded 2",
+            "https://grounded.fandom.com/api.php",
+            "https://grounded.fandom.com/wiki/",
+        ),
+        wiki(
+            "terraria",
+            "Terraria",
+            "https://terraria.wiki.gg/api.php",
+            "https://terraria.wiki.gg/wiki/",
+        ),
         // minecraft.wiki serves articles under /w/, not /wiki/.
-        api_url: "https://minecraft.wiki/api.php",
-        page_url: "https://minecraft.wiki/w/",
-        search_namespace: None,
-    },
-];
+        wiki(
+            "minecraft",
+            "Minecraft",
+            "https://minecraft.wiki/api.php",
+            "https://minecraft.wiki/w/",
+        ),
+    ]
+});
 
-/// Look up a wiki by its `id`. Returns `None` for unknown ids.
+/// Look up a built-in wiki by its `id`. Returns `None` for unknown ids —
+/// including user-added ones; the command layer falls back to the user store.
 pub fn find_game(id: &str) -> Option<&'static GameWiki> {
     GAMES.iter().find(|g| g.id == id)
 }
@@ -155,15 +167,21 @@ mod tests {
 
     #[test]
     fn find_game_known_and_unknown() {
-        assert_eq!(find_game("stardew").map(|g| g.name), Some("Stardew Valley"));
-        assert_eq!(find_game("minecraft").map(|g| g.name), Some("Minecraft"));
+        assert_eq!(
+            find_game("stardew").map(|g| g.name.as_str()),
+            Some("Stardew Valley")
+        );
+        assert_eq!(
+            find_game("minecraft").map(|g| g.name.as_str()),
+            Some("Minecraft")
+        );
         assert!(find_game("does-not-exist").is_none());
     }
 
     #[test]
     fn skyrim_searches_the_uesp_skyrim_namespace() {
         assert_eq!(
-            find_game("skyrim").and_then(|g| g.search_namespace),
+            find_game("skyrim").and_then(|g| g.search_namespace.as_deref()),
             Some("134")
         );
     }
@@ -175,5 +193,19 @@ mod tests {
                 assert_ne!(a.id, b.id, "duplicate game id: {}", a.id);
             }
         }
+    }
+
+    #[test]
+    fn stored_form_omits_unset_namespace() {
+        // User entries never set the namespace; the stored JSON must stay the
+        // documented `{id, name, api_url, page_url}` shape.
+        let entry = wiki("x", "X", "https://x.example/api.php", "https://x.example/wiki/");
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(!json.contains("search_namespace"), "unexpected field in {json}");
+
+        // And round-trips without it.
+        let back: GameWiki = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, "x");
+        assert!(back.search_namespace.is_none());
     }
 }

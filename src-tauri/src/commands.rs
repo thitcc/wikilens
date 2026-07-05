@@ -9,7 +9,9 @@ use tauri::{AppHandle, Emitter, State};
 use crate::error::AppError;
 use crate::models::{self, ModelInfo, ModelSource};
 use crate::state::AppState;
-use crate::wiki::{fetch, games, search};
+use crate::wiki::games::GameWiki;
+use crate::wiki::user::UserWikiStore;
+use crate::wiki::{fetch, games, probe, search};
 use crate::{llm, providers, window};
 
 /// A supported game, as sent to the frontend game picker.
@@ -17,6 +19,8 @@ use crate::{llm, providers, window};
 pub struct GameInfo {
     pub id: String,
     pub name: String,
+    /// `true` for user-added wikis (removable); `false` for built-ins.
+    pub custom: bool,
 }
 
 /// A supported LLM provider, as sent to the frontend. Carries the resolved
@@ -55,16 +59,104 @@ pub struct AskResult {
     pub sources: Vec<Source>,
 }
 
-/// List the supported games (id + display name).
+/// List the supported games: built-ins in curated order, then user-added
+/// wikis (name-sorted by the store).
 #[tauri::command]
-pub fn list_games() -> Vec<GameInfo> {
-    games::GAMES
-        .iter()
+pub fn list_games(store: State<'_, UserWikiStore>) -> Vec<GameInfo> {
+    let builtin = games::GAMES.iter().map(|g| GameInfo {
+        id: g.id.clone(),
+        name: g.name.clone(),
+        custom: false,
+    });
+    let custom = store
+        .list()
+        .into_iter()
+        // A stored id can collide with a *later-shipped* built-in. The
+        // built-in wins everywhere (run_ask resolves it first), so hide the
+        // stale copy rather than showing two identical picker entries.
+        .filter(|g| games::find_game(&g.id).is_none())
         .map(|g| GameInfo {
-            id: g.id.to_string(),
-            name: g.name.to_string(),
+            id: g.id,
+            name: g.name,
+            custom: true,
+        });
+    builtin.chain(custom).collect()
+}
+
+/// Probe the common wiki hosts (wiki.gg, Fandom) for a game name, returning
+/// only verified wikis. Sequential probes — may take a few seconds.
+#[tauri::command]
+pub async fn suggest_wikis(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<Vec<probe::WikiCandidate>, String> {
+    if name.trim().is_empty() {
+        return Err("Type a game name first.".to_string());
+    }
+    Ok(probe::suggest(&state.http, name.trim()).await)
+}
+
+/// Validate a wiki URL and save it as a user-added game. Always re-probes the
+/// URL it receives — whether it came from a suggestion click or a manual
+/// paste — so there is exactly one validation path, and the stored endpoints
+/// are always derived from the wiki's own siteinfo.
+#[tauri::command]
+pub async fn add_game(
+    state: State<'_, AppState>,
+    store: State<'_, UserWikiStore>,
+    name: String,
+    url: String,
+) -> Result<GameInfo, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Give the game a name first.".to_string());
+    }
+    if url.trim().is_empty() {
+        return Err("Pick a suggestion or paste the wiki's address.".to_string());
+    }
+    let id = probe::slugify(&name);
+    if id.is_empty() {
+        return Err("The name needs at least one letter or digit.".to_string());
+    }
+    if games::find_game(&id).is_some() {
+        return Err(format!(
+            "WikiLens already includes {name} — to use a different wiki for it, give it a different name."
+        ));
+    }
+
+    let candidate = probe::probe_base(&state.http, &url)
+        .await
+        .map_err(String::from)?;
+    store
+        .add(GameWiki {
+            id: id.clone(),
+            name: name.clone(),
+            api_url: candidate.api_url,
+            page_url: candidate.page_url,
+            search_namespace: None,
         })
-        .collect()
+        .map_err(String::from)?;
+
+    Ok(GameInfo {
+        id,
+        name,
+        custom: true,
+    })
+}
+
+/// Remove a user-added game. Built-ins are refused.
+#[tauri::command]
+pub fn remove_game(store: State<'_, UserWikiStore>, id: String) -> Result<(), String> {
+    // Store first: a stored entry must always be removable, even when a
+    // later release ships a built-in with the same id — checking built-ins
+    // first would lock the stale entry in forever.
+    match store.remove(&id) {
+        Ok(()) => Ok(()),
+        Err(AppError::UnknownGame(_)) if games::find_game(&id).is_some() => {
+            Err("Built-in games can't be removed.".to_string())
+        }
+        Err(e) => Err(String::from(e)),
+    }
 }
 
 /// List the supported LLM providers with their resolved default models.
@@ -161,6 +253,7 @@ pub fn hide_overlay(app: AppHandle) {
 pub async fn ask(
     app: AppHandle,
     state: State<'_, AppState>,
+    store: State<'_, UserWikiStore>,
     game_id: String,
     provider_id: String,
     model: String,
@@ -173,7 +266,7 @@ pub async fn ask(
     // Releases the slot on every exit path, including cancellation (drop).
     let _guard = AskGuard(&state.ask_in_progress);
 
-    run_ask(&app, &state, &game_id, &provider_id, &model, &question)
+    run_ask(&app, &state, &store, &game_id, &provider_id, &model, &question)
         .await
         .map_err(String::from)
 }
@@ -191,6 +284,7 @@ impl Drop for AskGuard<'_> {
 async fn run_ask(
     app: &AppHandle,
     state: &AppState,
+    store: &UserWikiStore,
     game_id: &str,
     provider_id: &str,
     model: &str,
@@ -200,7 +294,12 @@ async fn run_ask(
     if question.is_empty() {
         return Err(AppError::EmptyQuestion);
     }
-    let wiki = games::find_game(game_id).ok_or_else(|| AppError::UnknownGame(game_id.to_string()))?;
+    // Built-ins first, then the user store; the owned clone means a game
+    // removed mid-ask can't be yanked out from under this run.
+    let wiki = games::find_game(game_id)
+        .cloned()
+        .or_else(|| store.get(game_id))
+        .ok_or_else(|| AppError::UnknownGame(game_id.to_string()))?;
 
     // Resolve provider → key → model up front, before any status event, so a
     // missing key fails instantly (no stuck "Searching…"). The AskGuard still
@@ -225,7 +324,7 @@ async fn run_ask(
     // original question below.
     let query = search::preprocess_query(question);
     let mut titles =
-        search::search(&state.http, wiki, &query, search::DEFAULT_SEARCH_LIMIT).await?;
+        search::search(&state.http, &wiki, &query, search::DEFAULT_SEARCH_LIMIT).await?;
     if titles.is_empty() {
         // One bounded retry with a harsher keyword pass — a single extra request,
         // only on the zero-hit path (MediaWiki etiquette).
@@ -233,7 +332,7 @@ async fn run_ask(
         if !simplified.is_empty() && simplified != query {
             let _ = app.emit("ask://status", "retrying");
             titles =
-                search::search(&state.http, wiki, &simplified, search::DEFAULT_SEARCH_LIMIT)
+                search::search(&state.http, &wiki, &simplified, search::DEFAULT_SEARCH_LIMIT)
                     .await?;
         }
     }
@@ -248,7 +347,7 @@ async fn run_ask(
     }
 
     let _ = app.emit("ask://status", "reading");
-    let pages = fetch::fetch_pages(&state.http, wiki, &titles).await?;
+    let pages = fetch::fetch_pages(&state.http, &wiki, &titles).await?;
     if pages.is_empty() {
         return Ok(AskResult {
             answer: "I found matching pages but couldn't read their contents. Please try again."

@@ -27,6 +27,7 @@ wikilens/
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
+│       ├── AddGameMenu.tsx       # "+" popover: suggest/probe/add + remove user wikis
 │       └── SourceList.tsx        # wiki source links (open in system browser)
 └── src-tauri/                    # Backend (Rust) — run cargo commands here
     ├── tauri.conf.json           # window "overlay" (transparent, right-dock), CSP
@@ -38,12 +39,12 @@ wikilens/
         ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
         ├── hotkey.rs             # Shift+C registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
-        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / list_providers / list_models
+        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── providers.rs          # LLM provider registry + curated model fallbacks
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
-        └── wiki/{mod,games,search,fetch,html,wikitext}.rs  # registry + search + fetch rendered HTML → plaintext
+        └── wiki/{mod,games,user,probe,search,fetch,html,wikitext}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext
 ```
 
 **Data flow:** `hotkey → window toggle → frontend prompt → ask command → wiki
@@ -88,13 +89,20 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   - `overlay://shown` — `()`; frontend focuses the prompt input.
   - `ask://status` — `"searching" | "reading" | "answering"`.
   - `ask://delta` — `string` chunk of the streamed answer.
-- **Adding a game** = one `GameWiki` entry in `wiki/games.rs`. Nothing else —
-  but verify the endpoint live first, derive `page_url` from the wiki's real
-  `articlepath` (minecraft.wiki and wiki.warframe.com serve pages under `/w/`,
-  not `/wiki/`), and set `search_namespace` for shared wikis that keep each
-  game in its own namespace (UESP: Skyrim = `"134"`; default search there
+- **Adding a built-in game** = one `GameWiki` entry in `wiki/games.rs`. Nothing
+  else — but verify the endpoint live first, derive `page_url` from the wiki's
+  real `articlepath` (minecraft.wiki and wiki.warframe.com serve pages under
+  `/w/`, not `/wiki/`), and set `search_namespace` for shared wikis that keep
+  each game in its own namespace (UESP: Skyrim = `"134"`; default search there
   returns zero hits). Prefer official/independent wikis over stale Fandom
   copies. Anchor each new game with a golden query (`wiki/mod.rs`).
+- **User-added games** (`add_game`/`suggest_wikis`/`remove_game`): every URL is
+  probe-validated in Rust (`wiki/probe.rs` — siteinfo + one test search;
+  endpoints derived from the wiki's own `articlepath`/`scriptpath`, never
+  assumed from the typed URL) and persisted to `wikis.json` in the app-data dir
+  (`wiki/user.rs`, a managed `UserWikiStore` created in `.setup()`). `ask`
+  resolves built-ins first, then the store — the registry stays Rust-side and
+  `ask` never fetches a URL the frontend supplies per-request.
 - **Adding an LLM provider** = one `Provider` entry in `providers.rs` (incl. its
   `models_endpoint`, `models_need_key`, and a 2–4-entry `curated_models` fallback);
   behavior differences collapse to `ProviderKind` (Anthropic native vs
@@ -146,15 +154,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - OpenAI-compatible SSE (DeepSeek/OpenRouter) emits `:` comment/keep-alive lines
   and can report errors mid-stream on an HTTP-200 body; `parse_openai_sse_line`
   (via the `SseLine` enum) handles `[DONE]`, comments, null content, and errors.
-- **Esc is layered by event phase:** the model menu's Esc handler is a
-  *capture-phase* window listener that stops propagation; App's
+- **Esc is layered by event phase:** each menu's Esc handler (model,
+  add-game) is a *capture-phase* window listener that stops propagation; App's
   Esc-hides-overlay listener is *bubble-phase* on the same window. First Esc
   closes the menu, the second hides the overlay — keep the phases straight or
-  one Esc does both.
-- The model menu must stay a **direct child of `.panel`** (`.content` has
-  `overflow-y: auto` and would clip it), and `--menu-clearance` is another
-  paired constant (like the window.rs float geometry): panel bottom padding +
-  footer height + gap. Retune it when the footer's metrics change.
+  one Esc does both. App enforces **one open menu at a time** (`openMenu`
+  union state) so capture handlers never stack.
+- Menus must stay **direct children of `.panel`** (`.content` has
+  `overflow-y: auto` and would clip them), and `--menu-clearance` /
+  `--menu-clearance-top` are paired constants (like the window.rs float
+  geometry): panel padding + footer/header height + gap. Retune them when the
+  footer's or header's metrics change.
 - OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
   and its menu group starts collapsed, which also defers the fetch until first

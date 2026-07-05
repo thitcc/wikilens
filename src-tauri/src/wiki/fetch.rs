@@ -78,7 +78,7 @@ async fn fetch_rendered_page(
     title: &str,
 ) -> Result<Option<WikiPage>, AppError> {
     let body = client
-        .get(wiki.api_url)
+        .get(&wiki.api_url)
         .query(&[
             ("action", "parse"),
             ("page", title),
@@ -138,7 +138,7 @@ async fn fetch_pages_wikitext(
 ) -> Result<Vec<WikiPage>, AppError> {
     let joined = titles.join("|");
     let body = client
-        .get(wiki.api_url)
+        .get(&wiki.api_url)
         .query(&[
             ("action", "query"),
             ("prop", "revisions"),
@@ -260,29 +260,33 @@ fn encode_title(s: &str) -> String {
 mod tests {
     use super::*;
 
-    const STARDEW: GameWiki = GameWiki {
-        id: "stardew",
-        name: "Stardew Valley",
-        api_url: "https://stardewvalleywiki.com/mediawiki/api.php",
-        page_url: "https://stardewvalleywiki.com/",
-        search_namespace: None,
-    };
-    const CORE_KEEPER: GameWiki = GameWiki {
-        id: "corekeeper",
-        name: "Core Keeper",
-        api_url: "https://core-keeper.fandom.com/api.php",
-        page_url: "https://core-keeper.fandom.com/wiki/",
-        search_namespace: None,
-    };
+    fn stardew() -> GameWiki {
+        GameWiki {
+            id: "stardew".to_string(),
+            name: "Stardew Valley".to_string(),
+            api_url: "https://stardewvalleywiki.com/mediawiki/api.php".to_string(),
+            page_url: "https://stardewvalleywiki.com/".to_string(),
+            search_namespace: None,
+        }
+    }
+    fn core_keeper() -> GameWiki {
+        GameWiki {
+            id: "corekeeper".to_string(),
+            name: "Core Keeper".to_string(),
+            api_url: "https://core-keeper.fandom.com/api.php".to_string(),
+            page_url: "https://core-keeper.fandom.com/wiki/".to_string(),
+            search_namespace: None,
+        }
+    }
 
     #[test]
     fn url_replaces_spaces_with_underscores() {
         assert_eq!(
-            build_page_url(&STARDEW, "Prismatic Shard"),
+            build_page_url(&stardew(), "Prismatic Shard"),
             "https://stardewvalleywiki.com/Prismatic_Shard"
         );
         assert_eq!(
-            build_page_url(&CORE_KEEPER, "Copper Ore"),
+            build_page_url(&core_keeper(), "Copper Ore"),
             "https://core-keeper.fandom.com/wiki/Copper_Ore"
         );
     }
@@ -290,11 +294,11 @@ mod tests {
     #[test]
     fn url_keeps_namespace_colon_and_parens() {
         assert_eq!(
-            build_page_url(&STARDEW, "Category:Crops"),
+            build_page_url(&stardew(), "Category:Crops"),
             "https://stardewvalleywiki.com/Category:Crops"
         );
         assert_eq!(
-            build_page_url(&STARDEW, "Bream (Fish)"),
+            build_page_url(&stardew(), "Bream (Fish)"),
             "https://stardewvalleywiki.com/Bream_(Fish)"
         );
     }
@@ -303,7 +307,7 @@ mod tests {
     fn url_percent_encodes_unsafe_chars() {
         // Ampersand and question mark must be encoded to stay in the path.
         assert_eq!(
-            build_page_url(&STARDEW, "Bob & Alice?"),
+            build_page_url(&stardew(), "Bob & Alice?"),
             "https://stardewvalleywiki.com/Bob_%26_Alice%3F"
         );
     }
@@ -333,7 +337,7 @@ mod tests {
             }
         }"#;
         let titles = vec!["Iron Ore".to_string(), "Copper Ore".to_string(), "Tin Ore".to_string()];
-        let pages = parse_revisions_response(sample, &STARDEW, &titles).unwrap();
+        let pages = parse_revisions_response(sample, &stardew(), &titles).unwrap();
         let ordered: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
         assert_eq!(ordered, vec!["Iron Ore", "Copper Ore", "Tin Ore"]);
     }
@@ -360,7 +364,7 @@ mod tests {
     #[test]
     fn missing_pages_key_is_parse_error() {
         assert!(matches!(
-            parse_revisions_response(r#"{ "query": {} }"#, &STARDEW, &[]),
+            parse_revisions_response(r#"{ "query": {} }"#, &stardew(), &[]),
             Err(AppError::Parse(_))
         ));
     }
@@ -382,7 +386,7 @@ mod tests {
             }
         }"#;
         let titles = vec!["Wood".to_string()];
-        let pages = parse_revisions_response(sample, &CORE_KEEPER, &titles).unwrap();
+        let pages = parse_revisions_response(sample, &core_keeper(), &titles).unwrap();
         assert_eq!(pages.len(), 1);
         assert_eq!(pages[0].title, "Wood");
         assert!(pages[0].text.contains("Wood is a crafting material found in the Undergrounds"));
@@ -402,7 +406,7 @@ mod tests {
             }
         }"#;
         let titles = vec!["Gone".to_string(), "Templatey".to_string()];
-        let pages = parse_revisions_response(sample, &CORE_KEEPER, &titles).unwrap();
+        let pages = parse_revisions_response(sample, &core_keeper(), &titles).unwrap();
         // "Gone" is missing; "Templatey" cleans to empty (only a template) — both skipped.
         assert!(pages.is_empty());
     }

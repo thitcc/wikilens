@@ -14,10 +14,11 @@ mod tray;
 mod window;
 mod wiki;
 
-use tauri::WindowEvent;
+use tauri::{Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use state::AppState;
+use wiki::user::UserWikiStore;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,6 +44,10 @@ pub fn run() {
             let handle = app.handle();
             tray::create(handle)?;
             hotkey::register(handle);
+            // User-added wikis, persisted in the app-data dir. Loaded here
+            // (not in AppState) because the path resolver needs the handle.
+            let data_dir = app.path().app_data_dir()?;
+            app.manage(UserWikiStore::load(data_dir.join("wikis.json")));
             Ok(())
         })
         .on_window_event(|win, event| {
@@ -55,6 +60,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_games,
+            commands::suggest_wikis,
+            commands::add_game,
+            commands::remove_game,
             commands::list_providers,
             commands::list_models,
             commands::hide_overlay,

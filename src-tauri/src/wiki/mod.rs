@@ -1,10 +1,13 @@
-//! Wiki layer: a static registry of supported game wikis plus MediaWiki
-//! search + plaintext-extract clients. No caching yet (see roadmap).
+//! Wiki layer: the built-in game registry + the user-added wiki store (with
+//! probe validation), plus MediaWiki search + plaintext-extract clients. No
+//! caching yet (see roadmap).
 
 pub mod fetch;
 pub mod games;
 pub mod html;
+pub mod probe;
 pub mod search;
+pub mod user;
 pub mod wikitext;
 
 /// Sent on every wiki request. Fandom/MediaWiki etiquette asks for a
@@ -50,7 +53,7 @@ mod live {
             assert!(!page.text.contains("{{"), "page {:?} still has template markup", page.title);
             assert!(!page.text.contains("[["), "page {:?} still has wikilink markup", page.title);
             assert!(
-                page.url.starts_with(wiki.page_url),
+                page.url.starts_with(&wiki.page_url),
                 "page {:?} url {:?} is not under {:?}",
                 page.title,
                 page.url,
@@ -182,7 +185,7 @@ mod live {
                 page.title
             );
             assert!(
-                page.url.starts_with(wiki.page_url),
+                page.url.starts_with(&wiki.page_url),
                 "{game_id}: page url {:?} is not under {:?}",
                 page.url,
                 wiki.page_url

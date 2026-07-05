@@ -32,3 +32,5 @@ dotenvy = "0.15"
 [dev-dependencies]
 # For #[tokio::test] in the ignored live-wiki integration test (wiki/mod.rs).
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# Scratch dirs for the user-wiki store's persistence tests (wiki/user.rs).
+tempfile = "3"

@@ -58,9 +58,9 @@ pub async fn search(
     limit: u32,
 ) -> Result<Vec<String>, AppError> {
     let limit = limit.to_string();
-    let params = build_search_params(query, &limit, wiki.search_namespace);
+    let params = build_search_params(query, &limit, wiki.search_namespace.as_deref());
     let body = client
-        .get(wiki.api_url)
+        .get(&wiki.api_url)
         .query(&params)
         .send()
         .await?
@@ -76,7 +76,7 @@ pub async fn search(
 fn build_search_params<'a>(
     query: &'a str,
     limit: &'a str,
-    search_namespace: Option<&'static str>,
+    search_namespace: Option<&'a str>,
 ) -> Vec<(&'static str, &'a str)> {
     let mut params = vec![
         ("action", "query"),

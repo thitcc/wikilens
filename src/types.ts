@@ -4,6 +4,17 @@
 export interface GameInfo {
   id: string;
   name: string;
+  /** `true` for user-added wikis (removable); `false` for built-ins. */
+  custom: boolean;
+}
+
+/** A probe-verified wiki, from the `suggest_wikis` command. Endpoints are
+ * canonical (derived Rust-side from the wiki's own siteinfo). */
+export interface WikiCandidate {
+  /** The wiki's own sitename, e.g. "Terraria Wiki". */
+  name: string;
+  apiUrl: string;
+  pageUrl: string;
 }
 
 /** A supported LLM provider, from the `list_providers` command. Carries the

@@ -11,13 +11,31 @@ import type {
   GameInfo,
   ModelList,
   ProviderInfo,
+  WikiCandidate,
 } from "./types";
 
 // ---- Commands -------------------------------------------------------------
 
-/** List the supported games (id + display name). */
+/** List the supported games: built-ins, then user-added wikis. */
 export function listGames(): Promise<GameInfo[]> {
   return invoke<GameInfo[]>("list_games");
+}
+
+/** Probe the common wiki hosts for a game name; resolves with only the
+ * verified wikis. Sequential probes Rust-side — can take a few seconds. */
+export function suggestWikis(name: string): Promise<WikiCandidate[]> {
+  return invoke<WikiCandidate[]>("suggest_wikis", { name });
+}
+
+/** Probe-validate a wiki URL and save it as a user-added game. Rejects with
+ * a user-readable message when no MediaWiki API answers there. */
+export function addGame(name: string, url: string): Promise<GameInfo> {
+  return invoke<GameInfo>("add_game", { name, url });
+}
+
+/** Remove a user-added game (built-ins are refused Rust-side). */
+export function removeGame(id: string): Promise<void> {
+  return invoke<void>("remove_game", { id });
 }
 
 /** List the supported LLM providers with their resolved default models. */

@@ -15,6 +15,7 @@ import type {
   ProviderInfo,
   Source,
 } from "./types";
+import { AddGameMenu } from "./components/AddGameMenu";
 import { GamePicker } from "./components/GamePicker";
 import { ModelChip } from "./components/ModelChip";
 import { ModelMenu } from "./components/ModelMenu";
@@ -70,7 +71,9 @@ function App() {
   const [modelPick, setModelPick] = useState<ModelInfo | null>(() =>
     storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
   );
-  const [menuOpen, setMenuOpen] = useState(false);
+  // At most one popover at a time — their capture-phase Esc handlers would
+  // otherwise stack, and one Esc would close both.
+  const [openMenu, setOpenMenu] = useState<"model" | "addGame" | null>(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
@@ -80,6 +83,7 @@ function App() {
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
+  const addBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -133,7 +137,7 @@ function App() {
     };
 
     void onOverlayShown(() => {
-      setMenuOpen(false);
+      setOpenMenu(null);
       inputRef.current?.focus();
       inputRef.current?.select();
     }).then(register);
@@ -161,11 +165,34 @@ function App() {
   }
 
   function closeMenu() {
-    setMenuOpen(false);
-    // Return focus to the prompt: the menu's filter steals it on open, and
+    setOpenMenu(null);
+    // Return focus to the prompt: both menus' inputs steal it on open, and
     // focus inside an unmounting subtree otherwise drops to <body>, deadening
     // the keyboard until the user clicks the textarea.
     inputRef.current?.focus();
+  }
+
+  function handleGameAdded(game: GameInfo) {
+    handleGameChange(game.id);
+    closeMenu();
+    // Re-fetch so ordering matches the backend; on an IPC hiccup, fall back
+    // to appending locally (the add itself already succeeded Rust-side).
+    listGames()
+      .then(setGames)
+      .catch(() => setGames((prev) => [...prev, game]));
+  }
+
+  function handleGameRemoved(id: string) {
+    // Menu stays open — the user may want to remove more than one. Drop the
+    // row synchronously (no re-click window), then reconcile with the backend.
+    const remaining = games.filter((g) => g.id !== id);
+    setGames(remaining);
+    if (selectedGame === id) handleGameChange(remaining[0]?.id ?? "");
+    listGames()
+      .then(setGames)
+      .catch(() => {
+        // The local filter above already applied; nothing more to do.
+      });
   }
 
   function handleModelSelect(providerId: string, model: ModelInfo) {
@@ -184,7 +211,7 @@ function App() {
     if (busy || !trimmed || !selectedGame || !selectedProvider) return;
 
     setBusy(true);
-    setMenuOpen(false);
+    setOpenMenu(null);
     setError(null);
     setAnswer("");
     setSources([]);
@@ -212,12 +239,28 @@ function App() {
     <div className="panel">
       <header className="panel-header">
         <span className="brand">WikiLens</span>
-        <GamePicker
-          games={games}
-          value={selectedGame}
-          onChange={handleGameChange}
-          disabled={busy}
-        />
+        <div className="game-controls">
+          <GamePicker
+            games={games}
+            value={selectedGame}
+            onChange={handleGameChange}
+            disabled={busy}
+          />
+          <button
+            ref={addBtnRef}
+            type="button"
+            className="add-game-btn"
+            aria-label="Add a game"
+            aria-haspopup="dialog"
+            aria-expanded={openMenu === "addGame"}
+            disabled={busy}
+            onClick={() =>
+              setOpenMenu((cur) => (cur === "addGame" ? null : "addGame"))
+            }
+          >
+            +
+          </button>
+        </div>
       </header>
 
       <PromptInput
@@ -248,16 +291,18 @@ function App() {
           <ModelChip
             providerName={provider.name}
             modelLabel={modelPick?.label ?? provider.defaultModelLabel}
-            open={menuOpen}
+            open={openMenu === "model"}
             disabled={busy}
-            onToggle={() => setMenuOpen((open) => !open)}
+            onToggle={() =>
+              setOpenMenu((cur) => (cur === "model" ? null : "model"))
+            }
             buttonRef={chipRef}
           />
         )}
       </footer>
 
-      {/* Direct child of .panel — .content's overflow would clip it. */}
-      {menuOpen && provider && (
+      {/* Menus are direct children of .panel — .content's overflow would clip them. */}
+      {openMenu === "model" && provider && (
         <ModelMenu
           providers={providers}
           selected={{
@@ -267,6 +312,15 @@ function App() {
           onSelect={handleModelSelect}
           onClose={closeMenu}
           chipRef={chipRef}
+        />
+      )}
+      {openMenu === "addGame" && (
+        <AddGameMenu
+          games={games}
+          onClose={closeMenu}
+          onAdded={handleGameAdded}
+          onRemoved={handleGameRemoved}
+          triggerRef={addBtnRef}
         />
       )}
     </div>
