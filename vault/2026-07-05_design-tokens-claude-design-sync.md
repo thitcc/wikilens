@@ -123,3 +123,10 @@ constraints are specific to WikiLens and must shape any design work:
   so idle/loading states wrap their few lines instead of holding an empty
   sheet, and long answers scroll at the cap. Mirror updated in the design
   project (panel card + tokens comment).
+- 2026-07-05 — second full pull-back: the user's exploration 3a (footer model
+  chip + combined model menu) shipped in `3cef83e` — see
+  [[2026-07-05_model-picker-menu]]. Mirror kept truthful: token sheet gained
+  `--surface-menu` / `--shadow-menu` / `--menu-clearance` (a new
+  paired-constants note) and the controls card is marked SHIPPED with the
+  in-app offline-list state added. Loop still open for the remaining
+  deliverables (accent directions, high-contrast bright-scene variant).

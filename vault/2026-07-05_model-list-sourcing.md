@@ -1,11 +1,12 @@
 ---
 title: Model-list sourcing — hybrid live fetch with curated fallback
 type: decision
-status: active
+status: done
 created: 2026-07-05
 updated: 2026-07-05
 tags: [llm, rust]
 related: ["[[2026-07-05_model-picker-menu]]", "[[2026-07-02_multi-provider-llm]]"]
+commit: 3cef83e
 ---
 
 # Model-list sourcing — hybrid live fetch with curated fallback

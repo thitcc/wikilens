@@ -1,11 +1,12 @@
 ---
 title: Model picker — footer chip and combined provider/model menu
 type: plan
-status: todo
+status: done
 created: 2026-07-05
 updated: 2026-07-05
 tags: [llm, frontend, rust]
 related: ["[[2026-07-05_design-tokens-claude-design-sync]]", "[[2026-07-05_model-list-sourcing]]", "[[2026-07-02_multi-provider-llm]]"]
+commit: 3cef83e
 ---
 
 # Model picker — footer chip and combined provider/model menu
@@ -138,3 +139,19 @@ UI pick overrides it; submit-while-menu-open closes it.
 - 2026-07-05 — created from the design pull (exploration 3a) after live API
   research and the hybrid decision; queued as todo. Reminder: land before
   2026-07-24 or bump the DeepSeek default separately (the alias dies then).
+- 2026-07-05 — executed and landed in `3cef83e`, all 8 steps as planned.
+  Curated ids re-verified live at implementation time: Anthropic's catalog
+  (9 models) contains all three curated ids; DeepSeek's live list is exactly
+  `deepseek-v4-flash` + `deepseek-v4-pro` (`deepseek-chat` already gone, so
+  the default migration was overdue); OpenRouter slugs found among its 340.
+  Verified: cargo check clean, 67 offline tests pass (14 new), the `#[ignore]`
+  live OpenRouter parse test passes, tsc + Vite build clean. A multi-agent
+  adversarial review (4 lenses, 3-vote verification) confirmed one defect —
+  closing the menu dropped focus to `<body>`, deadening the keyboard — fixed
+  by refocusing the prompt in `closeMenu()`. Noted as latent, not a defect:
+  reqwest's `gzip` feature is client-wide, so SSE asks now advertise
+  `Accept-Encoding: gzip`; today's providers don't compress event streams,
+  but if streaming ever stalls in bursts, pin `Accept-Encoding: identity` on
+  the `llm.rs` request builders. The manual in-game matrix (keyless run,
+  offline run, Esc layering, persistence across relaunch) remains with the
+  user — it needs a running game.

@@ -66,10 +66,9 @@ SORT updated DESC
 
 ## Index (manual fallback — grep `status:` if this drifts)
 
-- **Active / blocked:** [[2026-07-05_design-tokens-claude-design-sync]] · [[2026-07-05_model-list-sourcing]]
-- **Todo:** [[2026-07-05_model-picker-menu]]
+- **Active / blocked:** [[2026-07-05_design-tokens-claude-design-sync]]
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]]
-- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]] · [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]] · [[2026-07-04_rendered-html-fetch-strategy]]
+- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]] · [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-05_model-picker-menu]]
 
 Pure-grep, no Obsidian:
 `grep -rl 'status: active' .` · `grep -rl 'type: decision' .`
