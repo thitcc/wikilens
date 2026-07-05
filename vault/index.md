@@ -3,7 +3,7 @@ title: WikiLens planning vault — index
 type: note
 status: active
 created: 2026-07-02
-updated: 2026-07-03
+updated: 2026-07-04
 tags: []
 related: []
 ---
@@ -67,6 +67,9 @@ SORT updated DESC
 ## Index (manual fallback — grep `status:` if this drifts)
 
 - **Active / blocked:** (none)
+- **Todo (retrieval, work in order):** [[2026-07-04_search-srwhat-text]] ·
+  [[2026-07-04_query-preprocessing-zero-hit-retry]] ·
+  [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]]
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]]
 - **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]]
 
