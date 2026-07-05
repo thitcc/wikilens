@@ -1,11 +1,16 @@
 //! MediaWiki plaintext client for a set of titles.
 //!
-//! Fetches raw wikitext (`prop=revisions`, one batched request for all titles)
-//! and converts it to plaintext via [`crate::wiki::wikitext`]. Wikitext works on
-//! every MediaWiki wiki, unlike `prop=extracts` (the TextExtracts extension),
-//! which many game wikis lack (Core Keeper, Stardew) and which also caps
-//! whole-article requests to a single page — so a batched extracts request would
-//! silently drop all but one of the pages.
+//! Primary path: rendered HTML (`action=parse&prop=text`, one sequential
+//! request per page with a timeout) reduced by [`crate::wiki::html`] — this
+//! keeps infobox rows and data tables, which raw wikitext cannot contain (the
+//! data is template/Lua-generated server-side). Pages whose parse call fails
+//! or times out fall back to one batched raw-wikitext request
+//! (`prop=revisions`) cleaned by [`crate::wiki::wikitext`] — prose only, so
+//! answers never get worse than the pre-HTML pipeline. `prop=extracts` is
+//! still avoided: many game wikis lack TextExtracts, and whole-article
+//! extracts are capped to a single page.
+
+use std::time::Duration;
 
 use serde::Serialize;
 
@@ -15,6 +20,11 @@ use crate::wiki::games::GameWiki;
 /// Per-page character cap. Bounds LLM token cost; overflow is marked truncated.
 pub const MAX_PAGE_CHARS: usize = 8_000;
 
+/// Per-request cap for `action=parse` calls. Fandom occasionally stalls for
+/// tens of seconds on a cold render; past this we use the wikitext fallback
+/// rather than hanging the ask (the shared client has no global timeout).
+const PARSE_TIMEOUT: Duration = Duration::from_secs(12);
+
 /// A single wiki page reduced to plaintext, with a human-readable URL.
 #[derive(Debug, Clone, Serialize)]
 pub struct WikiPage {
@@ -23,10 +33,11 @@ pub struct WikiPage {
     pub url: String,
 }
 
-/// Fetch plaintext for the given titles in one batched request.
+/// Fetch plaintext for the given titles: rendered HTML per page, with a
+/// single batched wikitext request as the fallback for any failures.
 ///
-/// MediaWiki etiquette: this issues a *single* request for all titles rather
-/// than one request per page — do not parallelize this.
+/// MediaWiki etiquette: requests are issued *sequentially* — do not
+/// parallelize them.
 pub async fn fetch_pages(
     client: &reqwest::Client,
     wiki: &GameWiki,
@@ -36,6 +47,95 @@ pub async fn fetch_pages(
         return Ok(Vec::new());
     }
 
+    let mut out = Vec::new();
+    let mut fallback: Vec<String> = Vec::new();
+    for title in titles {
+        match fetch_rendered_page(client, wiki, title).await {
+            Ok(Some(page)) => out.push(page),
+            Ok(None) => {} // rendered fine but reduced to nothing — skip
+            Err(_) => fallback.push(title.clone()),
+        }
+    }
+
+    if !fallback.is_empty() {
+        match fetch_pages_wikitext(client, wiki, &fallback).await {
+            Ok(mut pages) => out.append(&mut pages),
+            // Surface the error only when there is nothing else to answer from.
+            Err(e) if out.is_empty() => return Err(e),
+            Err(_) => {}
+        }
+    }
+
+    sort_by_relevance(&mut out, titles);
+    Ok(out)
+}
+
+/// Fetch one page's rendered HTML (`action=parse`) and reduce it to
+/// plaintext. `Ok(None)` means the page rendered but reduced to nothing.
+async fn fetch_rendered_page(
+    client: &reqwest::Client,
+    wiki: &GameWiki,
+    title: &str,
+) -> Result<Option<WikiPage>, AppError> {
+    let body = client
+        .get(wiki.api_url)
+        .query(&[
+            ("action", "parse"),
+            ("page", title),
+            ("prop", "text"),
+            ("formatversion", "2"),
+            ("disableeditsection", "1"),
+            ("disablelimitreport", "1"),
+            ("redirects", "1"),
+            ("format", "json"),
+        ])
+        .timeout(PARSE_TIMEOUT)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+
+    let (final_title, html) = parse_parse_response(&body)?;
+    let text = crate::wiki::html::to_plaintext(&html);
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(WikiPage {
+        url: build_page_url(wiki, &final_title),
+        text: truncate_text(&text),
+        title: final_title,
+    }))
+}
+
+/// Extract `(final_title, rendered_html)` from an `action=parse` body
+/// (formatversion=2, so `parse.text` is a plain string). Split out for unit
+/// testing. A missing page comes back as an `error` object → `AppError::Parse`
+/// → the caller's wikitext fallback.
+pub fn parse_parse_response(body: &str) -> Result<(String, String), AppError> {
+    let json: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| AppError::Parse(e.to_string()))?;
+
+    let parse = json
+        .get("parse")
+        .ok_or_else(|| AppError::Parse("missing `parse` object in response".into()))?;
+    let title = parse
+        .get("title")
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| AppError::Parse("missing `parse.title` in response".into()))?;
+    let text = parse
+        .get("text")
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| AppError::Parse("missing `parse.text` string in response".into()))?;
+    Ok((title.to_string(), text.to_string()))
+}
+
+/// Degraded mode: raw wikitext for the given titles in one batched request.
+async fn fetch_pages_wikitext(
+    client: &reqwest::Client,
+    wiki: &GameWiki,
+    titles: &[String],
+) -> Result<Vec<WikiPage>, AppError> {
     let joined = titles.join("|");
     let body = client
         .get(wiki.api_url)
@@ -234,6 +334,25 @@ mod tests {
         let pages = parse_revisions_response(sample, &STARDEW, &titles).unwrap();
         let ordered: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
         assert_eq!(ordered, vec!["Iron Ore", "Copper Ore", "Tin Ore"]);
+    }
+
+    #[test]
+    fn parse_response_extracts_final_title_and_html() {
+        // Shape of a real `action=parse&formatversion=2` response.
+        let sample = r#"{"parse":{"title":"Powdermelon","pageid":15027,"redirects":[],"text":"<div class=\"mw-parser-output\"><p>Hi</p></div>"}}"#;
+        let (title, html) = parse_parse_response(sample).unwrap();
+        assert_eq!(title, "Powdermelon");
+        assert!(html.starts_with("<div class=\"mw-parser-output\">"));
+    }
+
+    #[test]
+    fn parse_response_error_body_is_parse_error() {
+        // A missing page returns an error object, not a `parse` object.
+        let sample = r#"{"error":{"code":"missingtitle","info":"The page you specified doesn't exist."}}"#;
+        assert!(matches!(
+            parse_parse_response(sample),
+            Err(AppError::Parse(_))
+        ));
     }
 
     #[test]

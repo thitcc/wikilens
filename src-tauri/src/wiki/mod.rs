@@ -3,6 +3,7 @@
 
 pub mod fetch;
 pub mod games;
+pub mod html;
 pub mod search;
 pub mod wikitext;
 
@@ -123,6 +124,45 @@ mod live {
         }
 
         assert!(misses.is_empty(), "golden-query misses:\n{}", misses.join("\n"));
+    }
+
+    /// Rendered-HTML extraction must put infobox/table facts in the model's
+    /// context — the exact data the old wikitext path structurally lost.
+    /// Stardew engine class: infobox is a plain 2-column table.
+    #[tokio::test]
+    #[ignore = "hits the live Stardew Valley wiki; run with `cargo test -- --ignored`"]
+    async fn stardew_fetch_includes_infobox_and_table_data() {
+        let client = reqwest::Client::builder()
+            .user_agent(super::USER_AGENT)
+            .build()
+            .expect("build reqwest client");
+        let wiki = games::find_game("stardew").expect("stardew is registered");
+
+        let pages = fetch::fetch_pages(&client, wiki, &["Powdermelon".to_string()])
+            .await
+            .expect("live fetch should succeed");
+        assert_eq!(pages.len(), 1);
+        let text = &pages[0].text;
+        assert!(text.contains("Growth Time"), "infobox label missing:\n{text}");
+        assert!(text.contains("60g"), "sell price missing:\n{text}");
+    }
+
+    /// Fandom engine class: portable infobox → `Label: Value` lines.
+    #[tokio::test]
+    #[ignore = "hits the live Core Keeper wiki; run with `cargo test -- --ignored`"]
+    async fn fandom_fetch_includes_infobox_data() {
+        let client = reqwest::Client::builder()
+            .user_agent(super::USER_AGENT)
+            .build()
+            .expect("build reqwest client");
+        let wiki = games::find_game("corekeeper").expect("corekeeper is registered");
+
+        let pages = fetch::fetch_pages(&client, wiki, &["Copper Ore".to_string()])
+            .await
+            .expect("live fetch should succeed");
+        assert_eq!(pages.len(), 1);
+        let text = &pages[0].text;
+        assert!(text.contains("Rarity: Common"), "infobox field missing:\n{text}");
     }
 
     /// The zero-hit path must be a graceful empty list, not an error: an API

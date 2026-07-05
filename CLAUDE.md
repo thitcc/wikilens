@@ -41,7 +41,7 @@ wikilens/
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── providers.rs          # LLM provider registry (Anthropic, DeepSeek, OpenRouter)
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
-        └── wiki/{mod,games,search,fetch,wikitext}.rs  # registry + search + fetch wikitext → plaintext
+        └── wiki/{mod,games,search,fetch,html,wikitext}.rs  # registry + search + fetch rendered HTML → plaintext
 ```
 
 **Data flow:** `hotkey → window toggle → frontend prompt → ask command → wiki
@@ -90,18 +90,23 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   — required for correct docking on multi-monitor / high-DPI setups.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
-  fetches are a single batched request — don't parallelize them.
+  fetches are **sequential** (one `action=parse` request per page, 12s timeout) —
+  don't parallelize them. Failures fall back to a single batched `prop=revisions`
+  request.
 - Multi-word searches must send `srwhat=text`: default-engine wikis
   (stardewvalleywiki.com has no search extension) otherwise title-match them and
   return 0 hits — "best crops for winter" finds nothing while "wood" works. But
   keep it **off for single-word queries**: fulltext demotes exact-title pages
   ("wood" ranks Wood Chipper above Wood), and single words title-match fine on
   both engine types. A no-op either way on Elasticsearch-backed wikis (Fandom).
-- Content is read as raw wikitext (`prop=revisions`, one batched request) and
-  cleaned by `wiki::wikitext::to_plaintext`. This is used for **all** wikis, not
-  `prop=extracts`: many game wikis lack TextExtracts, and a whole-article extracts
-  request is capped to one page (it would silently drop the other search hits).
-  The cleaner keeps prose but strips template/infobox tables.
+- Content is read as **rendered HTML** (`action=parse&prop=text`, per page) and
+  reduced by `wiki::html::to_plaintext`, which keeps infobox rows and data tables
+  as `label | value` pipe lines — the data raw wikitext structurally lacks (it's
+  template/Lua-generated server-side). Raw wikitext (`prop=revisions`, batched,
+  cleaned by `wiki::wikitext::to_plaintext` — prose only, tables stripped) remains
+  the fallback when a parse call fails or times out. `prop=extracts` is still
+  avoided: many game wikis lack TextExtracts, and whole-article extracts are
+  capped to one page (it would silently drop the other search hits).
 - The spec'd **Shift+C** is a bare Shift+letter global hotkey: on Windows it
   swallows Shift+C system-wide, so a capital `C` can't be typed into the prompt.
   Search is case-insensitive so lowercase works; prefer a Ctrl/Alt combo when the
@@ -117,8 +122,6 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 ## 6. Roadmap (do not implement unless asked)
 
-- Rendered-HTML extraction (`action=parse&prop=text`) so infobox/stat tables are
-  captured too — the current wikitext fallback keeps prose but drops those tables.
 - Foreground-window game auto-detection.
 - SQLite cache of fetched wiki pages.
 - User-configurable hotkey.
