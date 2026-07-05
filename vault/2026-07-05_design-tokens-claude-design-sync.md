@@ -6,7 +6,7 @@ created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]
 related: []
-commit: [65b7f4d, c59fda6, 2ae9c03]
+commit: [65b7f4d, c59fda6, 2ae9c03, fb1fe67]
 ---
 
 # Design tokens and a Claude Design sync loop for the overlay UI
@@ -118,3 +118,8 @@ constraints are specific to WikiLens and must shape any design work:
   panel collapsed to content height while loading and overgrew on long
   answers; `#root` now passes the stretch through and the panel holds 70% in
   every state.
+- 2026-07-05 — refined after in-game use (`fb1fe67`): the panel now hugs its
+  content and treats 70% as a cap (`align-self: flex-start` + `max-height`),
+  so idle/loading states wrap their few lines instead of holding an empty
+  sheet, and long answers scroll at the cap. Mirror updated in the design
+  project (panel card + tokens comment).
