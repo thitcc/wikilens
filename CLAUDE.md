@@ -34,7 +34,7 @@ wikilens/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
         ├── state.rs              # AppState: shared reqwest::Client + ask-in-progress flag
-        ├── window.rs             # toggle/show/hide + right-edge, DPI-aware positioning
+        ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
         ├── hotkey.rs             # Shift+C registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / list_providers
@@ -86,8 +86,15 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 - `transparent: true` needs `background: transparent` on `html, body` in
   `styles.css`, or the window renders as a black rectangle.
-- Position with **monitor offset + scale factor** (see `window::position_right_edge`)
-  — required for correct docking on multi-monitor / high-DPI setups.
+- Position with **monitor offset + scale factor** (see `window::position_top_right`)
+  — required for correct placement on multi-monitor / high-DPI setups.
+- The floating panel's geometry is **split across two runtimes**: `window.rs`
+  constants (`PANEL_GAP`, `SHADOW_ROOM_*`, `PANEL_HEIGHT_FRAC`) size the window;
+  the CSS margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css`
+  must match, or the shadow clips and the panel drifts off its gap. The
+  transparent gap/apron ring still captures mouse input while the overlay is
+  shown (Tauri transparent windows aren't click-through) — kept small on
+  purpose.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
   fetches are **sequential** (one `action=parse` request per page, 12s timeout) —

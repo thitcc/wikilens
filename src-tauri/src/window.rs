@@ -1,4 +1,4 @@
-//! Overlay window control: toggle/show/hide and right-edge docking.
+//! Overlay window control: toggle/show/hide and top-right float placement.
 
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
@@ -6,6 +6,15 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Webview
 pub const OVERLAY_LABEL: &str = "overlay";
 /// Logical panel width in CSS pixels. Physical width is scaled per-monitor.
 pub const PANEL_WIDTH: u32 = 420;
+/// Gap between the panel and the screen's top/right edges (CSS `--panel-gap`).
+pub const PANEL_GAP: u32 = 12;
+/// Extra window room left/bottom so the CSS drop shadow (`--shadow-panel:
+/// 0 12px 32px`) renders instead of clipping at the window edge. Must match
+/// `--shadow-room-left` / `--shadow-room-bottom` in styles.css.
+pub const SHADOW_ROOM_LEFT: u32 = 32;
+pub const SHADOW_ROOM_BOTTOM: u32 = 44;
+/// Panel height as a fraction of the monitor height (design exploration 1a).
+pub const PANEL_HEIGHT_FRAC: f64 = 0.70;
 
 /// Event emitted after the panel is shown so the frontend can focus the input.
 const EVENT_SHOWN: &str = "overlay://shown";
@@ -25,7 +34,7 @@ pub fn toggle_overlay(app: &AppHandle) {
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
     } else {
-        if let Err(e) = position_right_edge(&win) {
+        if let Err(e) = position_top_right(&win) {
             eprintln!("[wikilens] failed to position overlay: {e}");
         }
         let _ = win.show();
@@ -42,12 +51,14 @@ pub fn hide_overlay(app: &AppHandle) {
     }
 }
 
-/// Size the panel to full monitor height and dock it flush against the right
-/// edge of whichever monitor currently hosts it.
+/// Size the window around the floating panel (70% of monitor height, gap at
+/// top/right, shadow apron at left/bottom) and pin it to the top-right corner
+/// of whichever monitor currently hosts it. The CSS margins in styles.css
+/// carve the same gap/apron regions out of the webview, so the two must agree.
 ///
 /// Works in physical pixels throughout and adds the monitor's own offset, which
-/// is what makes docking correct on multi-monitor and high-DPI setups.
-pub fn position_right_edge(win: &WebviewWindow) -> tauri::Result<()> {
+/// is what makes placement correct on multi-monitor and high-DPI setups.
+pub fn position_top_right(win: &WebviewWindow) -> tauri::Result<()> {
     let monitor = match win.current_monitor()? {
         Some(m) => m,
         None => match win.primary_monitor()? {
@@ -59,11 +70,14 @@ pub fn position_right_edge(win: &WebviewWindow) -> tauri::Result<()> {
     let origin = monitor.position(); // physical top-left of this monitor
     let size = monitor.size(); // physical monitor resolution
     let scale = monitor.scale_factor();
+    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
 
-    let panel_width = (PANEL_WIDTH as f64 * scale).round() as u32;
-    win.set_size(PhysicalSize::new(panel_width, size.height))?;
+    let win_w = to_phys(SHADOW_ROOM_LEFT + PANEL_WIDTH + PANEL_GAP);
+    let panel_h = (size.height as f64 * PANEL_HEIGHT_FRAC).round() as u32;
+    let win_h = (panel_h + to_phys(PANEL_GAP + SHADOW_ROOM_BOTTOM)).min(size.height);
+    win.set_size(PhysicalSize::new(win_w, win_h))?;
 
-    let x = origin.x + size.width as i32 - panel_width as i32;
+    let x = origin.x + size.width as i32 - win_w as i32;
     let y = origin.y;
     win.set_position(PhysicalPosition::new(x, y))?;
 

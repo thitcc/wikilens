@@ -7,6 +7,11 @@ body {
   background: transparent;
 }
 
+body {
+  height: 100vh;
+  display: flex;
+}
+
 /* Design tokens — the single place the panel's look is decided.
    Rhythm tokens are named by their current px value; retuning the rhythm means
    remapping usages to other steps, not changing what a name says. */
@@ -35,6 +40,15 @@ body {
   --radius-control: 8px;
   --radius-input: 10px;
   --radius-panel: 12px;
+
+  /* Float geometry — the panel is detached top-right at 70% height (design
+     exploration 1a). The 70% and the window sizing live in window.rs; these
+     margins must match its PANEL_GAP / SHADOW_ROOM_* constants or the shadow
+     clips and the panel drifts off its gap. */
+  --panel-gap: var(--space-12);
+  --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --shadow-room-left: 32px;
+  --shadow-room-bottom: 44px;
 
   /* Type */
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -78,20 +92,24 @@ body {
   box-sizing: border-box;
 }
 
-/* Full-height glass panel docked to the right edge. */
+/* Floating glass panel: fills the window minus the gap (top/right) and the
+   shadow apron (left/bottom) — the window itself is sized around it by
+   window.rs. */
 .panel {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: var(--panel-gap) var(--panel-gap) var(--shadow-room-bottom)
+    var(--shadow-room-left);
   padding: var(--space-14);
   gap: var(--space-12);
   background: var(--surface-panel);
   backdrop-filter: blur(var(--blur-panel));
   -webkit-backdrop-filter: blur(var(--blur-panel));
-  border-top-left-radius: var(--radius-panel);
-  border-bottom-left-radius: var(--radius-panel);
-  border-left: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
 }
 
 .panel-header {
