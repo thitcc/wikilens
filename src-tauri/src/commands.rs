@@ -73,7 +73,7 @@ pub fn hide_overlay(app: AppHandle) {
 /// Answer a question about a game using its wiki as the source of truth.
 ///
 /// Emits progress events the UI listens for:
-/// - `ask://status` — `"searching"` → `"reading"` → `"answering"`
+/// - `ask://status` — `"searching"` → optional `"retrying"` → `"reading"` → `"answering"`
 /// - `ask://delta` — streamed answer text chunks
 ///
 /// Only one `ask` runs at a time; a concurrent call is rejected.
@@ -139,7 +139,22 @@ async fn run_ask(
     let model = provider.model();
 
     let _ = app.emit("ask://status", "searching");
-    let titles = search::search(&state.http, wiki, question, search::DEFAULT_SEARCH_LIMIT).await?;
+    // The wiki search gets a keyword-stripped query; the LLM still receives the
+    // original question below.
+    let query = search::preprocess_query(question);
+    let mut titles =
+        search::search(&state.http, wiki, &query, search::DEFAULT_SEARCH_LIMIT).await?;
+    if titles.is_empty() {
+        // One bounded retry with a harsher keyword pass — a single extra request,
+        // only on the zero-hit path (MediaWiki etiquette).
+        let simplified = search::simplify_query(question);
+        if !simplified.is_empty() && simplified != query {
+            let _ = app.emit("ask://status", "retrying");
+            titles =
+                search::search(&state.http, wiki, &simplified, search::DEFAULT_SEARCH_LIMIT)
+                    .await?;
+        }
+    }
     if titles.is_empty() {
         return Ok(AskResult {
             answer: format!(

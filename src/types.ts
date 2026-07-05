@@ -24,8 +24,9 @@ export interface AskResult {
   sources: Source[];
 }
 
-/** Progress phases emitted on the `ask://status` event, in order. */
-export type AskStatus = "searching" | "reading" | "answering";
+/** Progress phases emitted on the `ask://status` event, in order.
+ * `retrying` only appears when the first search found nothing. */
+export type AskStatus = "searching" | "retrying" | "reading" | "answering";
 
 /**
  * Streaming events emitted by the `ask` command while it runs.

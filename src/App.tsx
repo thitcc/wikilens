@@ -21,6 +21,7 @@ const PROVIDER_STORAGE_KEY = "wikilens.selectedProvider";
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
+  retrying: "Broadening the search…",
   reading: "Reading pages…",
   answering: "Answering…",
 };
