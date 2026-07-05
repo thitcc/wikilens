@@ -6,7 +6,7 @@ created: 2026-07-04
 updated: 2026-07-04
 tags: [wiki, rag, rust]
 related: ["[[2026-07-03_retrieval-integration-test]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]", "[[2026-07-04_golden-query-retrieval-tests]]"]
-commit: 53cd6c4
+commit: [53cd6c4, 9506cad]
 ---
 
 # Fix multi-word wiki search with srwhat=text
@@ -63,3 +63,8 @@ Note: CirrusSearch rejects `srwhat=title`, but `text` is its default mode — no
 - 2026-07-04 — done; landed in `53cd6c4` with a CLAUDE.md §5 gotcha. All 37 offline
   tests pass; the ignored live test passes against the real Stardew wiki with the
   new param (`cargo test -- --ignored`, ~0.7s).
+- 2026-07-04 — revised in `9506cad`: the golden suite
+  ([[2026-07-04_golden-query-retrieval-tests]]) showed unconditional `srwhat=text`
+  demotes exact-title pages on single-word queries ("wood" ranked Wood Chipper
+  above Wood), so it is now sent for multi-word queries only — single words
+  title-match fine on both engine types.

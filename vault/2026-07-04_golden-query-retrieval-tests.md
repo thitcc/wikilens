@@ -1,12 +1,12 @@
 ---
 title: Golden-query live retrieval tests
 type: plan
-status: todo
+status: done
 created: 2026-07-04
 updated: 2026-07-04
 tags: [wiki, rag, rust]
 related: ["[[2026-07-03_retrieval-integration-test]]", "[[2026-07-04_search-srwhat-text]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]"]
-commit:
+commit: [9506cad, 65ace9e]
 ---
 
 # Golden-query live retrieval tests
@@ -63,3 +63,14 @@ fixes ship unmeasured and future regressions go unnoticed.
 ## Status log
 - 2026-07-04 — created from the retrieval-failure diagnosis; queued as step 3 of 4
   (write after step 1 so the golden set starts green, then guard steps 2 and 4).
+- 2026-07-04 — done; suite in `65ace9e`. The very first run caught a real
+  regression from [[2026-07-04_search-srwhat-text]]: fulltext demoted exact-title
+  pages on single-word queries ("wood" → Wood Chipper, no Wood), plus a stopword
+  gap ("as"); both fixed in `9506cad` (srwhat=text now multi-word only). Two
+  deviations from the plan: cases carry a `strict` flag — the singular-"gift"
+  phrasing is tracked as a KNOWN-GAP (AND + no stemming) instead of gating, to be
+  flipped strict when query handling or extraction improves; and the raw-query
+  zero-hit fallback case became a nonsense-query guard (empty list, not a parse
+  error) since a deterministic preprocess-fails/simplify-rescues live case can't
+  be constructed reliably. Final: 6 cases — 5 strict OK, 1 known gap; 42 offline +
+  3 live tests green.
