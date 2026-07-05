@@ -1,12 +1,12 @@
 ---
 title: Fix multi-word wiki search with srwhat=text
 type: plan
-status: todo
+status: done
 created: 2026-07-04
 updated: 2026-07-04
 tags: [wiki, rag, rust]
 related: ["[[2026-07-03_retrieval-integration-test]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]", "[[2026-07-04_golden-query-retrieval-tests]]"]
-commit:
+commit: 53cd6c4
 ---
 
 # Fix multi-word wiki search with srwhat=text
@@ -60,3 +60,6 @@ Note: CirrusSearch rejects `srwhat=title`, but `text` is its default mode — no
 
 ## Status log
 - 2026-07-04 — created from the retrieval-failure diagnosis; queued as step 1 of 4.
+- 2026-07-04 — done; landed in `53cd6c4` with a CLAUDE.md §5 gotcha. All 37 offline
+  tests pass; the ignored live test passes against the real Stardew wiki with the
+  new param (`cargo test -- --ignored`, ~0.7s).
