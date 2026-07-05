@@ -21,6 +21,10 @@ pub async fn search(
             ("action", "query"),
             ("list", "search"),
             ("srsearch", query),
+            // Without this, default-engine wikis (e.g. stardewvalleywiki.com)
+            // title-match multi-word queries and return 0 hits; Elasticsearch-backed
+            // wikis (Fandom) already default to text search, so it's a no-op there.
+            ("srwhat", "text"),
             ("srlimit", limit.as_str()),
             ("format", "json"),
         ])
