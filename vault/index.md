@@ -40,7 +40,7 @@ the Obsidian vault** (not the repo root — that would index `node_modules`).
 ```dataview
 TABLE WITHOUT ID file.link AS Doc, type, status, updated
 FROM !"templates" AND !"archive"
-WHERE (status = "active" OR status = "blocked") AND file.name != "index"
+WHERE (status = "active" OR status = "blocked" OR status = "todo") AND file.name != "index"
 SORT updated DESC
 ```
 
@@ -67,10 +67,10 @@ SORT updated DESC
 ## Index (manual fallback — grep `status:` if this drifts)
 
 - **Active / blocked:** (none)
-- **Todo (retrieval, work in order):** [[2026-07-04_query-preprocessing-zero-hit-retry]] ·
-  [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]]
+- **Todo (retrieval, work in order):** [[2026-07-04_golden-query-retrieval-tests]] ·
+  [[2026-07-04_rendered-html-extraction]]
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]]
-- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]]
+- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]]
 
 Pure-grep, no Obsidian:
 `grep -rl 'status: active' .` · `grep -rl 'type: decision' .`

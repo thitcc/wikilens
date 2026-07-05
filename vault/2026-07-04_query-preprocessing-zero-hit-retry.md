@@ -1,12 +1,12 @@
 ---
 title: Query preprocessing and zero-hit retry
 type: plan
-status: todo
+status: done
 created: 2026-07-04
 updated: 2026-07-04
 tags: [wiki, rag, rust, frontend]
 related: ["[[2026-07-04_search-srwhat-text]]", "[[2026-07-04_golden-query-retrieval-tests]]"]
-commit:
+commit: 66c4c9f
 ---
 
 # Query preprocessing and zero-hit retry
@@ -55,9 +55,9 @@ player that a fallback could have helped.
   `src/types.ts:28` and the label map in `App.tsx` with
   `retrying: "Broadening the search…"`.
 - Optional (decide during implementation): add `fallback_query: Option<String>` to
-  `AskResult` so the UI can show "searched for: <keywords>" next to the sources.
+  `AskResult` so the UI can show "searched for: `<keywords>`" next to the sources.
 
-## Decisions & trade-offs
+## Decisions and trade-offs
 - Rule-based preprocessing over LLM rewrite: probes showed the failing class is
   mechanical (stopwords + AND semantics), so rules should cover it at zero latency
   and zero cost; measure before escalating.
@@ -66,3 +66,7 @@ player that a fallback could have helped.
 ## Status log
 - 2026-07-04 — created from the retrieval-failure diagnosis; queued as step 2 of 4,
   after [[2026-07-04_search-srwhat-text]].
+- 2026-07-04 — done; landed in `66c4c9f`. `preprocess_query` + `simplify_query` with
+  5 offline unit tests (42 total green), `retrying` status wired through types.ts
+  and App.tsx, tsc + live test green. The optional `fallback_query` field on
+  `AskResult` was skipped — the status event is enough transparency for now.
