@@ -6,7 +6,7 @@ created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]
 related: []
-commit: 65b7f4d
+commit: [65b7f4d, c59fda6]
 ---
 
 # Design tokens and a Claude Design sync loop for the overlay UI
@@ -98,3 +98,18 @@ constraints are specific to WikiLens and must shape any design work:
   a decision doc only if the sync loop matures). Still blocked: waiting on the
   user's browser iteration; step 4 = pull the agreed system back as token
   edits.
+- 2026-07-05 — first full pull-back (step 4 for one decision) landed in
+  `c59fda6`: the browser iteration produced a "Floating Panel Exploration"
+  (variants 1a released / 1b centered card / 1c borderless) and chose **1a** —
+  panel detached top-right, 12px gap, 70% height, radius on all corners,
+  border on all sides, new `--shadow-panel: 0 12px 32px rgba(0,0,0,0.32)`; no
+  other token values changed. Implementation splits across runtimes:
+  `window.rs` (`position_top_right`, `PANEL_GAP`/`SHADOW_ROOM_*`/
+  `PANEL_HEIGHT_FRAC`) sizes the window around the panel + shadow apron; CSS
+  margins carve the same regions (new CLAUDE.md §5 gotcha). Verified: Vite +
+  tsc clean, 53 offline tests pass. Pushed back to the project: updated token
+  sheet, floating panel card, and `fonts/CascadiaCode.woff2` (SIL OFL, from
+  microsoft/cascadia-code v2407.24) for the pane's missing-font warning. The
+  loop stays open for the remaining deliverables (accent directions,
+  high-contrast variant); user should smoke-test the float in-game — gap and
+  height fine-tuning is now a constants edit.
