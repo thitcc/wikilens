@@ -58,11 +58,31 @@ pub async fn search(
     limit: u32,
 ) -> Result<Vec<String>, AppError> {
     let limit = limit.to_string();
+    let params = build_search_params(query, &limit, wiki.search_namespace);
+    let body = client
+        .get(wiki.api_url)
+        .query(&params)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+
+    parse_search_response(&body)
+}
+
+/// Build the `list=search` query params. Split out so the `srwhat` and
+/// `srnamespace` rules can be unit-tested without a network.
+fn build_search_params<'a>(
+    query: &'a str,
+    limit: &'a str,
+    search_namespace: Option<&'static str>,
+) -> Vec<(&'static str, &'a str)> {
     let mut params = vec![
         ("action", "query"),
         ("list", "search"),
         ("srsearch", query),
-        ("srlimit", limit.as_str()),
+        ("srlimit", limit),
         ("format", "json"),
     ];
     // Fulltext search rescues multi-word questions on default-engine wikis
@@ -74,16 +94,12 @@ pub async fn search(
     if query.split_whitespace().count() > 1 {
         params.push(("srwhat", "text"));
     }
-    let body = client
-        .get(wiki.api_url)
-        .query(&params)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-
-    parse_search_response(&body)
+    // Shared wikis (UESP) keep each game's pages in their own namespace; the
+    // default namespaces there return zero or cross-game hits.
+    if let Some(ns) = search_namespace {
+        params.push(("srnamespace", ns));
+    }
+    params
 }
 
 /// Extract page titles from a `list=search` JSON body. Split out so it can be
@@ -110,6 +126,29 @@ pub fn parse_search_response(body: &str) -> Result<Vec<String>, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn single_word_query_omits_srwhat_and_srnamespace() {
+        let params = build_search_params("wood", "4", None);
+        assert!(!params.iter().any(|(k, _)| *k == "srwhat"));
+        assert!(!params.iter().any(|(k, _)| *k == "srnamespace"));
+        assert!(params.contains(&("srsearch", "wood")));
+        assert!(params.contains(&("srlimit", "4")));
+    }
+
+    #[test]
+    fn multi_word_query_opts_into_fulltext() {
+        let params = build_search_params("crops winter", "4", None);
+        assert!(params.contains(&("srwhat", "text")));
+    }
+
+    #[test]
+    fn namespace_filter_is_sent_only_when_set() {
+        let params = build_search_params("Whiterun", "4", Some("134"));
+        assert!(params.contains(&("srnamespace", "134")));
+        // Single word: the namespace filter must not drag srwhat in with it.
+        assert!(!params.iter().any(|(k, _)| *k == "srwhat"));
+    }
 
     #[test]
     fn parses_titles_in_order() {

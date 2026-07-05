@@ -265,12 +265,14 @@ mod tests {
         name: "Stardew Valley",
         api_url: "https://stardewvalleywiki.com/mediawiki/api.php",
         page_url: "https://stardewvalleywiki.com/",
+        search_namespace: None,
     };
     const CORE_KEEPER: GameWiki = GameWiki {
         id: "corekeeper",
         name: "Core Keeper",
         api_url: "https://core-keeper.fandom.com/api.php",
         page_url: "https://core-keeper.fandom.com/wiki/",
+        search_namespace: None,
     };
 
     #[test]

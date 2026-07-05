@@ -83,6 +83,24 @@ mod live {
             ("stardew", "wood", &["Wood"], true),
             ("corekeeper", "best food for early game", &["Cooking", "Foods"], true),
             ("corekeeper", "how do I get more health", &["Health", "Healing potency"], true),
+            // Registry expansion (2026-07-05): one anchor case per new game.
+            ("warframe", "how do I get Excalibur", &["Excalibur"], true),
+            ("gw2", "Mesmer", &["Mesmer"], true),
+            ("poe", "Chaos Orb", &["Chaos Orb"], true),
+            ("poe2", "Waystone", &["Waystone"], true),
+            ("abioticfactor", "Anteverse", &["Anteverse"], true),
+            ("davethediver", "Bancho", &["Bancho"], true),
+            // UESP titles carry the game namespace prefix.
+            ("skyrim", "Whiterun", &["Skyrim:Whiterun"], true),
+            ("fallout4", "power armor", &["Power armor"], true),
+            // Nukapedia covers every Fallout game in one namespace; track the
+            // cross-game bleed on a natural question without gating on it.
+            ("fallout4", "where do I find a fusion core", &["Fusion core (Fallout 4)", "Fusion core"], false),
+            ("grounded", "Aphid", &["Aphid"], true),
+            // Grounded 2 shares Grounded's Fandom wiki; G2 pages are suffixed.
+            ("grounded2", "Aphid", &["Aphid (Grounded 2)"], true),
+            ("terraria", "Zenith", &["Zenith"], true),
+            ("minecraft", "Creeper", &["Creeper"], true),
         ];
 
         let client = reqwest::Client::builder()
@@ -124,6 +142,57 @@ mod live {
         }
 
         assert!(misses.is_empty(), "golden-query misses:\n{}", misses.join("\n"));
+    }
+
+    /// One search→fetch round-trip for the wiki classes the registry
+    /// expansion added: UESP (namespaced titles + srnamespace filter), `/w/`
+    /// article paths (minecraft.wiki, the official Warframe wiki), and the
+    /// shared Grounded Fandom wiki. Catches a wrong `page_url` or a parse
+    /// endpoint that rejects namespaced titles.
+    #[tokio::test]
+    #[ignore = "hits several live game wikis; run with `cargo test -- --ignored`"]
+    async fn new_wikis_search_then_fetch_one_page() {
+        let client = reqwest::Client::builder()
+            .user_agent(super::USER_AGENT)
+            .build()
+            .expect("build reqwest client");
+
+        // Sequential on purpose — MediaWiki etiquette, same as production.
+        let cases: &[(&str, &str)] = &[
+            ("skyrim", "Whiterun"),
+            ("minecraft", "Creeper"),
+            ("warframe", "Excalibur"),
+            ("grounded2", "Aphid"),
+        ];
+        for (game_id, query) in cases {
+            let wiki = games::find_game(game_id).expect("game is registered");
+            let titles = search::search(&client, wiki, query, 1)
+                .await
+                .expect("live search should succeed");
+            assert!(!titles.is_empty(), "{game_id}: no titles for {query:?}");
+
+            let pages = fetch::fetch_pages(&client, wiki, &titles[..1])
+                .await
+                .expect("live fetch should succeed");
+            assert!(!pages.is_empty(), "{game_id}: fetch returned no pages");
+            let page = &pages[0];
+            assert!(
+                !page.text.trim().is_empty(),
+                "{game_id}: page {:?} had empty text",
+                page.title
+            );
+            assert!(
+                page.url.starts_with(wiki.page_url),
+                "{game_id}: page url {:?} is not under {:?}",
+                page.url,
+                wiki.page_url
+            );
+            println!(
+                "[new-wikis] {game_id}: {query:?} -> {} ({} chars)",
+                page.url,
+                page.text.len()
+            );
+        }
     }
 
     /// Rendered-HTML extraction must put infobox/table facts in the model's

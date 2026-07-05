@@ -88,7 +88,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   - `overlay://shown` — `()`; frontend focuses the prompt input.
   - `ask://status` — `"searching" | "reading" | "answering"`.
   - `ask://delta` — `string` chunk of the streamed answer.
-- **Adding a game** = one `GameWiki` entry in `wiki/games.rs`. Nothing else.
+- **Adding a game** = one `GameWiki` entry in `wiki/games.rs`. Nothing else —
+  but verify the endpoint live first, derive `page_url` from the wiki's real
+  `articlepath` (minecraft.wiki and wiki.warframe.com serve pages under `/w/`,
+  not `/wiki/`), and set `search_namespace` for shared wikis that keep each
+  game in its own namespace (UESP: Skyrim = `"134"`; default search there
+  returns zero hits). Prefer official/independent wikis over stale Fandom
+  copies. Anchor each new game with a golden query (`wiki/mod.rs`).
 - **Adding an LLM provider** = one `Provider` entry in `providers.rs` (incl. its
   `models_endpoint`, `models_need_key`, and a 2–4-entry `curated_models` fallback);
   behavior differences collapse to `ProviderKind` (Anthropic native vs
