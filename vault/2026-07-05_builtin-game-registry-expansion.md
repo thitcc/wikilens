@@ -1,11 +1,12 @@
 ---
 title: Built-in game registry — twelve new curated wikis
 type: plan
-status: todo
+status: done
 created: 2026-07-05
 updated: 2026-07-05
 tags: [wiki, rust]
 related: ["[[2026-07-05_user-added-game-wikis]]", "[[2026-07-04_golden-query-retrieval-tests]]", "[[2026-07-04_search-srwhat-text]]"]
+commit: 64d3545
 ---
 
 # Built-in game registry — twelve new curated wikis
@@ -101,3 +102,16 @@ derived from each wiki's actual `articlepath`, never assumed.
 - 2026-07-05 — created after the games discussion; all twelve wikis
   live-probed and the three curation calls settled; queued as todo alongside
   [[2026-07-05_user-added-game-wikis]].
+- 2026-07-05 — executed and landed in `64d3545`. All thirteen new golden
+  cases passed on the **first** live run — no tuning needed — including the
+  namespaced `Skyrim:Whiterun`, the shared-wiki `Aphid (Grounded 2)`, and the
+  poe2 case flagged as risky (Waystone ranked first). The non-strict
+  fusion-core case even hit top-4, with the predicted bleed visible (Fallout
+  76's page ranked above Fallout 4's — exactly what that case tracks). The
+  new `new_wikis_search_then_fetch_one_page` live test proved search→fetch
+  for the risk classes: UESP namespaced titles (clean
+  `en.uesp.net/wiki/Skyrim:Whiterun` URL — `encode_title` already kept `:`
+  literal), both `/w/`-path wikis, and the suffixed Grounded 2 page. Offline:
+  71 tests pass (srwhat rule now pinned offline for the first time via the
+  extracted `build_search_params`). Two-lens adversarial review: zero
+  findings. In-app spot-check over a real game stays with the user.
