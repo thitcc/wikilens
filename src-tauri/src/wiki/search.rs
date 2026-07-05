@@ -10,11 +10,11 @@ pub const DEFAULT_SEARCH_LIMIT: u32 = 4;
 /// fulltext) wikis require every remaining term to literally appear on a page,
 /// so filler words directly cost recall.
 const STOPWORDS: &[&str] = &[
-    "a", "an", "and", "any", "are", "at", "be", "best", "can", "could", "do",
-    "does", "for", "from", "get", "have", "how", "i", "in", "is", "it", "its",
-    "like", "make", "me", "my", "of", "on", "or", "should", "some", "that",
-    "the", "this", "to", "was", "way", "what", "when", "where", "which", "who",
-    "why", "will", "with", "would", "you", "your",
+    "a", "an", "and", "any", "are", "as", "at", "be", "best", "can", "could",
+    "did", "do", "does", "for", "from", "get", "has", "have", "how", "i", "in",
+    "is", "it", "its", "like", "make", "me", "my", "of", "on", "or", "should",
+    "some", "that", "the", "this", "to", "was", "way", "what", "when", "where",
+    "which", "who", "why", "will", "with", "would", "you", "your",
 ];
 
 /// Reduce a natural-language question to search keywords: trim punctuation off
@@ -58,19 +58,25 @@ pub async fn search(
     limit: u32,
 ) -> Result<Vec<String>, AppError> {
     let limit = limit.to_string();
+    let mut params = vec![
+        ("action", "query"),
+        ("list", "search"),
+        ("srsearch", query),
+        ("srlimit", limit.as_str()),
+        ("format", "json"),
+    ];
+    // Fulltext search rescues multi-word questions on default-engine wikis
+    // (e.g. stardewvalleywiki.com), which otherwise title-match them to 0 hits;
+    // Elasticsearch-backed wikis (Fandom) already default to text search. But
+    // fulltext also demotes exact-title pages on single-word item queries
+    // ("wood" ranks Wood Chipper above Wood), and single words title-match fine
+    // everywhere — so opt in for multi-word queries only.
+    if query.split_whitespace().count() > 1 {
+        params.push(("srwhat", "text"));
+    }
     let body = client
         .get(wiki.api_url)
-        .query(&[
-            ("action", "query"),
-            ("list", "search"),
-            ("srsearch", query),
-            // Without this, default-engine wikis (e.g. stardewvalleywiki.com)
-            // title-match multi-word queries and return 0 hits; Elasticsearch-backed
-            // wikis (Fandom) already default to text search, so it's a no-op there.
-            ("srwhat", "text"),
-            ("srlimit", limit.as_str()),
-            ("format", "json"),
-        ])
+        .query(&params)
         .send()
         .await?
         .error_for_status()?
@@ -150,6 +156,10 @@ mod tests {
     fn preprocess_drops_stopwords_and_punctuation() {
         assert_eq!(preprocess_query("How do I make Abigail like me?"), "Abigail");
         assert_eq!(preprocess_query("best crops for winter"), "crops winter");
+        assert_eq!(
+            preprocess_query("what does Abigail like as a gift?"),
+            "Abigail gift"
+        );
     }
 
     #[test]

@@ -91,10 +91,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
   fetches are a single batched request — don't parallelize them.
-- Searches must send `srwhat=text`: default-engine wikis (stardewvalleywiki.com has
-  no search extension) otherwise title-match multi-word queries and return 0 hits —
-  "best crops for winter" finds nothing while "wood" works. A no-op on
-  Elasticsearch-backed wikis (Fandom), where text search is already the default.
+- Multi-word searches must send `srwhat=text`: default-engine wikis
+  (stardewvalleywiki.com has no search extension) otherwise title-match them and
+  return 0 hits — "best crops for winter" finds nothing while "wood" works. But
+  keep it **off for single-word queries**: fulltext demotes exact-title pages
+  ("wood" ranks Wood Chipper above Wood), and single words title-match fine on
+  both engine types. A no-op either way on Elasticsearch-backed wikis (Fandom).
 - Content is read as raw wikitext (`prop=revisions`, one batched request) and
   cleaned by `wiki::wikitext::to_plaintext`. This is used for **all** wikis, not
   `prop=extracts`: many game wikis lack TextExtracts, and a whole-article extracts
