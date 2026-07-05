@@ -12,6 +12,14 @@ body {
   display: flex;
 }
 
+/* React's mount node sits between body and .panel; it must pass the flex
+   sizing through, or the panel collapses to its content height. */
+#root {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Design tokens — the single place the panel's look is decided.
    Rhythm tokens are named by their current px value; retuning the rhythm means
    remapping usages to other steps, not changing what a name says. */
