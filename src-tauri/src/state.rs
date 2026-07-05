@@ -1,6 +1,10 @@
 //! Shared application state managed by Tauri (`app.manage(...)`).
 
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
+use std::sync::Mutex;
+
+use crate::models::ModelInfo;
 
 /// Global app state. A single `reqwest::Client` is reused for every wiki and
 /// LLM request (connection pooling + the shared wiki User-Agent), and a flag
@@ -9,6 +13,12 @@ pub struct AppState {
     pub http: reqwest::Client,
     /// `true` while an `ask` command is running. See `commands::ask`.
     pub ask_in_progress: AtomicBool,
+    /// Session cache of live-fetched model lists, keyed by provider id.
+    /// Live lists only — fallbacks are never cached, so a transient failure
+    /// retries on the next menu open. A std `Mutex` is fine because it is
+    /// never held across an await (`commands::list_models` locks, clones,
+    /// drops, fetches, relocks).
+    pub models_cache: Mutex<HashMap<&'static str, Vec<ModelInfo>>>,
 }
 
 impl AppState {
@@ -23,6 +33,7 @@ impl AppState {
         Self {
             http,
             ask_in_progress: AtomicBool::new(false),
+            models_cache: Mutex::new(HashMap::new()),
         }
     }
 }

@@ -6,10 +6,28 @@ export interface GameInfo {
   name: string;
 }
 
-/** A supported LLM provider, from the `list_providers` command. */
+/** A supported LLM provider, from the `list_providers` command. Carries the
+ * resolved default model (env override applied) so the footer chip can label
+ * itself before any model list is fetched. */
 export interface ProviderInfo {
   id: string;
   name: string;
+  defaultModel: string;
+  defaultModelLabel: string;
+}
+
+/** One selectable model, from the `list_models` command. */
+export interface ModelInfo {
+  id: string;
+  label: string;
+}
+
+/** A provider's model list. `source === "fallback"` means the built-in
+ * offline list (no key, fetch failed, or offline — the backend doesn't say
+ * which). */
+export interface ModelList {
+  models: ModelInfo[];
+  source: "live" | "fallback";
 }
 
 /** A wiki page used as a source for an answer. */

@@ -10,7 +10,7 @@ pub enum AppError {
     #[error("Network request failed: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("Failed to parse wiki response: {0}")]
+    #[error("Failed to parse API response: {0}")]
     Parse(String),
 
     #[error("Unknown game: {0}")]

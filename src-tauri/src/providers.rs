@@ -33,6 +33,15 @@ pub struct Provider {
     pub model_env: &'static str,
     /// Model used when the override env var is unset.
     pub default_model: &'static str,
+    /// Endpoint listing this provider's models (GET). See `models.rs`.
+    pub models_endpoint: &'static str,
+    /// Whether the models endpoint rejects keyless calls (Anthropic and
+    /// DeepSeek 401 without a key; OpenRouter's catalog is public).
+    pub models_need_key: bool,
+    /// Tiny curated `(id, label)` fallback used when a live fetch isn't
+    /// possible — a degraded mode, not a catalog. Ids verified against the
+    /// live endpoints on 2026-07-05.
+    pub curated_models: &'static [(&'static str, &'static str)],
     /// Extra static request headers (e.g. OpenRouter attribution); usually empty.
     pub extra_headers: &'static [(&'static str, &'static str)],
 }
@@ -47,6 +56,13 @@ pub static PROVIDERS: &[Provider] = &[
         api_key_env: "ANTHROPIC_API_KEY",
         model_env: "WIKILENS_ANTHROPIC_MODEL",
         default_model: "claude-haiku-4-5-20251001",
+        models_endpoint: "https://api.anthropic.com/v1/models?limit=1000",
+        models_need_key: true,
+        curated_models: &[
+            ("claude-haiku-4-5-20251001", "Claude Haiku 4.5"),
+            ("claude-sonnet-5", "Claude Sonnet 5"),
+            ("claude-opus-4-8", "Claude Opus 4.8"),
+        ],
         extra_headers: &[],
     },
     Provider {
@@ -56,7 +72,14 @@ pub static PROVIDERS: &[Provider] = &[
         endpoint: "https://api.deepseek.com/chat/completions",
         api_key_env: "DEEPSEEK_API_KEY",
         model_env: "WIKILENS_DEEPSEEK_MODEL",
-        default_model: "deepseek-chat",
+        // Not the `deepseek-chat` alias — DeepSeek retires it on 2026-07-24.
+        default_model: "deepseek-v4-flash",
+        models_endpoint: "https://api.deepseek.com/models",
+        models_need_key: true,
+        curated_models: &[
+            ("deepseek-v4-flash", "DeepSeek V4 Flash"),
+            ("deepseek-v4-pro", "DeepSeek V4 Pro"),
+        ],
         extra_headers: &[],
     },
     Provider {
@@ -67,6 +90,13 @@ pub static PROVIDERS: &[Provider] = &[
         api_key_env: "OPENROUTER_API_KEY",
         model_env: "WIKILENS_OPENROUTER_MODEL",
         default_model: "openai/gpt-4o-mini",
+        models_endpoint: "https://openrouter.ai/api/v1/models",
+        models_need_key: false,
+        curated_models: &[
+            ("openai/gpt-4o-mini", "GPT-4o mini"),
+            ("anthropic/claude-sonnet-5", "Claude Sonnet 5"),
+            ("google/gemini-2.5-flash", "Gemini 2.5 Flash"),
+        ],
         // Optional attribution headers OpenRouter uses for its app leaderboard.
         // Harmless to send; ignored by other providers.
         extra_headers: &[
@@ -105,6 +135,17 @@ impl Provider {
     /// otherwise the built-in default.
     pub fn model(&self) -> String {
         resolve_model(env_nonempty(self.model_env), self.default_model)
+    }
+
+    /// Human label for a model id: the curated label when known, else the id
+    /// itself. Live lists carry their own labels; this covers defaults and
+    /// env overrides before any list is fetched.
+    pub fn model_label<'a>(&self, id: &'a str) -> &'a str {
+        self.curated_models
+            .iter()
+            .find(|(model_id, _)| *model_id == id)
+            .map(|(_, label)| *label)
+            .unwrap_or(id)
     }
 }
 
@@ -155,10 +196,46 @@ mod tests {
 
     #[test]
     fn model_override_takes_precedence_over_default() {
-        assert_eq!(resolve_model(None, "deepseek-chat"), "deepseek-chat");
+        assert_eq!(resolve_model(None, "deepseek-v4-flash"), "deepseek-v4-flash");
         assert_eq!(
-            resolve_model(Some("deepseek-v4-flash".to_string()), "deepseek-chat"),
-            "deepseek-v4-flash"
+            resolve_model(Some("deepseek-v4-pro".to_string()), "deepseek-v4-flash"),
+            "deepseek-v4-pro"
         );
+    }
+
+    /// The curated list is the degraded-mode menu; the default must always be
+    /// offered there, or a keyless/offline session shows a menu that can't
+    /// even select what the app would use.
+    #[test]
+    fn default_model_is_in_curated_list() {
+        for provider in PROVIDERS {
+            assert!(
+                provider
+                    .curated_models
+                    .iter()
+                    .any(|(id, _)| *id == provider.default_model),
+                "{}: default model {} missing from curated_models",
+                provider.id,
+                provider.default_model
+            );
+        }
+    }
+
+    #[test]
+    fn curated_model_ids_are_unique_per_provider() {
+        for provider in PROVIDERS {
+            for (i, (a, _)) in provider.curated_models.iter().enumerate() {
+                for (b, _) in &provider.curated_models[i + 1..] {
+                    assert_ne!(a, b, "{}: duplicate curated model id {}", provider.id, a);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn model_label_uses_curated_label_or_falls_back_to_id() {
+        let deepseek = find_provider("deepseek").unwrap();
+        assert_eq!(deepseek.model_label("deepseek-v4-flash"), "DeepSeek V4 Flash");
+        assert_eq!(deepseek.model_label("some-unknown-model"), "some-unknown-model");
     }
 }

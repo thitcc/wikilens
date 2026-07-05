@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::error::AppError;
+use crate::models::{self, ModelInfo, ModelSource};
 use crate::state::AppState;
 use crate::wiki::{fetch, games, search};
 use crate::{llm, providers, window};
@@ -18,12 +19,26 @@ pub struct GameInfo {
     pub name: String,
 }
 
-/// A supported LLM provider, as sent to the frontend provider picker.
-/// Deliberately `{id, name}` only — it never reports which keys are configured.
+/// A supported LLM provider, as sent to the frontend. Carries the resolved
+/// default model (env override applied) so the footer chip can label itself
+/// before any model list is fetched. It still never reports which API keys
+/// are configured.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderInfo {
     pub id: String,
     pub name: String,
+    pub default_model: String,
+    pub default_model_label: String,
+}
+
+/// A provider's model list plus where it came from. `"fallback"` means the
+/// curated built-in list (no key, fetch failed, or offline) — the UI shows a
+/// muted "offline list" note without learning why.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelList {
+    pub models: Vec<ModelInfo>,
+    pub source: ModelSource,
 }
 
 /// A wiki page used as a source for an answer.
@@ -52,16 +67,81 @@ pub fn list_games() -> Vec<GameInfo> {
         .collect()
 }
 
-/// List the supported LLM providers (id + display name).
+/// List the supported LLM providers with their resolved default models.
 #[tauri::command]
 pub fn list_providers() -> Vec<ProviderInfo> {
     providers::PROVIDERS
         .iter()
-        .map(|p| ProviderInfo {
-            id: p.id.to_string(),
-            name: p.name.to_string(),
+        .map(|p| {
+            let default_model = p.model();
+            let default_model_label = p.model_label(&default_model).to_string();
+            ProviderInfo {
+                id: p.id.to_string(),
+                name: p.name.to_string(),
+                default_model,
+                default_model_label,
+            }
         })
         .collect()
+}
+
+/// List a provider's selectable models: the session-cached live list when one
+/// exists, else a fresh fetch, else the curated fallback (see
+/// `models::resolve_model_list`). Fallbacks are never cached, so a transient
+/// failure retries on the next menu open.
+#[tauri::command]
+pub async fn list_models(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<ModelList, String> {
+    let provider = providers::find_provider(&provider_id)
+        .ok_or_else(|| String::from(AppError::UnknownProvider(provider_id.clone())))?;
+
+    // Cache hit — only live lists are ever stored here. The guard clones and
+    // drops the lock; it is never held across an await.
+    let cached = state
+        .models_cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(provider.id)
+        .cloned();
+    if let Some(models) = cached {
+        return Ok(ModelList {
+            models,
+            source: ModelSource::Live,
+        });
+    }
+
+    let api_key = provider.api_key();
+    let live = if provider.models_need_key && api_key.is_none() {
+        // The endpoint would 401 — skip the doomed round trip and degrade.
+        Err(AppError::MissingApiKey {
+            provider: provider.name,
+            env_var: provider.api_key_env,
+        })
+    } else {
+        // Keyless endpoints (OpenRouter) are always called unauthenticated —
+        // never send a key where it isn't needed.
+        let key = if provider.models_need_key {
+            api_key.as_deref()
+        } else {
+            None
+        };
+        models::fetch_models(&state.http, provider, key).await
+    };
+
+    let (list, source) = models::resolve_model_list(live, provider.curated_models);
+    if source == ModelSource::Live {
+        state
+            .models_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(provider.id, list.clone());
+    }
+    Ok(ModelList {
+        models: list,
+        source,
+    })
 }
 
 /// Hide the overlay (used by the frontend `Esc` handler).
@@ -83,6 +163,7 @@ pub async fn ask(
     state: State<'_, AppState>,
     game_id: String,
     provider_id: String,
+    model: String,
     question: String,
 ) -> Result<AskResult, String> {
     // Concurrency guard: claim the slot, or reject if one is already running.
@@ -92,7 +173,7 @@ pub async fn ask(
     // Releases the slot on every exit path, including cancellation (drop).
     let _guard = AskGuard(&state.ask_in_progress);
 
-    run_ask(&app, &state, &game_id, &provider_id, &question)
+    run_ask(&app, &state, &game_id, &provider_id, &model, &question)
         .await
         .map_err(String::from)
 }
@@ -112,6 +193,7 @@ async fn run_ask(
     state: &AppState,
     game_id: &str,
     provider_id: &str,
+    model: &str,
     question: &str,
 ) -> Result<AskResult, AppError> {
     let question = question.trim();
@@ -136,7 +218,7 @@ async fn run_ask(
         provider: provider.name,
         env_var: provider.api_key_env,
     })?;
-    let model = provider.model();
+    let model = effective_model(model, provider.model());
 
     let _ = app.emit("ask://status", "searching");
     // The wiki search gets a keyword-stripped query; the LLM still receives the
@@ -199,4 +281,37 @@ async fn run_ask(
         .collect();
 
     Ok(AskResult { answer, sources })
+}
+
+/// The model an `ask` should use: the frontend's requested id, or the
+/// provider's resolved default when blank. Deliberately NOT validated against
+/// any model list — a cold cache or an env override would make that check
+/// wrong, and the provider is the authoritative validator anyway (a stale id
+/// surfaces as the `AppError::Llm` message in the error box).
+fn effective_model(requested: &str, fallback: String) -> String {
+    let trimmed = requested.trim();
+    if trimmed.is_empty() {
+        fallback
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effective_model_prefers_trimmed_request() {
+        assert_eq!(
+            effective_model("  claude-sonnet-5  ", "default-model".to_string()),
+            "claude-sonnet-5"
+        );
+    }
+
+    #[test]
+    fn effective_model_falls_back_when_blank() {
+        assert_eq!(effective_model("", "default-model".to_string()), "default-model");
+        assert_eq!(effective_model("   ", "default-model".to_string()), "default-model");
+    }
 }

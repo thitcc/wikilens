@@ -19,11 +19,12 @@ wikilens/
 │   ├── main.tsx                  # React entry
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
-│   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, Source, AskResult, AskStatus
+│   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
 │   ├── styles.css                # Transparent body + glass dark panel
 │   └── components/
 │       ├── GamePicker.tsx        # <select> of supported games
-│       ├── ProviderPicker.tsx    # <select> of LLM providers
+│       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
+│       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       └── SourceList.tsx        # wiki source links (open in system browser)
@@ -33,14 +34,15 @@ wikilens/
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
-        ├── state.rs              # AppState: shared reqwest::Client + ask-in-progress flag
+        ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list cache
         ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
         ├── hotkey.rs             # Shift+C registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
-        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / list_providers
+        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / list_providers / list_models
         ├── error.rs              # AppError (thiserror) + Into<String>
-        ├── providers.rs          # LLM provider registry (Anthropic, DeepSeek, OpenRouter)
+        ├── providers.rs          # LLM provider registry + curated model fallbacks
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
+        ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         └── wiki/{mod,games,search,fetch,html,wikitext}.rs  # registry + search + fetch rendered HTML → plaintext
 ```
 
@@ -63,11 +65,21 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   (see `capabilities/default.json`).
 - **API keys:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`,
   from a `.env` file (dotenvy, loaded at the top of `run()`) or OS env vars (which
-  take precedence). Read Rust-side only in `commands::run_ask`; never logged, never
-  sent to the frontend. `ProviderInfo` (id+name) is the only provider data crossing
-  IPC — it deliberately does not report which keys are configured.
-- **Model per provider:** built-in `default_model`, overridable via
-  `WIKILENS_<PROVIDER>_MODEL` (e.g. `WIKILENS_DEEPSEEK_MODEL`) — no code change.
+  take precedence). Read Rust-side only in `commands.rs`; never logged, never
+  sent to the frontend. `ProviderInfo` (id, name, resolved default model + label)
+  is the only provider data crossing IPC — it deliberately does not report which
+  keys are configured.
+- **Model precedence:** an explicit UI pick (footer chip menu, stored per provider
+  in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
+  `WIKILENS_<PROVIDER>_MODEL` env override (e.g. `WIKILENS_DEEPSEEK_MODEL`); else
+  the built-in `default_model`. `ask` takes the model id; blank falls back to the
+  provider default, and ids are deliberately **not** validated Rust-side — the
+  provider is the authoritative validator (a stale id surfaces in the error box).
+- **Model lists** (`list_models`, hybrid — see the sourcing ADR in `vault/`):
+  live fetch (8s timeout, parsers trim to `{id, label}`) → session cache (**live
+  lists only** — fallbacks always retry next open) → the provider's tiny
+  `curated_models`, flagged `source: "fallback"` so the menu can say
+  "offline list" without revealing why.
 - **Frontend → Rust only via `src/api.ts`.** Components never import
   `@tauri-apps/*` directly.
 - **Commands return `Result<T, String>`** with user-readable messages; internal
@@ -77,9 +89,11 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   - `ask://status` — `"searching" | "reading" | "answering"`.
   - `ask://delta` — `string` chunk of the streamed answer.
 - **Adding a game** = one `GameWiki` entry in `wiki/games.rs`. Nothing else.
-- **Adding an LLM provider** = one `Provider` entry in `providers.rs`; behavior
-  differences collapse to `ProviderKind` (Anthropic native vs OpenAI-compatible,
-  shared by DeepSeek/OpenRouter). `llm.rs` branches request-build + SSE parse on it.
+- **Adding an LLM provider** = one `Provider` entry in `providers.rs` (incl. its
+  `models_endpoint`, `models_need_key`, and a 2–4-entry `curated_models` fallback);
+  behavior differences collapse to `ProviderKind` (Anthropic native vs
+  OpenAI-compatible, shared by DeepSeek/OpenRouter). `llm.rs` and `models.rs`
+  branch request-build + parsing on it.
 - Concurrency: `ask` rejects if one is already running (`AppState::ask_in_progress`).
 
 ## 5. Gotchas
@@ -126,6 +140,19 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - OpenAI-compatible SSE (DeepSeek/OpenRouter) emits `:` comment/keep-alive lines
   and can report errors mid-stream on an HTTP-200 body; `parse_openai_sse_line`
   (via the `SseLine` enum) handles `[DONE]`, comments, null content, and errors.
+- **Esc is layered by event phase:** the model menu's Esc handler is a
+  *capture-phase* window listener that stops propagation; App's
+  Esc-hides-overlay listener is *bubble-phase* on the same window. First Esc
+  closes the menu, the second hides the overlay — keep the phases straight or
+  one Esc does both.
+- The model menu must stay a **direct child of `.panel`** (`.content` has
+  `overflow-y: auto` and would clip it), and `--menu-clearance` is another
+  paired constant (like the window.rs float geometry): panel bottom padding +
+  footer height + gap. Retune it when the footer's metrics change.
+- OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
+  keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
+  and its menu group starts collapsed, which also defers the fetch until first
+  expand.
 
 ## 6. Roadmap (do not implement unless asked)
 

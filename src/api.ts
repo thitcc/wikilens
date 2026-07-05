@@ -5,7 +5,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { AskResult, AskStatus, GameInfo, ProviderInfo } from "./types";
+import type {
+  AskResult,
+  AskStatus,
+  GameInfo,
+  ModelList,
+  ProviderInfo,
+} from "./types";
 
 // ---- Commands -------------------------------------------------------------
 
@@ -14,9 +20,15 @@ export function listGames(): Promise<GameInfo[]> {
   return invoke<GameInfo[]>("list_games");
 }
 
-/** List the supported LLM providers (id + display name). */
+/** List the supported LLM providers with their resolved default models. */
 export function listProviders(): Promise<ProviderInfo[]> {
   return invoke<ProviderInfo[]>("list_providers");
+}
+
+/** List a provider's selectable models (live when possible, curated fallback
+ * otherwise — see `ModelList.source`). */
+export function listModels(providerId: string): Promise<ModelList> {
+  return invoke<ModelList>("list_models", { providerId });
 }
 
 /** Hide the overlay window (focus returns to the game). */
@@ -24,15 +36,18 @@ export function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
 
-/** Ask a question about a game using a chosen provider; resolves with the answer and sources. */
+/** Ask a question about a game using a chosen provider and model; resolves
+ * with the answer and sources. A blank `model` falls back to the provider's
+ * default Rust-side. */
 export function ask(
   gameId: string,
   providerId: string,
+  model: string,
   question: string,
 ): Promise<AskResult> {
   // Tauri maps camelCase JS keys to the command's snake_case params
   // (providerId → provider_id).
-  return invoke<AskResult>("ask", { gameId, providerId, question });
+  return invoke<AskResult>("ask", { gameId, providerId, model, question });
 }
 
 /** Open a URL in the user's default browser (source links). */

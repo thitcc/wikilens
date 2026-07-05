@@ -35,6 +35,9 @@ body {
   --surface-control: rgba(255, 255, 255, 0.06);
   --surface-raised: rgba(255, 255, 255, 0.08);
   --surface-inset: rgba(0, 0, 0, 0.3);
+  /* Near-opaque: the model menu floats over panel text, so it can't share
+     the panel's translucency. */
+  --surface-menu: rgba(24, 24, 32, 0.97);
   --border: rgba(255, 255, 255, 0.08);
   --blur-panel: 12px;
 
@@ -58,6 +61,15 @@ body {
   --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.32);
   --shadow-room-left: 32px;
   --shadow-room-bottom: 44px;
+
+  /* Model-menu geometry — paired constants, like the window.rs float
+     geometry above: the clearance is the panel's bottom padding
+     (--space-14) + the footer's rendered height (~32px: hairline +
+     --space-8 top padding + chip line) + a small gap. Retune it whenever
+     the footer's metrics change, or the menu overlaps the chip / floats
+     off it. */
+  --shadow-menu: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --menu-clearance: 52px;
 
   /* Type */
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -106,6 +118,9 @@ body {
    Height hugs the content and caps at the window (= 70% of the monitor);
    past the cap, the answer scrolls inside .content. */
 .panel {
+  /* Explicit anchor for the absolutely-positioned .menu (deliberately not
+     riding the containing block backdrop-filter happens to create). */
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -137,15 +152,7 @@ body {
   color: var(--fg);
 }
 
-.picker-group {
-  display: flex;
-  gap: var(--space-8);
-  align-items: center;
-  min-width: 0;
-}
-
-.game-picker,
-.provider-picker {
+.game-picker {
   flex: 0 1 auto;
   min-width: 0;
   padding: var(--pad-control);
@@ -156,9 +163,172 @@ body {
   font: inherit;
 }
 
-.game-picker:disabled,
-.provider-picker:disabled {
+.game-picker:disabled {
   opacity: var(--opacity-disabled);
+}
+
+/* Footer: hairline divider + the quiet model chip that opens the menu. */
+.panel-footer {
+  display: flex;
+  align-items: center;
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--border);
+}
+
+.quiet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--text-status);
+  cursor: pointer;
+}
+
+.quiet-chip:hover:not(:disabled) {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
+.quiet-chip:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+.quiet-chip .caret {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+.quiet-chip .dot {
+  opacity: 0.5;
+}
+
+/* Combined model menu, floated above the footer. Rendered as a direct child
+   of .panel (never inside .content — its overflow would clip it); capped so
+   it always fits the content-hugging panel, scrolling internally instead. */
+.menu {
+  position: absolute;
+  left: var(--space-14);
+  right: var(--space-14);
+  bottom: var(--menu-clearance);
+  max-height: calc(100% - var(--menu-clearance) - var(--space-14));
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-menu);
+  overflow: hidden;
+}
+
+.menu-search {
+  padding: var(--space-8) var(--space-8) 0;
+}
+
+.menu-search input {
+  width: 100%;
+  padding: var(--pad-control);
+  color: var(--fg);
+  background: var(--surface-control);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-size: var(--text-status);
+}
+
+.menu-search input::placeholder {
+  color: var(--fg-muted);
+}
+
+.menu-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.menu-list {
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  overflow-y: auto;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  padding: var(--space-6);
+  background: none;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-header:hover {
+  color: var(--fg);
+}
+
+.group-caret {
+  display: inline-block;
+  font-size: 9px;
+}
+
+.group-caret.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Muted "offline list" marker on fallback groups; lowercase against the
+   uppercase header. */
+.group-note {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0.8;
+}
+
+.menu-note {
+  padding: var(--space-2) var(--space-6) var(--space-4);
+  color: var(--fg-muted);
+  font-size: var(--text-status);
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  width: 100%;
+  padding: var(--pad-control);
+  background: none;
+  border: none;
+  border-radius: var(--radius-control);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-status);
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-row:hover {
+  background: var(--surface-control);
+}
+
+.model-row .check {
+  color: var(--accent);
+  opacity: 0;
+}
+
+.model-row.selected .check {
+  opacity: 1;
 }
 
 .prompt-input {

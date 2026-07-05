@@ -8,9 +8,16 @@ import {
   onAskStatus,
   onOverlayShown,
 } from "./api";
-import type { AskStatus, GameInfo, ProviderInfo, Source } from "./types";
+import type {
+  AskStatus,
+  GameInfo,
+  ModelInfo,
+  ProviderInfo,
+  Source,
+} from "./types";
 import { GamePicker } from "./components/GamePicker";
-import { ProviderPicker } from "./components/ProviderPicker";
+import { ModelChip } from "./components/ModelChip";
+import { ModelMenu } from "./components/ModelMenu";
 import { PromptInput } from "./components/PromptInput";
 import { AnswerView } from "./components/AnswerView";
 import { SourceList } from "./components/SourceList";
@@ -18,6 +25,31 @@ import "./styles.css";
 
 const GAME_STORAGE_KEY = "wikilens.selectedGame";
 const PROVIDER_STORAGE_KEY = "wikilens.selectedProvider";
+const MODEL_STORAGE_PREFIX = "wikilens.selectedModel.";
+
+/** The user's explicit model pick for a provider, or null when they've never
+ * picked one. Stored as JSON `{id, label}` so the chip can label itself
+ * without any list fetch (offline included). */
+function storedModel(providerId: string): ModelInfo | null {
+  if (!providerId) return null;
+  try {
+    const raw = localStorage.getItem(MODEL_STORAGE_PREFIX + providerId);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as ModelInfo).id === "string" &&
+      typeof (parsed as ModelInfo).label === "string"
+    ) {
+      const model = parsed as ModelInfo;
+      return { id: model.id, label: model.label };
+    }
+  } catch {
+    // Corrupted entry — fall through to the provider default.
+  }
+  return null;
+}
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
@@ -35,6 +67,10 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState<string>(
     () => localStorage.getItem(PROVIDER_STORAGE_KEY) ?? "",
   );
+  const [modelPick, setModelPick] = useState<ModelInfo | null>(() =>
+    storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
+  );
+  const [menuOpen, setMenuOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
@@ -43,6 +79,7 @@ function App() {
   const [busy, setBusy] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const chipRef = useRef<HTMLButtonElement | null>(null);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -80,6 +117,12 @@ function App() {
     };
   }, []);
 
+  // Each provider remembers its own last-picked model; re-read it whenever
+  // the provider changes (including the initial load/validation above).
+  useEffect(() => {
+    setModelPick(storedModel(selectedProvider));
+  }, [selectedProvider]);
+
   // Subscribe to backend events for the lifetime of the app.
   useEffect(() => {
     let disposed = false;
@@ -90,6 +133,7 @@ function App() {
     };
 
     void onOverlayShown(() => {
+      setMenuOpen(false);
       inputRef.current?.focus();
       inputRef.current?.select();
     }).then(register);
@@ -116,23 +160,42 @@ function App() {
     localStorage.setItem(GAME_STORAGE_KEY, gameId);
   }
 
-  function handleProviderChange(providerId: string) {
-    setSelectedProvider(providerId);
-    localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
+  function closeMenu() {
+    setMenuOpen(false);
+    // Return focus to the prompt: the menu's filter steals it on open, and
+    // focus inside an unmounting subtree otherwise drops to <body>, deadening
+    // the keyboard until the user clicks the textarea.
+    inputRef.current?.focus();
   }
+
+  function handleModelSelect(providerId: string, model: ModelInfo) {
+    // Storage first: the provider-change effect re-reads the stored pick.
+    localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
+    localStorage.setItem(MODEL_STORAGE_PREFIX + providerId, JSON.stringify(model));
+    setSelectedProvider(providerId);
+    setModelPick(model);
+    closeMenu();
+  }
+
+  const provider = providers.find((p) => p.id === selectedProvider);
 
   async function handleSubmit() {
     const trimmed = question.trim();
     if (busy || !trimmed || !selectedGame || !selectedProvider) return;
 
     setBusy(true);
+    setMenuOpen(false);
     setError(null);
     setAnswer("");
     setSources([]);
     setStatus("searching");
 
     try {
-      const result = await ask(selectedGame, selectedProvider, trimmed);
+      // The explicit pick when there is one, else the provider default; a
+      // blank value would fall back Rust-side, this is just the same rule
+      // applied eagerly so the chip and the request always agree.
+      const model = modelPick?.id ?? provider?.defaultModel ?? "";
+      const result = await ask(selectedGame, selectedProvider, model, trimmed);
       setAnswer(result.answer);
       setSources(result.sources);
     } catch (e) {
@@ -149,20 +212,12 @@ function App() {
     <div className="panel">
       <header className="panel-header">
         <span className="brand">WikiLens</span>
-        <div className="picker-group">
-          <ProviderPicker
-            providers={providers}
-            value={selectedProvider}
-            onChange={handleProviderChange}
-            disabled={busy}
-          />
-          <GamePicker
-            games={games}
-            value={selectedGame}
-            onChange={handleGameChange}
-            disabled={busy}
-          />
-        </div>
+        <GamePicker
+          games={games}
+          value={selectedGame}
+          onChange={handleGameChange}
+          disabled={busy}
+        />
       </header>
 
       <PromptInput
@@ -187,6 +242,33 @@ function App() {
           </div>
         )}
       </div>
+
+      <footer className="panel-footer">
+        {provider && (
+          <ModelChip
+            providerName={provider.name}
+            modelLabel={modelPick?.label ?? provider.defaultModelLabel}
+            open={menuOpen}
+            disabled={busy}
+            onToggle={() => setMenuOpen((open) => !open)}
+            buttonRef={chipRef}
+          />
+        )}
+      </footer>
+
+      {/* Direct child of .panel — .content's overflow would clip it. */}
+      {menuOpen && provider && (
+        <ModelMenu
+          providers={providers}
+          selected={{
+            providerId: selectedProvider,
+            modelId: modelPick?.id ?? provider.defaultModel,
+          }}
+          onSelect={handleModelSelect}
+          onClose={closeMenu}
+          chipRef={chipRef}
+        />
+      )}
     </div>
   );
 }

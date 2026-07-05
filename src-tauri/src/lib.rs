@@ -7,6 +7,7 @@ mod commands;
 mod error;
 mod hotkey;
 mod llm;
+mod models;
 mod providers;
 mod state;
 mod tray;
@@ -55,6 +56,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_games,
             commands::list_providers,
+            commands::list_models,
             commands::hide_overlay,
             commands::ask,
         ])
