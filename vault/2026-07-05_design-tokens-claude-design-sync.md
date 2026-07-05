@@ -6,7 +6,7 @@ created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]
 related: []
-commit: [65b7f4d, c59fda6]
+commit: [65b7f4d, c59fda6, 2ae9c03]
 ---
 
 # Design tokens and a Claude Design sync loop for the overlay UI
@@ -113,3 +113,8 @@ constraints are specific to WikiLens and must shape any design work:
   loop stays open for the remaining deliverables (accent directions,
   high-contrast variant); user should smoke-test the float in-game — gap and
   height fine-tuning is now a constants edit.
+- 2026-07-05 — in-game smoke test caught a float regression, fixed in
+  `2ae9c03`: React's `#root` mount node sat outside the flex chain, so the
+  panel collapsed to content height while loading and overgrew on long
+  answers; `#root` now passes the stretch through and the panel holds 70% in
+  every state.
