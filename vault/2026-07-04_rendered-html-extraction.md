@@ -1,12 +1,12 @@
 ---
 title: Rendered-HTML extraction for tables and infoboxes
 type: plan
-status: todo
+status: done
 created: 2026-07-04
 updated: 2026-07-04
 tags: [wiki, rag, rust]
-related: ["[[2026-07-02_wikitext-extraction]]", "[[2026-07-04_golden-query-retrieval-tests]]"]
-commit:
+related: ["[[2026-07-02_wikitext-extraction]]", "[[2026-07-04_golden-query-retrieval-tests]]", "[[2026-07-04_rendered-html-fetch-strategy]]"]
+commit: 659db04
 ---
 
 # Rendered-HTML extraction for tables and infoboxes
@@ -68,3 +68,12 @@ a plan now that the retrieval work makes it the binding constraint.
 ## Status log
 - 2026-07-04 — created by promoting roadmap §6's first item; queued as step 4 of 4
   — the big win once retrieval reliably surfaces the right pages.
+- 2026-07-04 — done; landed in `659db04`. New `wiki/html.rs` reducer (tables →
+  pipe rows, portable infobox → `Label: Value`, navbox/TOC/images dropped) driven
+  by live probes of both wikis; fetch is now one `action=parse` request per page
+  (sequential, 12s timeout) with the batched-wikitext path kept as fallback. The
+  fork was recorded in [[2026-07-04_rendered-html-fetch-strategy]]. Verified: 53
+  offline + 5 live tests green, including new assertions that Powdermelon's
+  context contains "Growth Time"/"60g" and Copper Ore's contains
+  "Rarity: Common". Cost: "Reading pages…" now ~1s per page. Roadmap §6 item
+  removed from CLAUDE.md.
