@@ -85,3 +85,16 @@ constraints are specific to WikiLens and must shape any design work:
   tally on the git diff; Vite build + tsc clean. Status → blocked: steps 2–4
   (DesignSync project, sync loop, design pass) wait until the user returns with
   their Claude Design setup.
+- 2026-07-05 — steps 2–3 (setup + sync up) done: Claude Design project
+  "WikiLens" created (id `822cc090-f734-4977-8175-cbd1a60bd75f`) and seeded with
+  `docs/brief.md` (constraints + deliverables + opening prompt),
+  `tokens/wikilens-tokens.css` (the `:root` block verbatim from `65b7f4d`), and
+  six preview cards (`previews/{panel,controls,answer,error,colors,type}.html`)
+  rendering the app's real CSS over bright/dark gradient game-frame stand-ins —
+  a light take on the deferred preview pages, not the composited-screenshot
+  version. Cards were staged in the session scratchpad, deliberately not
+  committed to the repo: they're generated artifacts of `styles.css`, and a
+  repo copy would be a second source of truth (promote a `design/` folder plus
+  a decision doc only if the sync loop matures). Still blocked: waiting on the
+  user's browser iteration; step 4 = pull the agreed system back as token
+  edits.
