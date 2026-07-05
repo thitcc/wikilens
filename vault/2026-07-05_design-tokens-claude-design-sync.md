@@ -130,3 +130,15 @@ constraints are specific to WikiLens and must shape any design work:
   paired-constants note) and the controls card is marked SHIPPED with the
   in-app offline-list state added. Loop still open for the remaining
   deliverables (accent directions, high-contrast bright-scene variant).
+- 2026-07-05 — third mirror push, after the add-game flow shipped in
+  `513c072` and passed the user's in-game smoke test — see
+  [[2026-07-05_user-added-game-wikis]]. Token sheet gained
+  `--menu-clearance-top` (the top-anchored paired-constant twin); the
+  controls card's picker row became the `game-controls` group (picker + "+"
+  trigger, normal/disabled); and a new `previews/add-game.html` card renders
+  the popover's five states (suggestions found with host notes, probing,
+  nothing-found + manual URL, probe error, your-games with remove). This was
+  a code-first component (built on the shipped menu pattern, no browser
+  exploration round) — the mirror now catches it up, and a design pass over
+  its states can ride the still-open loop with the accent/high-contrast
+  deliverables.
