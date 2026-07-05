@@ -13,7 +13,9 @@ pub const PANEL_GAP: u32 = 12;
 /// `--shadow-room-left` / `--shadow-room-bottom` in styles.css.
 pub const SHADOW_ROOM_LEFT: u32 = 32;
 pub const SHADOW_ROOM_BOTTOM: u32 = 44;
-/// Panel height as a fraction of the monitor height (design exploration 1a).
+/// Maximum panel height as a fraction of the monitor height (design
+/// exploration 1a). The window is always sized for the cap; the CSS lets the
+/// panel hug its content up to it.
 pub const PANEL_HEIGHT_FRAC: f64 = 0.70;
 
 /// Event emitted after the panel is shown so the frontend can focus the input.

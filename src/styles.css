@@ -49,10 +49,11 @@ body {
   --radius-input: 10px;
   --radius-panel: 12px;
 
-  /* Float geometry — the panel is detached top-right at 70% height (design
-     exploration 1a). The 70% and the window sizing live in window.rs; these
-     margins must match its PANEL_GAP / SHADOW_ROOM_* constants or the shadow
-     clips and the panel drifts off its gap. */
+  /* Float geometry — the panel is detached top-right, hugging its content up
+     to 70% of the monitor (design exploration 1a). The 70% and the window
+     sizing live in window.rs; these margins must match its PANEL_GAP /
+     SHADOW_ROOM_* constants or the shadow clips and the panel drifts off its
+     gap. */
   --panel-gap: var(--space-12);
   --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.32);
   --shadow-room-left: 32px;
@@ -100,13 +101,16 @@ body {
   box-sizing: border-box;
 }
 
-/* Floating glass panel: fills the window minus the gap (top/right) and the
-   shadow apron (left/bottom) — the window itself is sized around it by
-   window.rs. */
+/* Floating glass panel: full width minus the gap (top/right) and the shadow
+   apron (left/bottom) — the window itself is sized around it by window.rs.
+   Height hugs the content and caps at the window (= 70% of the monitor);
+   past the cap, the answer scrolls inside .content. */
 .panel {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  align-self: flex-start;
+  max-height: calc(100% - var(--panel-gap) - var(--shadow-room-bottom));
   min-width: 0;
   margin: var(--panel-gap) var(--panel-gap) var(--shadow-room-bottom)
     var(--shadow-room-left);
