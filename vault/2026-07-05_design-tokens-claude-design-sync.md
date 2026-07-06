@@ -156,3 +156,12 @@ constraints are specific to WikiLens and must shape any design work:
   dropdown surface), **4c** (a divergent presentation), each shown open over
   the bright and dark stand-ins. Pull-back lands as a GamePicker → GameMenu
   swap on the shipped menu pattern once the user picks a direction.
+- 2026-07-05 — exploration 4 decided in the browser: **4c ships** ("game as
+  identity" — quiet header chip mirroring the model chip, Recent pinned,
+  monogram tiles, add-game as the pinned menu action). The design side
+  already updated the mirror itself: `--menu-clearance-top` retuned 52 →
+  42px in the token sheet (verified on pull), the menu height cap
+  (`calc(100% - top - bottom clearance)`) documented, and the decision
+  distilled into `previews/game-picker.html`. Code pull-back planned in
+  [[2026-07-05_game-picker-owned-menu]]; panel/controls preview cards still
+  show the old select+"+" header and get updated when it ships.
