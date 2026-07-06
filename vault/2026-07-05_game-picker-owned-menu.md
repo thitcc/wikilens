@@ -1,11 +1,12 @@
 ---
 title: Game picker — owned menu, pull-back of exploration 4c
 type: plan
-status: active
+status: done
 created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]
 related: ["[[2026-07-05_design-tokens-claude-design-sync]]", "[[2026-07-05_user-added-game-wikis]]", "[[2026-07-05_model-picker-menu]]"]
+commit: 3ffc78d
 ---
 
 # Game picker — owned menu, pull-back of exploration 4c
@@ -122,3 +123,20 @@ component card. This plan is the code pull-back.
   "4c ships" (see [[2026-07-05_design-tokens-claude-design-sync]]); mirror
   tokens already retuned browser-side (--menu-clearance-top 42px verified in
   the project sheet); queued as todo.
+- 2026-07-05 — executed and landed in `3ffc78d`. GameChip + GameMenu on the
+  shipped menu pattern; GamePicker deleted; openMenu is now a three-way
+  union; recents persist in `wikilens.recentGames` (store 5, show 3).
+  Adversarial review (17 agents, 2 lenses, 3-refuter panels) confirmed two
+  real defects, both fixed before landing: (1) closing a menu by re-clicking
+  its chip bypassed `closeMenu()` — focus stranded on the chip, typing went
+  dead and Enter reopened the menu (fixed on the game chip AND the model
+  chip, where the hole pre-existed); (2) the center-on-open scroll used
+  `offsetTop` relative to `.menu` (the rows' offsetParent — `.menu-list` is
+  unpositioned), overshooting by the ~40px search-bar height and hiding the
+  selection above the fold on short panels (now converts into list
+  coordinates). Two other findings refuted (chip is-open across the menu
+  swap is correct semantics; the in-flight-add race pre-exists this change —
+  candidate for a later hardening pass). tsc + vite build green. Mirror
+  follow-up pushed: panel + controls cards now show the chip header, the
+  game-picker card is marked SHIPPED. In-app pass (menu over a bright scene,
+  Esc layering, recents, add-game hop) stays with the user.

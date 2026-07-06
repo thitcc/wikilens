@@ -165,3 +165,10 @@ constraints are specific to WikiLens and must shape any design work:
   distilled into `previews/game-picker.html`. Code pull-back planned in
   [[2026-07-05_game-picker-owned-menu]]; panel/controls preview cards still
   show the old select+"+" header and get updated when it ships.
+- 2026-07-05 — 4c pull-back shipped in `3ffc78d` (third full pull-back
+  through the loop; details in [[2026-07-05_game-picker-owned-menu]]).
+  Mirror trued up: panel + controls cards now render the chip-height header
+  (select and "+" gone, `.is-open`/`.is-disabled` chip states added) and the
+  game-picker card is marked SHIPPED. Loop still open for the original
+  remaining deliverables (accent directions, high-contrast bright-scene
+  variant).
