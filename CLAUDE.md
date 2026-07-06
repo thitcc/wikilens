@@ -22,12 +22,13 @@ wikilens/
 │   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
 │   ├── styles.css                # Transparent body + glass dark panel
 │   └── components/
-│       ├── GamePicker.tsx        # <select> of supported games
+│       ├── GameChip.tsx          # header chip: current game, opens the game menu
+│       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
-│       ├── AddGameMenu.tsx       # "+" popover: suggest/probe/add + remove user wikis
+│       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
 │       └── SourceList.tsx        # wiki source links (open in system browser)
 └── src-tauri/                    # Backend (Rust) — run cargo commands here
     ├── tauri.conf.json           # window "overlay" (transparent, right-dock), CSP
@@ -154,7 +155,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - OpenAI-compatible SSE (DeepSeek/OpenRouter) emits `:` comment/keep-alive lines
   and can report errors mid-stream on an HTTP-200 body; `parse_openai_sse_line`
   (via the `SseLine` enum) handles `[DONE]`, comments, null content, and errors.
-- **Esc is layered by event phase:** each menu's Esc handler (model,
+- **Native `<select>` popups are OS-drawn** (WebView2 renders them outside
+  the page): over the glass they appear as an unstylable white system sheet
+  no token can reach. That's why every picker is an **owned menu** (game,
+  model, add-game) — never reintroduce a native select for anything shown
+  over the game.
+- **Esc is layered by event phase:** each menu's Esc handler (game, model,
   add-game) is a *capture-phase* window listener that stops propagation; App's
   Esc-hides-overlay listener is *bubble-phase* on the same window. First Esc
   closes the menu, the second hides the overlay — keep the phases straight or
@@ -163,8 +169,11 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Menus must stay **direct children of `.panel`** (`.content` has
   `overflow-y: auto` and would clip them), and `--menu-clearance` /
   `--menu-clearance-top` are paired constants (like the window.rs float
-  geometry): panel padding + footer/header height + gap. Retune them when the
-  footer's or header's metrics change.
+  geometry): panel padding + footer/header height + gap (top is 42px for the
+  chip-height header — retuned from 52 when the bordered select left).
+  Top-anchored menus cap their height between the two clearances so an open
+  menu never covers the footer chip. Retune them when the footer's or
+  header's metrics change.
 - OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
   and its menu group starts collapsed, which also defers the fetch until first

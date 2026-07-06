@@ -16,7 +16,8 @@ import type {
   Source,
 } from "./types";
 import { AddGameMenu } from "./components/AddGameMenu";
-import { GamePicker } from "./components/GamePicker";
+import { GameChip } from "./components/GameChip";
+import { GameMenu } from "./components/GameMenu";
 import { ModelChip } from "./components/ModelChip";
 import { ModelMenu } from "./components/ModelMenu";
 import { PromptInput } from "./components/PromptInput";
@@ -25,8 +26,28 @@ import { SourceList } from "./components/SourceList";
 import "./styles.css";
 
 const GAME_STORAGE_KEY = "wikilens.selectedGame";
+const RECENT_GAMES_KEY = "wikilens.recentGames";
 const PROVIDER_STORAGE_KEY = "wikilens.selectedProvider";
 const MODEL_STORAGE_PREFIX = "wikilens.selectedModel.";
+
+/** How many recent game ids to remember (the menu shows the top 3). */
+const RECENT_GAMES_STORED = 5;
+
+/** Recently selected game ids, most recent first. Ids of removed games are
+ * kept here harmlessly — the menu drops any id not in the current list. */
+function storedRecentGames(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(RECENT_GAMES_KEY) ?? "[]",
+    );
+    if (Array.isArray(parsed)) {
+      return parsed.filter((id): id is string => typeof id === "string");
+    }
+  } catch {
+    // Corrupted entry — start fresh.
+  }
+  return [];
+}
 
 /** The user's explicit model pick for a provider, or null when they've never
  * picked one. Stored as JSON `{id, label}` so the chip can label itself
@@ -71,9 +92,12 @@ function App() {
   const [modelPick, setModelPick] = useState<ModelInfo | null>(() =>
     storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
   );
+  const [recentGames, setRecentGames] = useState<string[]>(storedRecentGames);
   // At most one popover at a time — their capture-phase Esc handlers would
   // otherwise stack, and one Esc would close both.
-  const [openMenu, setOpenMenu] = useState<"model" | "addGame" | null>(null);
+  const [openMenu, setOpenMenu] = useState<
+    "game" | "addGame" | "model" | null
+  >(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
@@ -83,7 +107,7 @@ function App() {
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
-  const addBtnRef = useRef<HTMLButtonElement | null>(null);
+  const gameChipRef = useRef<HTMLButtonElement | null>(null);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -162,6 +186,14 @@ function App() {
   function handleGameChange(gameId: string) {
     setSelectedGame(gameId);
     localStorage.setItem(GAME_STORAGE_KEY, gameId);
+    if (gameId) {
+      const next = [
+        gameId,
+        ...recentGames.filter((id) => id !== gameId),
+      ].slice(0, RECENT_GAMES_STORED);
+      setRecentGames(next);
+      localStorage.setItem(RECENT_GAMES_KEY, JSON.stringify(next));
+    }
   }
 
   function closeMenu() {
@@ -239,28 +271,23 @@ function App() {
     <div className="panel">
       <header className="panel-header">
         <span className="brand">WikiLens</span>
-        <div className="game-controls">
-          <GamePicker
-            games={games}
-            value={selectedGame}
-            onChange={handleGameChange}
-            disabled={busy}
-          />
-          <button
-            ref={addBtnRef}
-            type="button"
-            className="add-game-btn"
-            aria-label="Add a game"
-            aria-haspopup="dialog"
-            aria-expanded={openMenu === "addGame"}
-            disabled={busy}
-            onClick={() =>
-              setOpenMenu((cur) => (cur === "addGame" ? null : "addGame"))
-            }
-          >
-            +
-          </button>
-        </div>
+        <GameChip
+          gameName={
+            games.length === 0
+              ? "Loading games…"
+              : (games.find((g) => g.id === selectedGame)?.name ??
+                "Pick a game")
+          }
+          open={openMenu === "game"}
+          disabled={busy}
+          // Closing must go through closeMenu(): the click focuses the chip,
+          // and without the prompt refocus, typing lands on the chip and
+          // Enter reopens the menu.
+          onToggle={() =>
+            openMenu === "game" ? closeMenu() : setOpenMenu("game")
+          }
+          buttonRef={gameChipRef}
+        />
       </header>
 
       <PromptInput
@@ -293,8 +320,9 @@ function App() {
             modelLabel={modelPick?.label ?? provider.defaultModelLabel}
             open={openMenu === "model"}
             disabled={busy}
+            // Same closeMenu() rule as the game chip (focus contract).
             onToggle={() =>
-              setOpenMenu((cur) => (cur === "model" ? null : "model"))
+              openMenu === "model" ? closeMenu() : setOpenMenu("model")
             }
             buttonRef={chipRef}
           />
@@ -314,13 +342,29 @@ function App() {
           chipRef={chipRef}
         />
       )}
+      {openMenu === "game" && (
+        <GameMenu
+          games={games}
+          selectedId={selectedGame}
+          recentIds={recentGames}
+          onSelect={(id) => {
+            handleGameChange(id);
+            closeMenu();
+          }}
+          // Direct menu swap — no closeMenu(), whose prompt refocus would
+          // fight the add-game menu's own autofocus.
+          onAddGame={() => setOpenMenu("addGame")}
+          onClose={closeMenu}
+          chipRef={gameChipRef}
+        />
+      )}
       {openMenu === "addGame" && (
         <AddGameMenu
           games={games}
           onClose={closeMenu}
           onAdded={handleGameAdded}
           onRemoved={handleGameRemoved}
-          triggerRef={addBtnRef}
+          triggerRef={gameChipRef}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 ---
 title: Game picker — owned menu, pull-back of exploration 4c
 type: plan
-status: todo
+status: active
 created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]

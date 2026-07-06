@@ -26,7 +26,7 @@ export function ModelChip({
     <button
       ref={buttonRef}
       type="button"
-      className="quiet-chip"
+      className={"quiet-chip" + (open ? " is-open" : "")}
       disabled={disabled}
       aria-haspopup="dialog"
       aria-expanded={open}

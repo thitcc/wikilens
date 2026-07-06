@@ -70,10 +70,12 @@ body {
      off it. */
   --shadow-menu: 0 16px 40px rgba(0, 0, 0, 0.45);
   --menu-clearance: 52px;
-  /* Top-anchored twin for the add-game menu: panel top padding (--space-14)
-     + the header's rendered height (~32px: picker padding + border + line)
-     + a small gap. Retune it whenever the header's metrics change. */
-  --menu-clearance-top: 52px;
+  /* Top-anchored twin for the game menu + add-game menu: panel top padding
+     (--space-14) + the header's rendered height (~22px: the quiet identity
+     chip's line + padding, no border) + a small gap. Retuned 52 -> 42 when
+     the chip replaced the bordered select and "+" (exploration 4c). Retune
+     it whenever the header's metrics change. */
+  --menu-clearance-top: 42px;
 
   /* Type */
   --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -156,49 +158,9 @@ body {
   color: var(--fg);
 }
 
-.game-picker {
-  flex: 0 1 auto;
-  min-width: 0;
-  padding: var(--pad-control);
-  color: var(--fg);
-  background: var(--surface-control);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  font: inherit;
-}
-
-.game-picker:disabled {
-  opacity: var(--opacity-disabled);
-}
-
-/* Picker + the add-game trigger, kept together on the header's right side. */
-.game-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  min-width: 0;
-}
-
-.add-game-btn {
-  flex: 0 0 auto;
-  padding: var(--pad-control);
-  color: var(--fg-muted);
-  background: var(--surface-control);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  font: inherit;
-  line-height: var(--leading-compact);
-  cursor: pointer;
-}
-
-.add-game-btn:hover:not(:disabled) {
-  color: var(--fg);
-}
-
-.add-game-btn:disabled {
-  opacity: var(--opacity-disabled);
-  cursor: default;
-}
+/* The game is a quiet identity chip (exploration 4c) — the header holds the
+   brand and the chip, nothing form-shaped. The native <select> is gone: its
+   OS-drawn popup was unstylable over the glass. */
 
 /* Footer: hairline divider + the quiet model chip that opens the menu. */
 .panel-footer {
@@ -212,6 +174,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space-4);
+  min-width: 0;
   padding: var(--space-2) var(--space-4);
   background: transparent;
   border: none;
@@ -225,6 +188,19 @@ body {
 .quiet-chip:hover:not(:disabled) {
   background: var(--surface-control);
   color: var(--fg);
+}
+
+/* An owned popup has no native focus ring; the open trigger mirrors the
+   hover fill instead (exploration 4c). */
+.quiet-chip.is-open {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
+.quiet-chip .chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quiet-chip:disabled {
@@ -259,15 +235,17 @@ body {
   overflow: hidden;
 }
 
-/* Top-anchored variant (add-game menu): drops from under the header instead
-   of floating above the footer. */
+/* Top-anchored variant (game menu, add-game menu): drops from under the
+   header instead of floating above the footer, capped between the two
+   clearance constants so an open menu never covers the footer chip. */
 .menu--top {
   top: var(--menu-clearance-top);
   bottom: auto;
-  max-height: calc(100% - var(--menu-clearance-top) - var(--space-14));
+  max-height: calc(100% - var(--menu-clearance-top) - var(--menu-clearance));
 }
 
 .menu-search {
+  flex: 0 0 auto;
   padding: var(--space-8) var(--space-8) 0;
 }
 
@@ -295,8 +273,25 @@ body {
 }
 
 .menu-list {
+  flex: 1 1 auto;
   padding: var(--space-4) var(--space-6) var(--space-6);
   overflow-y: auto;
+}
+
+/* Owned lists scroll; the native popup never showed a bar here. */
+.menu-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.menu-list::-webkit-scrollbar-thumb {
+  background: var(--surface-raised);
+  border-radius: var(--radius-chip);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+.menu-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .group-header {
@@ -375,12 +370,11 @@ body {
   opacity: 1;
 }
 
-/* ---- Add-game menu pieces ---- */
+/* ---- Game-menu + add-game-menu pieces ---- */
 
-/* Primary action under the name field ("Find its wiki"). */
+/* Accent action row ("Add a game…", "Find its wiki"). */
 .menu-action {
   width: 100%;
-  margin-top: var(--space-4);
   padding: var(--pad-control);
   background: none;
   border: none;
@@ -401,6 +395,13 @@ body {
   cursor: default;
 }
 
+/* Pinned bottom row of a menu — stays visible while the list scrolls. */
+.menu-footer {
+  flex: 0 0 auto;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
 /* Static section label (non-interactive twin of .group-header). */
 .menu-heading {
   padding: var(--space-8) var(--space-6) var(--space-2);
@@ -408,6 +409,53 @@ body {
   font-size: var(--text-label);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+}
+
+.menu-list .menu-heading:first-child {
+  padding-top: var(--space-4);
+}
+
+/* Left cluster of a row: monogram tile + truncating name. */
+.row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.row-main .row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Monogram tiles — scan anchors for a growing game list (exploration 4c);
+   existing tokens only. */
+.tile {
+  flex: 0 0 auto;
+  width: var(--space-20);
+  height: var(--space-20);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: var(--tracking-brand);
+}
+
+.model-row.selected .tile,
+.model-row:hover .tile {
+  color: var(--fg);
+}
+
+.tile.tile-add {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--accent);
+  font-size: var(--text-label);
 }
 
 /* Right-aligned host hint on a candidate row (wiki.gg vs Fandom). */
