@@ -236,12 +236,20 @@ body {
 }
 
 /* Top-anchored variant (game menu, add-game menu): drops from under the
-   header instead of floating above the footer, capped between the two
-   clearance constants so an open menu never covers the footer chip. */
+   header. Sized against the WINDOW (100vh), not the content-hugging panel —
+   the panel doesn't clip absolute children and the window always holds the
+   70% cap, so on an idle (short) panel the menu extends into the free
+   window space below instead of being strangled to a row. The cap stops at
+   the bottom shadow apron so nothing overflows the viewport (which would
+   paint a page scrollbar). The bottom-anchored model menu stays
+   panel-bound: there is no window room above the panel. */
 .menu--top {
   top: var(--menu-clearance-top);
   bottom: auto;
-  max-height: calc(100% - var(--menu-clearance-top) - var(--menu-clearance));
+  max-height: calc(
+    100vh - var(--panel-gap) - var(--menu-clearance-top) -
+      var(--shadow-room-bottom)
+  );
 }
 
 .menu-search {
