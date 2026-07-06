@@ -142,3 +142,17 @@ constraints are specific to WikiLens and must shape any design work:
   exploration round) — the mirror now catches it up, and a design pass over
   its states can ride the still-open loop with the accent/high-contrast
   deliverables.
+- 2026-07-05 — mirror fix + new exploration queued. The Glass-panel card
+  renders its own header markup, so the third push had left it without the
+  "+" trigger — `previews/panel.html` now shows `game-controls` (picker +
+  "+") on both halves. In-game screenshot review surfaced a real defect the
+  tokens can't fix: the game picker's **native `<select>` popup** renders as
+  an unreadable white system list over the glass (WebView2 draws it outside
+  the page — CSS can never reach it). Queued the fix as a browser
+  exploration: `docs/game-picker-exploration.md` pushed to the project with
+  constraints + an opening prompt asking for variants **4a** (single game
+  chip opening a combined game menu: filter, Your-games section, "Add a
+  game…" action row), **4b** (keep the two-control header, own only the
+  dropdown surface), **4c** (a divergent presentation), each shown open over
+  the bright and dark stand-ins. Pull-back lands as a GamePicker → GameMenu
+  swap on the shipped menu pattern once the user picks a direction.
