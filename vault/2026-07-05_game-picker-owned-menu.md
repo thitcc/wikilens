@@ -6,7 +6,7 @@ created: 2026-07-05
 updated: 2026-07-05
 tags: [frontend, overlay]
 related: ["[[2026-07-05_design-tokens-claude-design-sync]]", "[[2026-07-05_user-added-game-wikis]]", "[[2026-07-05_model-picker-menu]]"]
-commit: 3ffc78d
+commit: [3ffc78d, 589561f]
 ---
 
 # Game picker — owned menu, pull-back of exploration 4c
@@ -140,3 +140,16 @@ component card. This plan is the code pull-back.
   follow-up pushed: panel + controls cards now show the chip header, the
   game-picker card is marked SHIPPED. In-app pass (menu over a bright scene,
   Esc layering, recents, add-game hop) stays with the user.
+- 2026-07-05 — in-app pass caught a real sizing flaw, fixed in `589561f`:
+  the top-menu height cap resolved `100%` against the **content-hugging
+  panel**, so on an idle panel the game menu strangled to one visible row
+  (the design mock's fixed-height halves had hidden this). The cap is now
+  viewport-based — `calc(100vh - --panel-gap - --menu-clearance-top -
+  --shadow-room-bottom)` — legitimate because the window always holds the
+  70% cap and `.panel` doesn't clip absolute children, so the menu extends
+  into the free window space below a short panel. Applies to the add-game
+  menu too (shared `.menu--top`). Known asymmetry left open: the
+  bottom-anchored model menu stays panel-bound (no window room above the
+  panel) — a candidate for the open design loop if it bothers in practice.
+  Mirror comments (token sheet + game-picker card) updated to the shipped
+  rule.
