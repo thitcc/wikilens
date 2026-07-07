@@ -1,12 +1,12 @@
 ---
 title: Guardrails for image attachments
 type: plan
-status: todo
+status: done
 created: 2026-07-06
 updated: 2026-07-06
 tags: [capture, frontend, llm]
 related: ["[[2026-07-06_screenshot-capture-to-prompt]]", "[[2026-07-06_model-vision-badges]]"]
-commit:
+commit: 513565e
 ---
 
 # Guardrails for image attachments
@@ -145,3 +145,22 @@ Size estimate: **M** — ~150–200 LOC.
 - 2026-07-06 — created. Error bodies captured from live probes the same day
   (DeepSeek serde 400 on chat + v4-flash, streaming and not; OpenRouter
   routing-time 404).
+- 2026-07-06 — implemented (status → active). Landed across 4 files.
+  `AppError::VisionUnsupported` + `llm::friendly_image_error` (image-conditional,
+  in the pre-stream branch) translate the two live-captured bodies; the frontend
+  resolves `vision` with no fetch (`activeModelVision`: DeepSeek short-circuit →
+  pick flag → `defaultModelVision` → false), self-heals legacy `{id,label}` picks
+  via one `listModels` load, disables the capture chip with a "text-only model"
+  hint, and blocks image submit with a dimmed row + hint. Capture-side failure
+  paths (begin-rejects, stale-id, xcap error + overlay restore) were verified as
+  already-shipped from doc 1 — no changes. Green on automated checks: `cargo
+  check` clean, `cargo test` **108 passed / 0 failed** (friendly_image_error:
+  both live bodies → mapped, unrelated 401/500/404 → verbatim), `npx tsc
+  --noEmit`, `npm run build`. Pending: commit and a visual check (DeepSeek → chip
+  disabled + hint; attach-then-switch → dim + hint + Enter no-op; switch back →
+  works; legacy pick self-heals). On commit: `status: done` + `commit:`.
+- 2026-07-06 — closed (status → done). Visual check passed (user-confirmed):
+  gating disables the chip with its hint, attach-then-switch dims + blocks,
+  switching back re-enables. Shipped in `513565e`. Completes the three-plan
+  screenshot feature ([[2026-07-06_screenshot-capture-to-prompt]] `88facae`,
+  [[2026-07-06_model-vision-badges]] `096ff29`, this `513565e`).
