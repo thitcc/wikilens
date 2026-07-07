@@ -23,6 +23,20 @@
         "resizable": false,
         "width": 464,
         "height": 800
+      },
+      {
+        "label": "capture",
+        "title": "WikiLens Capture",
+        "url": "capture.html",
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "shadow": false,
+        "resizable": false,
+        "width": 100,
+        "height": 100
       }
     ],
     "security": {

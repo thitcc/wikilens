@@ -208,6 +208,11 @@ body {
   cursor: default;
 }
 
+/* Footer capture chip: pushed to the right edge, opposite the model chip. */
+.capture-chip {
+  margin-left: auto;
+}
+
 .quiet-chip .caret {
   font-size: 9px;
   opacity: 0.7;
@@ -563,6 +568,52 @@ body {
 
 .prompt-input:disabled {
   opacity: var(--opacity-disabled);
+}
+
+/* Attached-screenshot strip between the prompt and the answer area. A direct
+   .panel child (like the menus) so .content's overflow can't clip it. */
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.attachment-thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  background: var(--surface-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+}
+
+.attachment-meta {
+  color: var(--fg-muted);
+  font-size: var(--text-label);
+}
+
+/* Mirrors .remove-btn (the custom-game remove control). */
+.attachment-remove {
+  margin-left: auto;
+  padding: var(--space-2) var(--space-4);
+  background: none;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+
+.attachment-remove:hover:not(:disabled) {
+  color: var(--error-fg);
+  background: var(--surface-control);
+}
+
+.attachment-remove:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
 }
 
 /* Scrollable answer/sources region fills the remaining height. */

@@ -8,6 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AskResult,
   AskStatus,
+  AttachmentInfo,
   GameInfo,
   ModelList,
   ProviderInfo,
@@ -56,16 +57,35 @@ export function hideOverlay(): Promise<void> {
 
 /** Ask a question about a game using a chosen provider and model; resolves
  * with the answer and sources. A blank `model` falls back to the provider's
- * default Rust-side. */
+ * default Rust-side. `imageId` optionally attaches a captured screenshot (from
+ * `onCaptureAttached`); Rust rejects a stale id. */
 export function ask(
   gameId: string,
   providerId: string,
   model: string,
   question: string,
+  imageId?: string,
 ): Promise<AskResult> {
   // Tauri maps camelCase JS keys to the command's snake_case params
-  // (providerId → provider_id).
-  return invoke<AskResult>("ask", { gameId, providerId, model, question });
+  // (providerId → provider_id, imageId → image_id).
+  return invoke<AskResult>("ask", {
+    gameId,
+    providerId,
+    model,
+    question,
+    imageId: imageId ?? null,
+  });
+}
+
+/** Start a region capture: hide the panel and show the crosshair overlay. The
+ * result arrives later via `onCaptureAttached` / `onCaptureError`. */
+export function beginCapture(): Promise<void> {
+  return invoke<void>("begin_capture");
+}
+
+/** Drop the attached screenshot (the prompt strip's "×"). */
+export function clearCapture(): Promise<void> {
+  return invoke<void>("clear_capture");
 }
 
 /** Open a URL in the user's default browser (source links). */
@@ -92,4 +112,26 @@ export function onAskDelta(
   callback: (chunk: string) => void,
 ): Promise<UnlistenFn> {
   return listen<string>("ask://delta", (event) => callback(event.payload));
+}
+
+/** Fired when a capture finishes: carries the thumbnail + id to attach. */
+export function onCaptureAttached(
+  callback: (info: AttachmentInfo) => void,
+): Promise<UnlistenFn> {
+  return listen<AttachmentInfo>("capture://attached", (event) =>
+    callback(event.payload),
+  );
+}
+
+/** Fired when a capture fails (no monitor, OS refused the grab, too small). */
+export function onCaptureError(
+  callback: (message: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("capture://error", (event) => callback(event.payload));
+}
+
+/** Fired when the Ctrl+Shift+C hotkey is pressed (routed through Rust so the
+ * frontend stays the single capture entry point). */
+export function onCaptureHotkey(callback: () => void): Promise<UnlistenFn> {
+  return listen("capture://hotkey", () => callback());
 }

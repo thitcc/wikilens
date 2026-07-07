@@ -9,6 +9,7 @@
 //! model from answering beyond them. The API key is passed in from the command
 //! layer and never stored or logged here.
 
+use base64::Engine as _;
 use futures_util::StreamExt;
 
 use crate::error::AppError;
@@ -20,6 +21,12 @@ const MAX_TOKENS: u32 = 1024;
 /// Verbatim system prompt from the scaffold spec (§4.6). Do not edit casually —
 /// it is the guardrail that keeps answers grounded in the provided wiki text.
 const SYSTEM_PROMPT: &str = "You are a game-wiki assistant embedded in an in-game overlay. Answer the player's question using ONLY the wiki excerpts provided below. If the excerpts do not contain the answer, say so plainly and suggest what to search instead. Be concise and practical — the player is mid-game. Use short markdown: bold key items, small lists when comparing options. Do not mention that you were given excerpts; just answer. Wiki excerpts follow, each with its page title.";
+
+/// Appended to `SYSTEM_PROMPT` only when a screenshot is attached — so every
+/// text-only ask still sends the byte-identical prompt it always has. It keeps
+/// the wiki-grounded guardrail intact while telling the model the image is for
+/// identifying *what* the question is about, not a new source of facts.
+const SCREENSHOT_ADDENDUM: &str = "The player has attached a screenshot of their game. Use it only to identify what the question is about — the item, enemy, location, or situation shown — and then answer from the wiki excerpts as usual. The excerpts remain your only source of facts. If the screenshot shows something the excerpts do not cover, say plainly that the wiki text provided doesn't cover what's on screen, and suggest what to search instead. Do not describe the screenshot back to the player unless they ask.";
 
 /// Outcome of parsing one SSE line, independent of provider. Richer than a bare
 /// `Option<String>` so the OpenAI path can signal explicit termination (`[DONE]`)
@@ -46,6 +53,7 @@ pub async fn answer_streaming<F>(
     api_key: &str,
     question: &str,
     pages: &[WikiPage],
+    image_png: Option<&[u8]>,
     mut on_delta: F,
 ) -> Result<String, AppError>
 where
@@ -53,10 +61,10 @@ where
 {
     let request = match provider.kind {
         ProviderKind::Anthropic => {
-            build_anthropic_request(client, provider, model, api_key, question, pages)
+            build_anthropic_request(client, provider, model, api_key, question, pages, image_png)
         }
         ProviderKind::OpenAiCompatible => {
-            build_openai_request(client, provider, model, api_key, question, pages)
+            build_openai_request(client, provider, model, api_key, question, pages, image_png)
         }
     };
 
@@ -119,14 +127,15 @@ fn build_anthropic_request(
     api_key: &str,
     question: &str,
     pages: &[WikiPage],
+    image_png: Option<&[u8]>,
 ) -> reqwest::RequestBuilder {
     let body = serde_json::json!({
         "model": model,
         "max_tokens": MAX_TOKENS,
         "stream": true,
-        "system": SYSTEM_PROMPT,
+        "system": system_prompt(image_png.is_some()),
         "messages": [
-            { "role": "user", "content": build_user_message(question, pages) }
+            { "role": "user", "content": build_user_content(provider.kind, question, pages, image_png) }
         ]
     });
     client
@@ -146,14 +155,15 @@ fn build_openai_request(
     api_key: &str,
     question: &str,
     pages: &[WikiPage],
+    image_png: Option<&[u8]>,
 ) -> reqwest::RequestBuilder {
     let body = serde_json::json!({
         "model": model,
         "max_tokens": MAX_TOKENS,
         "stream": true,
         "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
-            { "role": "user", "content": build_user_message(question, pages) }
+            { "role": "system", "content": system_prompt(image_png.is_some()) },
+            { "role": "user", "content": build_user_content(provider.kind, question, pages, image_png) }
         ]
     });
     let mut request = client
@@ -169,6 +179,51 @@ fn parse_line(kind: ProviderKind, line: &str) -> SseLine {
     match kind {
         ProviderKind::Anthropic => parse_anthropic_sse_line(line),
         ProviderKind::OpenAiCompatible => parse_openai_sse_line(line),
+    }
+}
+
+/// The system prompt for this request: `SYSTEM_PROMPT` verbatim, plus the
+/// screenshot addendum when (and only when) an image is attached. A text-only
+/// ask therefore sends exactly the prompt it always has.
+fn system_prompt(has_image: bool) -> String {
+    if has_image {
+        format!("{SYSTEM_PROMPT}\n\n{SCREENSHOT_ADDENDUM}")
+    } else {
+        SYSTEM_PROMPT.to_string()
+    }
+}
+
+/// Build the user message `content`. Without an image this is the plain
+/// excerpts+question string — byte-identical to the original request. With one
+/// it becomes a provider-shaped content array with the image *before* the text
+/// (both APIs weight a leading image correctly): Anthropic takes a base64
+/// `image` block, OpenAI-compatible providers take an `image_url` data-URI part.
+fn build_user_content(
+    kind: ProviderKind,
+    question: &str,
+    pages: &[WikiPage],
+    image_png: Option<&[u8]>,
+) -> serde_json::Value {
+    let text = build_user_message(question, pages);
+    let Some(png) = image_png else {
+        return serde_json::Value::String(text);
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(png);
+    match kind {
+        ProviderKind::Anthropic => serde_json::json!([
+            {
+                "type": "image",
+                "source": { "type": "base64", "media_type": "image/png", "data": b64 }
+            },
+            { "type": "text", "text": text }
+        ]),
+        ProviderKind::OpenAiCompatible => serde_json::json!([
+            {
+                "type": "image_url",
+                "image_url": { "url": format!("data:image/png;base64,{b64}") }
+            },
+            { "type": "text", "text": text }
+        ]),
     }
 }
 
@@ -288,6 +343,67 @@ mod tests {
             msg,
             "## Winter\nCold season.\n\n## Crops\nGrow food.\n\nPlayer question: best winter crops?"
         );
+    }
+
+    // ---- User content (image vs text-only) ----
+
+    #[test]
+    fn user_content_without_image_is_the_plain_string() {
+        let pages = vec![page("Winter", "Cold season.")];
+        let expected = serde_json::Value::String(build_user_message("q?", &pages));
+        // Text-only content is identical across both provider shapes — a
+        // regression here would change what today's text asks send.
+        assert_eq!(
+            build_user_content(ProviderKind::Anthropic, "q?", &pages, None),
+            expected
+        );
+        assert_eq!(
+            build_user_content(ProviderKind::OpenAiCompatible, "q?", &pages, None),
+            expected
+        );
+    }
+
+    #[test]
+    fn anthropic_image_content_puts_base64_image_before_text() {
+        let pages = vec![page("Boss", "A tough foe.")];
+        let content =
+            build_user_content(ProviderKind::Anthropic, "what is this?", &pages, Some(b"PNGDATA"));
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr[0]["type"], "image");
+        assert_eq!(arr[0]["source"]["type"], "base64");
+        assert_eq!(arr[0]["source"]["media_type"], "image/png");
+        assert_eq!(
+            arr[0]["source"]["data"],
+            base64::engine::general_purpose::STANDARD.encode(b"PNGDATA")
+        );
+        assert_eq!(arr[1]["type"], "text");
+        assert!(arr[1]["text"].as_str().unwrap().contains("what is this?"));
+    }
+
+    #[test]
+    fn openai_image_content_uses_data_uri_before_text() {
+        let pages = vec![page("Boss", "A tough foe.")];
+        let content = build_user_content(
+            ProviderKind::OpenAiCompatible,
+            "what is this?",
+            &pages,
+            Some(b"PNGDATA"),
+        );
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr[0]["type"], "image_url");
+        let url = arr[0]["image_url"]["url"].as_str().unwrap();
+        assert!(url.starts_with("data:image/png;base64,"));
+        assert!(url.ends_with(&base64::engine::general_purpose::STANDARD.encode(b"PNGDATA")));
+        assert_eq!(arr[1]["type"], "text");
+    }
+
+    #[test]
+    fn system_prompt_gains_addendum_only_with_image() {
+        assert_eq!(system_prompt(false), SYSTEM_PROMPT);
+        let with = system_prompt(true);
+        assert!(with.starts_with(SYSTEM_PROMPT));
+        assert!(with.contains("attached a screenshot"));
+        assert_ne!(with, SYSTEM_PROMPT);
     }
 
     // ---- Anthropic SSE ----

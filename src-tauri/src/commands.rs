@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
+use crate::capture::{self, CropRect};
 use crate::error::AppError;
 use crate::models::{self, ModelInfo, ModelSource};
 use crate::state::AppState;
@@ -242,6 +243,48 @@ pub fn hide_overlay(app: AppHandle) {
     window::hide_overlay(&app);
 }
 
+/// Start a region capture: hide the panel, freeze the monitor under the cursor,
+/// and show the capture overlay. Rejected while an `ask` is running — attaching
+/// a new image mid-request would race the attachment slot.
+#[tauri::command]
+pub async fn begin_capture(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if state.ask_in_progress.load(Ordering::SeqCst) {
+        return Err("Finish the current question before taking a screenshot.".to_string());
+    }
+    capture::begin(&app, &state).await.map_err(String::from)
+}
+
+/// Finish a capture: crop the frozen shot to the dragged region, store it as
+/// the attachment, and restore the panel. Invoked by the capture webview, so
+/// the result is delivered to the overlay via events rather than the return
+/// value: `capture://attached` (an `AttachmentInfo`) on success, else
+/// `capture://error` (a message) — the overlay owns the prompt strip and error
+/// box, not the capture window.
+#[tauri::command]
+pub fn finish_capture(app: AppHandle, state: State<'_, AppState>, rect: CropRect) {
+    match capture::finish(&app, &state, rect) {
+        Ok(info) => {
+            let _ = app.emit_to(window::OVERLAY_LABEL, "capture://attached", info);
+        }
+        Err(e) => {
+            let _ = app.emit_to(window::OVERLAY_LABEL, "capture://error", String::from(e));
+        }
+    }
+}
+
+/// Cancel an in-progress capture (Esc / click-away / Alt-Tab in the capture
+/// overlay): tear it down and restore the panel. Any existing attachment stays.
+#[tauri::command]
+pub fn cancel_capture(app: AppHandle, state: State<'_, AppState>) {
+    capture::cancel(&app, &state);
+}
+
+/// Drop the attached screenshot (the prompt strip's "×").
+#[tauri::command]
+pub fn clear_capture(state: State<'_, AppState>) {
+    capture::clear(&state);
+}
+
 /// Answer a question about a game using its wiki as the source of truth.
 ///
 /// Emits progress events the UI listens for:
@@ -249,6 +292,10 @@ pub fn hide_overlay(app: AppHandle) {
 /// - `ask://delta` — streamed answer text chunks
 ///
 /// Only one `ask` runs at a time; a concurrent call is rejected.
+///
+/// `image_id` optionally names an attached screenshot (from `finish_capture`);
+/// a mismatch with the stored attachment fails fast as "capture it again". The
+/// attachment is cleared only after the model actually answers.
 #[tauri::command]
 pub async fn ask(
     app: AppHandle,
@@ -258,6 +305,7 @@ pub async fn ask(
     provider_id: String,
     model: String,
     question: String,
+    image_id: Option<String>,
 ) -> Result<AskResult, String> {
     // Concurrency guard: claim the slot, or reject if one is already running.
     if state.ask_in_progress.swap(true, Ordering::SeqCst) {
@@ -266,9 +314,18 @@ pub async fn ask(
     // Releases the slot on every exit path, including cancellation (drop).
     let _guard = AskGuard(&state.ask_in_progress);
 
-    run_ask(&app, &state, &store, &game_id, &provider_id, &model, &question)
-        .await
-        .map_err(String::from)
+    run_ask(
+        &app,
+        &state,
+        &store,
+        &game_id,
+        &provider_id,
+        &model,
+        &question,
+        image_id.as_deref(),
+    )
+    .await
+    .map_err(String::from)
 }
 
 /// Resets `ask_in_progress` when dropped, so a panic or a cancelled future can't
@@ -281,6 +338,7 @@ impl Drop for AskGuard<'_> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_ask(
     app: &AppHandle,
     state: &AppState,
@@ -289,11 +347,16 @@ async fn run_ask(
     provider_id: &str,
     model: &str,
     question: &str,
+    image_id: Option<&str>,
 ) -> Result<AskResult, AppError> {
     let question = question.trim();
     if question.is_empty() {
         return Err(AppError::EmptyQuestion);
     }
+    // Resolve any attached screenshot before any network work, so a stale id
+    // fails instantly ("capture it again") rather than after searching. `None`
+    // when no image is attached — the request then stays text-only.
+    let image_png = capture::resolve_image(state, image_id)?;
     // Built-ins first, then the user store; the owned clone means a game
     // removed mid-ask can't be yanked out from under this run.
     let wiki = games::find_game(game_id)
@@ -365,11 +428,17 @@ async fn run_ask(
         &api_key,
         question,
         &pages,
+        image_png.as_deref(),
         move |delta| {
             let _ = delta_app.emit("ask://delta", delta);
         },
     )
     .await?;
+
+    // The model answered — consume the attachment (clears-on-success). Every
+    // earlier `?`/return keeps it, so a failed or empty ask leaves the shot
+    // attached for a retry (stays-on-error).
+    capture::clear(state);
 
     let sources = pages
         .iter()

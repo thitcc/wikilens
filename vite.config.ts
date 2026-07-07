@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -7,6 +8,18 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
+
+  // Two entry points: the React app (index.html) and the vanilla-TS region
+  // capture overlay (capture.html, loaded by the pre-declared "capture"
+  // window). Both must be emitted to dist for the packaged app.
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        capture: fileURLToPath(new URL("./capture.html", import.meta.url)),
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

@@ -35,6 +35,12 @@ pub enum AppError {
         body: String,
     },
 
+    /// Screenshot capture failed (no monitor under the cursor, the OS refused
+    /// the grab on a secure/DRM surface, a too-small selection, …). The message
+    /// is already complete user-facing text shown verbatim in the error box.
+    #[error("{0}")]
+    Capture(String),
+
     /// Probe validation failed for a user-added wiki. The message is already
     /// complete user-facing text ("Couldn't find a MediaWiki API at …").
     #[error("{0}")]

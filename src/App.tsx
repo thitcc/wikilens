@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ask,
+  beginCapture,
+  clearCapture,
   hideOverlay,
   listGames,
   listProviders,
   onAskDelta,
   onAskStatus,
+  onCaptureAttached,
+  onCaptureError,
+  onCaptureHotkey,
   onOverlayShown,
 } from "./api";
 import type {
   AskStatus,
+  AttachmentInfo,
   GameInfo,
   ModelInfo,
   ProviderInfo,
@@ -104,10 +110,14 @@ function App() {
   const [status, setStatus] = useState<AskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
   const gameChipRef = useRef<HTMLButtonElement | null>(null);
+  // Latest capture handler, so the mount-only hotkey listener always sees
+  // current state (e.g. `busy`) instead of a stale mount-time closure.
+  const requestCaptureRef = useRef<() => void>(() => {});
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -167,6 +177,14 @@ function App() {
     }).then(register);
     void onAskStatus((s) => setStatus(s)).then(register);
     void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);
+    void onCaptureAttached((info) => {
+      setAttachment(info);
+      setError(null);
+    }).then(register);
+    void onCaptureError((message) => setError(message)).then(register);
+    // The global Ctrl+Shift+C hotkey funnels into the same request as the
+    // footer button; the ref keeps this mount-only listener current.
+    void onCaptureHotkey(() => requestCaptureRef.current()).then(register);
 
     return () => {
       disposed = true;
@@ -236,6 +254,23 @@ function App() {
     closeMenu();
   }
 
+  // Start a capture (footer button and hotkey both land here). Rust hides the
+  // panel, shows the crosshair overlay, and later fires capture://attached.
+  function handleCaptureRequest() {
+    if (busy) return;
+    setOpenMenu(null);
+    void beginCapture().catch((e) => setError(String(e)));
+  }
+  // Point the mount-only hotkey listener at the current closure each render.
+  requestCaptureRef.current = handleCaptureRequest;
+
+  function handleRemoveAttachment() {
+    setAttachment(null);
+    // The frontend already dropped it; a failed Rust clear is harmless (the
+    // next successful ask or capture overwrites the slot anyway).
+    void clearCapture().catch(() => {});
+  }
+
   const provider = providers.find((p) => p.id === selectedProvider);
 
   async function handleSubmit() {
@@ -254,9 +289,18 @@ function App() {
       // blank value would fall back Rust-side, this is just the same rule
       // applied eagerly so the chip and the request always agree.
       const model = modelPick?.id ?? provider?.defaultModel ?? "";
-      const result = await ask(selectedGame, selectedProvider, model, trimmed);
+      const result = await ask(
+        selectedGame,
+        selectedProvider,
+        model,
+        trimmed,
+        attachment?.id,
+      );
       setAnswer(result.answer);
       setSources(result.sources);
+      // Clears-on-success, mirroring the Rust slot: the model answered, so the
+      // screenshot is spent. A failed ask keeps it (this line isn't reached).
+      setAttachment(null);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -298,6 +342,30 @@ function App() {
         inputRef={inputRef}
       />
 
+      {/* Attached screenshot — a direct .panel child, never inside .content
+          (its overflow would clip the strip). */}
+      {attachment && (
+        <div className="attachment-row">
+          <img
+            className="attachment-thumb"
+            src={attachment.thumbUri}
+            alt="Screenshot to attach"
+          />
+          <span className="attachment-meta">
+            {attachment.width}×{attachment.height}
+          </span>
+          <button
+            type="button"
+            className="attachment-remove"
+            aria-label="Remove screenshot"
+            disabled={busy}
+            onClick={handleRemoveAttachment}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="content">
         {error && <div className="error">{error}</div>}
         {!error && busy && status && (
@@ -327,6 +395,15 @@ function App() {
             buttonRef={chipRef}
           />
         )}
+        <button
+          type="button"
+          className="quiet-chip capture-chip"
+          onClick={handleCaptureRequest}
+          disabled={busy}
+          title="Capture a screenshot (Ctrl+Shift+C)"
+        >
+          <span className="chip-name">Capture</span>
+        </button>
       </footer>
 
       {/* Menus are direct children of .panel — .content's overflow would clip them. */}

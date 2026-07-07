@@ -3,6 +3,7 @@
 //! Flow: global hotkey → toggle overlay window → frontend prompt → `ask`
 //! command → wiki search/fetch → LLM stream → events → UI.
 
+mod capture;
 mod commands;
 mod error;
 mod hotkey;
@@ -14,7 +15,7 @@ mod tray;
 mod window;
 mod wiki;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use state::AppState;
@@ -33,8 +34,18 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     // Act on press only ("release-safe"); ignore the release event.
-                    if event.state == ShortcutState::Pressed && hotkey::is_toggle_shortcut(shortcut) {
+                    if event.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    if hotkey::is_toggle_shortcut(shortcut) {
                         window::toggle_overlay(app);
+                    } else if hotkey::is_capture_shortcut(shortcut) {
+                        // Route capture through the overlay webview so the
+                        // frontend stays the single entry point (where the
+                        // guardrails plan hangs its gating); it invokes
+                        // begin_capture. Delivered even while the panel is
+                        // hidden — the webview stays mounted and listening.
+                        let _ = app.emit_to(window::OVERLAY_LABEL, "capture://hotkey", ());
                     }
                 })
                 .build(),
@@ -66,6 +77,10 @@ pub fn run() {
             commands::list_providers,
             commands::list_models,
             commands::hide_overlay,
+            commands::begin_capture,
+            commands::finish_capture,
+            commands::cancel_capture,
+            commands::clear_capture,
             commands::ask,
         ])
         .run(tauri::generate_context!())

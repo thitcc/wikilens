@@ -36,13 +36,26 @@ pub fn toggle_overlay(app: &AppHandle) {
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
     } else {
-        if let Err(e) = position_top_right(&win) {
-            eprintln!("[wikilens] failed to position overlay: {e}");
-        }
-        let _ = win.show();
-        let _ = win.set_focus();
-        let _ = win.emit(EVENT_SHOWN, ());
+        show_overlay(app);
     }
+}
+
+/// Dock the overlay to the top-right of its current monitor, show it, take
+/// focus, and notify the frontend (which focuses the prompt). Extracted from
+/// `toggle_overlay` so the capture flow can re-show the panel on teardown; the
+/// re-shown panel auto-refocuses the prompt via the existing `EVENT_SHOWN`
+/// handler.
+pub fn show_overlay(app: &AppHandle) {
+    let Some(win) = overlay_window(app) else {
+        eprintln!("[wikilens] overlay window '{OVERLAY_LABEL}' not found");
+        return;
+    };
+    if let Err(e) = position_top_right(&win) {
+        eprintln!("[wikilens] failed to position overlay: {e}");
+    }
+    let _ = win.show();
+    let _ = win.set_focus();
+    let _ = win.emit(EVENT_SHOWN, ());
 }
 
 /// Hide the overlay. Used by the `Esc` handler (via the `hide_overlay` command)

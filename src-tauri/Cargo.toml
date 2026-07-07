@@ -28,6 +28,15 @@ reqwest = { version = "0.12", features = ["json", "stream", "gzip"] }
 futures-util = "0.3"
 thiserror = "1"
 dotenvy = "0.15"
+# Screenshot capture: `xcap` snapshots the monitor under the cursor; `image`
+# (png-encode only — pixels come pre-decoded from xcap, which re-exports this
+# same 0.25 line) crops/downscales; `base64` builds the thumbnail data-URI.
+xcap = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+# Promoted from dev-only: the capture flow's ~120 ms settle sleep before the
+# monitor snapshot (`tokio::time::sleep`, on Tauri's tokio runtime).
+tokio = { version = "1", features = ["time"] }
 
 [dev-dependencies]
 # For #[tokio::test] in the ignored live-wiki integration test (wiki/mod.rs).

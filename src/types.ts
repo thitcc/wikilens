@@ -47,6 +47,16 @@ export interface Source {
   url: string;
 }
 
+/** A captured screenshot attached to the prompt, from the `capture://attached`
+ * event. Only the small `thumbUri` (a PNG data-URI) crosses IPC; the full image
+ * stays in Rust until the next `ask` sends it. `id` is echoed back on `ask`. */
+export interface AttachmentInfo {
+  id: string;
+  thumbUri: string;
+  width: number;
+  height: number;
+}
+
 /** Final result of the `ask` command. */
 export interface AskResult {
   answer: string;

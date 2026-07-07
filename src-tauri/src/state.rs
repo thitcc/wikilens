@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
+use crate::capture::{Attachment, PendingShot};
 use crate::models::ModelInfo;
 
 /// Global app state. A single `reqwest::Client` is reused for every wiki and
@@ -19,6 +20,13 @@ pub struct AppState {
     /// never held across an await (`commands::list_models` locks, clones,
     /// drops, fetches, relocks).
     pub models_cache: Mutex<HashMap<&'static str, Vec<ModelInfo>>>,
+    /// The monitor snapshot frozen while a region capture is in progress
+    /// (`Some` between `begin_capture` and `finish_capture`/`cancel_capture`).
+    /// Same never-across-await discipline as `models_cache`.
+    pub pending_shot: Mutex<Option<PendingShot>>,
+    /// The one screenshot currently attached to the prompt, if any. Consumed
+    /// by a successful `ask`, replaced by a new capture, or dropped on clear.
+    pub attachment: Mutex<Option<Attachment>>,
 }
 
 impl AppState {
@@ -34,6 +42,8 @@ impl AppState {
             http,
             ask_in_progress: AtomicBool::new(false),
             models_cache: Mutex::new(HashMap::new()),
+            pending_shot: Mutex::new(None),
+            attachment: Mutex::new(None),
         }
     }
 }
