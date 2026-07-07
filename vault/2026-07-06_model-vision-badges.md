@@ -1,12 +1,12 @@
 ---
 title: Vision badges in the model menu
 type: plan
-status: todo
+status: done
 created: 2026-07-06
 updated: 2026-07-06
 tags: [capture, llm, frontend]
 related: ["[[2026-07-06_screenshot-capture-to-prompt]]", "[[2026-07-06_image-attach-guardrails]]", "[[2026-07-05_model-picker-menu]]"]
-commit:
+commit: 096ff29
 ---
 
 # Vision badges in the model menu
@@ -138,3 +138,19 @@ Size estimate: **M** — ~200–250 LOC.
 - 2026-07-06 — created. Modality sources verified live the same day
   (OpenRouter `input_modalities`; Anthropic `capabilities.image_input`;
   DeepSeek none — API fully text-only).
+- 2026-07-06 — implemented (status → active). All Approach steps landed across
+  8 files. `ModelInfo`/`ProviderInfo` gained `vision`/`defaultModelVision`; a
+  new `CuratedModel` struct replaced the `(id,label)` tuples (updating
+  `model_label` and three tuple tests); both parsers read the modality fields
+  with the asymmetric defaults; a reusable `<Badge>` renders the neutral "Image"
+  pill in a `.row-name` + `.row-side` model row. Green on automated checks:
+  `cargo check` clean, `cargo test` **105 passed / 0 failed** (Anthropic
+  supported true/false/absent, OpenAI `input_modalities` present/absent,
+  DeepSeek bare → false, curated flags, `model_vision` known/unknown, fallback
+  carries vision), `npx tsc --noEmit`, `npm run build`. Pending: commit and a
+  quick visual check that badges render on live vision models and the fallback
+  "offline list", DeepSeek group stays unbadged, long labels ellipsize. On
+  commit: `status: done` + `commit:`.
+- 2026-07-06 — closed (status → done). Visual check passed (user-confirmed):
+  badges render on vision models, DeepSeek stays unbadged, layout holds.
+  Shipped in `096ff29`.
