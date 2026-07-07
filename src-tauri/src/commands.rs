@@ -35,6 +35,9 @@ pub struct ProviderInfo {
     pub name: String,
     pub default_model: String,
     pub default_model_label: String,
+    /// Whether the resolved default model accepts image input — lets the
+    /// guardrails plan resolve the never-opened-menu case with no fetch.
+    pub default_model_vision: bool,
 }
 
 /// A provider's model list plus where it came from. `"fallback"` means the
@@ -168,11 +171,17 @@ pub fn list_providers() -> Vec<ProviderInfo> {
         .map(|p| {
             let default_model = p.model();
             let default_model_label = p.model_label(&default_model).to_string();
+            // Curated lookup; an unknown env-override id defaults to vision only
+            // for Anthropic (its whole catalog is vision), false elsewhere.
+            let default_model_vision = p
+                .model_vision(&default_model)
+                .unwrap_or(p.kind == providers::ProviderKind::Anthropic);
             ProviderInfo {
                 id: p.id.to_string(),
                 name: p.name.to_string(),
                 default_model,
                 default_model_label,
+                default_model_vision,
             }
         })
         .collect()

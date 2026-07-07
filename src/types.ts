@@ -25,12 +25,26 @@ export interface ProviderInfo {
   name: string;
   defaultModel: string;
   defaultModelLabel: string;
+  /** Whether the resolved default model accepts image input — lets the chip
+   * resolve vision before any model list is fetched. */
+  defaultModelVision: boolean;
 }
 
 /** One selectable model, from the `list_models` command. */
 export interface ModelInfo {
   id: string;
   label: string;
+  /** Whether the model accepts image input (drives the "Image" badge). */
+  vision: boolean;
+}
+
+/** The user's persisted model pick (localStorage `wikilens.selectedModel.<id>`).
+ * `vision` is optional: entries saved before this feature lack it, and healing
+ * that is the guardrails plan's concern. */
+export interface StoredModelPick {
+  id: string;
+  label: string;
+  vision?: boolean;
 }
 
 /** A provider's model list. `source === "fallback"` means the built-in

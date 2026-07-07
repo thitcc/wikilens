@@ -12,13 +12,17 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
-use crate::providers::{Provider, ProviderKind};
+use crate::providers::{CuratedModel, Provider, ProviderKind};
 
 /// One selectable model, as sent to the frontend menu.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
+    /// Whether the model accepts image input (drives the "Image" badge). See
+    /// the asymmetric parser defaults below and
+    /// `vault/2026-07-06_model-vision-badges.md`.
+    pub vision: bool,
 }
 
 /// Where a model list came from. `Fallback` lets the UI show a muted
@@ -79,6 +83,15 @@ fn parse_anthropic_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
     struct Entry {
         id: String,
         display_name: Option<String>,
+        capabilities: Option<Capabilities>,
+    }
+    #[derive(Deserialize)]
+    struct Capabilities {
+        image_input: Option<ImageInput>,
+    }
+    #[derive(Deserialize)]
+    struct ImageInput {
+        supported: Option<bool>,
     }
     #[derive(Deserialize)]
     struct Payload {
@@ -95,7 +108,19 @@ fn parse_anthropic_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
                 .display_name
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or_else(|| entry.id.clone());
-            ModelInfo { id: entry.id, label }
+            // Default true: every active Claude model is vision-capable, and a
+            // schema hiccup (missing `capabilities`) must not un-badge the whole
+            // catalog. An explicit `supported: false` is still honored.
+            let vision = entry
+                .capabilities
+                .and_then(|c| c.image_input)
+                .and_then(|i| i.supported)
+                .unwrap_or(true);
+            ModelInfo {
+                id: entry.id,
+                label,
+                vision,
+            }
         })
         .collect())
 }
@@ -107,6 +132,11 @@ fn parse_openai_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
     struct Entry {
         id: String,
         name: Option<String>,
+        architecture: Option<Architecture>,
+    }
+    #[derive(Deserialize)]
+    struct Architecture {
+        input_modalities: Option<Vec<String>>,
     }
     #[derive(Deserialize)]
     struct Payload {
@@ -123,7 +153,20 @@ fn parse_openai_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
                 .name
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or_else(|| entry.id.clone());
-            ModelInfo { id: entry.id, label }
+            // Default false: DeepSeek's bare entries have no `architecture` and
+            // are text-only, so they naturally fall here. OpenRouter lists
+            // `input_modalities`; a model is vision-capable iff it includes
+            // "image". Wrongly badging is worse than a missing badge.
+            let vision = entry
+                .architecture
+                .and_then(|a| a.input_modalities)
+                .map(|mods| mods.iter().any(|m| m == "image"))
+                .unwrap_or(false);
+            ModelInfo {
+                id: entry.id,
+                label,
+                vision,
+            }
         })
         .collect())
 }
@@ -133,16 +176,17 @@ fn parse_openai_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
 /// degrades — an empty menu group would be strictly worse than a stale one.
 pub fn resolve_model_list(
     live: Result<Vec<ModelInfo>, AppError>,
-    curated: &[(&str, &str)],
+    curated: &[CuratedModel],
 ) -> (Vec<ModelInfo>, ModelSource) {
     match live {
         Ok(models) if !models.is_empty() => (models, ModelSource::Live),
         _ => (
             curated
                 .iter()
-                .map(|(id, label)| ModelInfo {
-                    id: (*id).to_string(),
-                    label: (*label).to_string(),
+                .map(|m| ModelInfo {
+                    id: m.id.to_string(),
+                    label: m.label.to_string(),
+                    vision: m.vision,
                 })
                 .collect(),
             ModelSource::Fallback,
@@ -168,14 +212,29 @@ mod tests {
             vec![
                 ModelInfo {
                     id: "claude-sonnet-5".into(),
-                    label: "Claude Sonnet 5".into()
+                    label: "Claude Sonnet 5".into(),
+                    vision: true,
                 },
                 ModelInfo {
                     id: "claude-haiku-4-5-20251001".into(),
-                    label: "Claude Haiku 4.5".into()
+                    label: "Claude Haiku 4.5".into(),
+                    vision: true,
                 },
             ]
         );
+    }
+
+    #[test]
+    fn anthropic_vision_defaults_true_and_respects_explicit_false() {
+        let body = r#"{"data":[
+            {"id":"a","capabilities":{"image_input":{"supported":true}}},
+            {"id":"b","capabilities":{"image_input":{"supported":false}}},
+            {"id":"c"}
+        ]}"#;
+        let models = parse_anthropic_models(body).unwrap();
+        assert!(models[0].vision, "explicit true");
+        assert!(!models[1].vision, "explicit false is respected");
+        assert!(models[2].vision, "absent capabilities → default true");
     }
 
     #[test]
@@ -204,6 +263,21 @@ mod tests {
         assert_eq!(models.len(), 2);
         assert_eq!(models[0].id, "deepseek-v4-flash");
         assert_eq!(models[0].label, "deepseek-v4-flash");
+        // Bare entries have no `architecture` → text-only.
+        assert!(!models[0].vision);
+    }
+
+    #[test]
+    fn openai_vision_from_input_modalities() {
+        let body = r#"{"data":[
+            {"id":"vis","architecture":{"input_modalities":["text","image"]}},
+            {"id":"txt","architecture":{"input_modalities":["text"]}},
+            {"id":"bare"}
+        ]}"#;
+        let models = parse_openai_models(body).unwrap();
+        assert!(models[0].vision, "input_modalities includes image");
+        assert!(!models[1].vision, "text-only modalities");
+        assert!(!models[2].vision, "no architecture → default false");
     }
 
     #[test]
@@ -216,7 +290,8 @@ mod tests {
             models,
             vec![ModelInfo {
                 id: "openai/gpt-4o-mini".into(),
-                label: "OpenAI: GPT-4o-mini".into()
+                label: "OpenAI: GPT-4o-mini".into(),
+                vision: false, // no `architecture` in this fixture
             }]
         );
     }
@@ -229,8 +304,12 @@ mod tests {
 
     // ---- Resolution ----
 
-    fn curated() -> Vec<(&'static str, &'static str)> {
-        vec![("fallback-model", "Fallback Model")]
+    fn curated() -> Vec<CuratedModel> {
+        vec![CuratedModel {
+            id: "fallback-model",
+            label: "Fallback Model",
+            vision: true,
+        }]
     }
 
     #[test]
@@ -238,6 +317,7 @@ mod tests {
         let live = Ok(vec![ModelInfo {
             id: "live-model".into(),
             label: "Live Model".into(),
+            vision: false,
         }]);
         let (models, source) = resolve_model_list(live, &curated());
         assert_eq!(source, ModelSource::Live);
@@ -253,7 +333,8 @@ mod tests {
             models,
             vec![ModelInfo {
                 id: "fallback-model".into(),
-                label: "Fallback Model".into()
+                label: "Fallback Model".into(),
+                vision: true,
             }]
         );
     }
@@ -263,6 +344,19 @@ mod tests {
         let (models, source) = resolve_model_list(Ok(vec![]), &curated());
         assert_eq!(source, ModelSource::Fallback);
         assert_eq!(models.len(), 1);
+    }
+
+    #[test]
+    fn fallback_list_carries_curated_vision() {
+        let curated = [
+            CuratedModel { id: "v", label: "V", vision: true },
+            CuratedModel { id: "t", label: "T", vision: false },
+        ];
+        let (models, source) =
+            resolve_model_list(Err(AppError::Parse("x".into())), &curated);
+        assert_eq!(source, ModelSource::Fallback);
+        assert!(models[0].vision);
+        assert!(!models[1].vision);
     }
 
     /// Live smoke test against the keyless public OpenRouter catalog; run with
@@ -275,5 +369,8 @@ mod tests {
         let models = fetch_models(&client, provider, None).await.unwrap();
         assert!(models.len() > 100, "got {} models", models.len());
         assert!(models.iter().all(|m| !m.id.is_empty() && !m.label.is_empty()));
+        // Roughly half of OpenRouter's catalog is vision-capable — at least one
+        // must parse as such, proving `input_modalities` is being read.
+        assert!(models.iter().any(|m| m.vision), "no vision models parsed");
     }
 }

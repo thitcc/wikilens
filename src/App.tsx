@@ -20,6 +20,7 @@ import type {
   ModelInfo,
   ProviderInfo,
   Source,
+  StoredModelPick,
 } from "./types";
 import { AddGameMenu } from "./components/AddGameMenu";
 import { GameChip } from "./components/GameChip";
@@ -56,9 +57,11 @@ function storedRecentGames(): string[] {
 }
 
 /** The user's explicit model pick for a provider, or null when they've never
- * picked one. Stored as JSON `{id, label}` so the chip can label itself
- * without any list fetch (offline included). */
-function storedModel(providerId: string): ModelInfo | null {
+ * picked one. Stored as JSON `{id, label, vision?}` so the chip can label
+ * itself without any list fetch (offline included). `vision` is carried
+ * through when present; entries saved before the badges feature lack it, and
+ * healing that is the guardrails plan's concern. */
+function storedModel(providerId: string): StoredModelPick | null {
   if (!providerId) return null;
   try {
     const raw = localStorage.getItem(MODEL_STORAGE_PREFIX + providerId);
@@ -67,11 +70,15 @@ function storedModel(providerId: string): ModelInfo | null {
     if (
       typeof parsed === "object" &&
       parsed !== null &&
-      typeof (parsed as ModelInfo).id === "string" &&
-      typeof (parsed as ModelInfo).label === "string"
+      typeof (parsed as StoredModelPick).id === "string" &&
+      typeof (parsed as StoredModelPick).label === "string"
     ) {
-      const model = parsed as ModelInfo;
-      return { id: model.id, label: model.label };
+      const pick = parsed as StoredModelPick;
+      return {
+        id: pick.id,
+        label: pick.label,
+        ...(typeof pick.vision === "boolean" ? { vision: pick.vision } : {}),
+      };
     }
   } catch {
     // Corrupted entry — fall through to the provider default.
@@ -95,7 +102,7 @@ function App() {
   const [selectedProvider, setSelectedProvider] = useState<string>(
     () => localStorage.getItem(PROVIDER_STORAGE_KEY) ?? "",
   );
-  const [modelPick, setModelPick] = useState<ModelInfo | null>(() =>
+  const [modelPick, setModelPick] = useState<StoredModelPick | null>(() =>
     storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
   );
   const [recentGames, setRecentGames] = useState<string[]>(storedRecentGames);

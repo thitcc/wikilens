@@ -38,12 +38,25 @@ pub struct Provider {
     /// Whether the models endpoint rejects keyless calls (Anthropic and
     /// DeepSeek 401 without a key; OpenRouter's catalog is public).
     pub models_need_key: bool,
-    /// Tiny curated `(id, label)` fallback used when a live fetch isn't
-    /// possible — a degraded mode, not a catalog. Ids verified against the
-    /// live endpoints on 2026-07-05.
-    pub curated_models: &'static [(&'static str, &'static str)],
+    /// Tiny curated fallback used when a live fetch isn't possible — a degraded
+    /// mode, not a catalog. Carries a `vision` flag so offline/keyless sessions
+    /// still badge correctly. Ids verified against the live endpoints on
+    /// 2026-07-05.
+    pub curated_models: &'static [CuratedModel],
     /// Extra static request headers (e.g. OpenRouter attribution); usually empty.
     pub extra_headers: &'static [(&'static str, &'static str)],
+}
+
+/// One entry in a provider's curated fallback list. A struct (rather than an
+/// `(id, label)` tuple) so capability flags like `vision` read clearly and
+/// future ones extend the struct instead of the tuple arity.
+#[derive(Debug, Clone, Copy)]
+pub struct CuratedModel {
+    pub id: &'static str,
+    pub label: &'static str,
+    /// Whether this model accepts image input (seeds the "Image" badge; see
+    /// `vault/2026-07-06_model-vision-badges.md`).
+    pub vision: bool,
 }
 
 /// The supported providers. Anthropic is first, so it is the default selection.
@@ -58,10 +71,11 @@ pub static PROVIDERS: &[Provider] = &[
         default_model: "claude-haiku-4-5-20251001",
         models_endpoint: "https://api.anthropic.com/v1/models?limit=1000",
         models_need_key: true,
+        // Every active Claude model is vision-capable.
         curated_models: &[
-            ("claude-haiku-4-5-20251001", "Claude Haiku 4.5"),
-            ("claude-sonnet-5", "Claude Sonnet 5"),
-            ("claude-opus-4-8", "Claude Opus 4.8"),
+            CuratedModel { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", vision: true },
+            CuratedModel { id: "claude-sonnet-5", label: "Claude Sonnet 5", vision: true },
+            CuratedModel { id: "claude-opus-4-8", label: "Claude Opus 4.8", vision: true },
         ],
         extra_headers: &[],
     },
@@ -76,9 +90,10 @@ pub static PROVIDERS: &[Provider] = &[
         default_model: "deepseek-v4-flash",
         models_endpoint: "https://api.deepseek.com/models",
         models_need_key: true,
+        // DeepSeek's API is text-only (no model accepts images).
         curated_models: &[
-            ("deepseek-v4-flash", "DeepSeek V4 Flash"),
-            ("deepseek-v4-pro", "DeepSeek V4 Pro"),
+            CuratedModel { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", vision: false },
+            CuratedModel { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", vision: false },
         ],
         extra_headers: &[],
     },
@@ -92,10 +107,11 @@ pub static PROVIDERS: &[Provider] = &[
         default_model: "openai/gpt-4o-mini",
         models_endpoint: "https://openrouter.ai/api/v1/models",
         models_need_key: false,
+        // These three curated picks are all vision-capable on OpenRouter.
         curated_models: &[
-            ("openai/gpt-4o-mini", "GPT-4o mini"),
-            ("anthropic/claude-sonnet-5", "Claude Sonnet 5"),
-            ("google/gemini-2.5-flash", "Gemini 2.5 Flash"),
+            CuratedModel { id: "openai/gpt-4o-mini", label: "GPT-4o mini", vision: true },
+            CuratedModel { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5", vision: true },
+            CuratedModel { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", vision: true },
         ],
         // Optional attribution headers OpenRouter uses for its app leaderboard.
         // Harmless to send; ignored by other providers.
@@ -143,9 +159,19 @@ impl Provider {
     pub fn model_label<'a>(&self, id: &'a str) -> &'a str {
         self.curated_models
             .iter()
-            .find(|(model_id, _)| *model_id == id)
-            .map(|(_, label)| *label)
+            .find(|m| m.id == id)
+            .map(|m| m.label)
             .unwrap_or(id)
+    }
+
+    /// Whether a curated model id is vision-capable, or `None` for an id not in
+    /// the curated list (a live-only or env-override id). The caller picks the
+    /// default for `None` — see `commands::list_providers`.
+    pub fn model_vision(&self, id: &str) -> Option<bool> {
+        self.curated_models
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.vision)
     }
 }
 
@@ -213,7 +239,7 @@ mod tests {
                 provider
                     .curated_models
                     .iter()
-                    .any(|(id, _)| *id == provider.default_model),
+                    .any(|m| m.id == provider.default_model),
                 "{}: default model {} missing from curated_models",
                 provider.id,
                 provider.default_model
@@ -224,9 +250,13 @@ mod tests {
     #[test]
     fn curated_model_ids_are_unique_per_provider() {
         for provider in PROVIDERS {
-            for (i, (a, _)) in provider.curated_models.iter().enumerate() {
-                for (b, _) in &provider.curated_models[i + 1..] {
-                    assert_ne!(a, b, "{}: duplicate curated model id {}", provider.id, a);
+            for (i, a) in provider.curated_models.iter().enumerate() {
+                for b in &provider.curated_models[i + 1..] {
+                    assert_ne!(
+                        a.id, b.id,
+                        "{}: duplicate curated model id {}",
+                        provider.id, a.id
+                    );
                 }
             }
         }
@@ -237,5 +267,15 @@ mod tests {
         let deepseek = find_provider("deepseek").unwrap();
         assert_eq!(deepseek.model_label("deepseek-v4-flash"), "DeepSeek V4 Flash");
         assert_eq!(deepseek.model_label("some-unknown-model"), "some-unknown-model");
+    }
+
+    #[test]
+    fn model_vision_known_and_unknown() {
+        let anthropic = find_provider("anthropic").unwrap();
+        assert_eq!(anthropic.model_vision("claude-sonnet-5"), Some(true));
+        let deepseek = find_provider("deepseek").unwrap();
+        assert_eq!(deepseek.model_vision("deepseek-v4-flash"), Some(false));
+        // An id outside the curated list (env override / live-only).
+        assert_eq!(deepseek.model_vision("some-unknown-model"), None);
     }
 }

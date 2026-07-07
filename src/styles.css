@@ -383,6 +383,41 @@ body {
   opacity: 1;
 }
 
+/* Left cell of a model row: the label, ellipsizing so a long name doesn't
+   push the right cluster off the row. */
+.model-row .row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Right cluster of a model row: capability badges, then the selection check. */
+.row-side {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* Small reusable capability pill (the Badge component). Existing tokens only;
+   neutral by default so it doesn't compete with the accent selection check. */
+.badge {
+  padding: var(--pad-chip);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  background: var(--surface-raised);
+  color: var(--fg-muted);
+  font-size: var(--text-label);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.badge--accent {
+  color: var(--accent);
+}
+
 /* ---- Game-menu + add-game-menu pieces ---- */
 
 /* Accent action row ("Add a game…", "Find its wiki"). */

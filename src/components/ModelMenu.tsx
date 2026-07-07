@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { listModels } from "../api";
 import type { ModelInfo, ModelList, ProviderInfo } from "../types";
+import { Badge } from "./Badge";
 
 interface ModelMenuProps {
   providers: ProviderInfo[];
@@ -189,9 +190,14 @@ export function ModelMenu({
                       className={"model-row" + (isSelected ? " selected" : "")}
                       onClick={() => onSelect(provider.id, model)}
                     >
-                      <span>{model.label}</span>
-                      <span className="check" aria-hidden="true">
-                        ✓
+                      <span className="row-name">{model.label}</span>
+                      <span className="row-side">
+                        {model.vision && (
+                          <Badge title="Can read screenshots">Image</Badge>
+                        )}
+                        <span className="check" aria-hidden="true">
+                          ✓
+                        </span>
                       </span>
                     </button>
                   );
