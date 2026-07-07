@@ -72,6 +72,13 @@ where
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
+        // With an image attached, translate the two known non-vision rejections
+        // into plain language; everything else keeps the verbatim error body.
+        if image_png.is_some() {
+            if let Some(message) = friendly_image_error(provider, model, status, &body) {
+                return Err(AppError::VisionUnsupported(message));
+            }
+        }
         return Err(AppError::Llm {
             provider: provider.name,
             status,
@@ -173,6 +180,30 @@ fn build_openai_request(
         request = request.header(*name, *value);
     }
     request.json(&body)
+}
+
+/// Translate the two known non-vision rejection bodies into plain language.
+/// Called only when an image was attached, so it never touches text-only asks;
+/// `None` for anything else, leaving the verbatim `AppError::Llm` backstop in
+/// place. Substring matching is brittle by nature — acceptable because it's
+/// image-conditional and the fallback stays reachable (see
+/// `vault/2026-07-06_image-attach-guardrails.md`).
+fn friendly_image_error(provider: &Provider, model: &str, status: u16, body: &str) -> Option<String> {
+    // OpenAI-compatible endpoints reject the `image_url` content part with a raw
+    // serde error (DeepSeek, live-captured 400 — the only text-only provider).
+    if body.contains("unknown variant `image_url`") {
+        return Some(format!(
+            "{} models can't read images. Remove the screenshot or switch providers.",
+            provider.name
+        ));
+    }
+    // OpenRouter's routing-time rejection when no endpoint supports image input.
+    if status == 404 && body.contains("support image input") {
+        return Some(format!(
+            "{model} on OpenRouter can't read images. Remove the screenshot or pick a model with the Image badge."
+        ));
+    }
+    None
 }
 
 fn parse_line(kind: ProviderKind, line: &str) -> SseLine {
@@ -404,6 +435,37 @@ mod tests {
         assert!(with.starts_with(SYSTEM_PROMPT));
         assert!(with.contains("attached a screenshot"));
         assert_ne!(with, SYSTEM_PROMPT);
+    }
+
+    // ---- Friendly non-vision error mapping ----
+
+    #[test]
+    fn friendly_error_maps_deepseek_serde_body() {
+        let provider = crate::providers::find_provider("deepseek").unwrap();
+        // The live-captured DeepSeek 400 body.
+        let body = "Failed to deserialize the JSON body into the target type: \
+                    messages[0]: unknown variant `image_url`, expected `text`";
+        let msg = friendly_image_error(provider, "deepseek-v4-flash", 400, body).unwrap();
+        assert!(msg.contains("DeepSeek"));
+        assert!(msg.contains("can't read images"));
+    }
+
+    #[test]
+    fn friendly_error_maps_openrouter_404_and_names_the_model() {
+        let provider = crate::providers::find_provider("openrouter").unwrap();
+        let body = r#"{"error":{"message":"No endpoints found that support image input"}}"#;
+        let msg = friendly_image_error(provider, "some/text-only-model", 404, body).unwrap();
+        assert!(msg.contains("some/text-only-model"));
+        assert!(msg.contains("can't read images"));
+    }
+
+    #[test]
+    fn friendly_error_ignores_unrelated_failures() {
+        let provider = crate::providers::find_provider("deepseek").unwrap();
+        assert!(friendly_image_error(provider, "m", 401, "Invalid API key").is_none());
+        assert!(friendly_image_error(provider, "m", 500, "internal server error").is_none());
+        // A 404 without the image-input marker is not ours to translate.
+        assert!(friendly_image_error(provider, "m", 404, "model not found").is_none());
     }
 
     // ---- Anthropic SSE ----

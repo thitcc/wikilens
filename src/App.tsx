@@ -5,6 +5,7 @@ import {
   clearCapture,
   hideOverlay,
   listGames,
+  listModels,
   listProviders,
   onAskDelta,
   onAskStatus,
@@ -84,6 +85,19 @@ function storedModel(providerId: string): StoredModelPick | null {
     // Corrupted entry — fall through to the provider default.
   }
   return null;
+}
+
+/** Whether the active model can read images, resolved with no fetch: DeepSeek
+ * is definitively text-only (short-circuit — re-check when it ships a vision
+ * model), then the stored pick's own flag, then the provider's default, then
+ * false. */
+function activeModelVision(
+  provider: ProviderInfo | undefined,
+  pick: StoredModelPick | null,
+): boolean {
+  if (provider?.id === "deepseek") return false;
+  if (typeof pick?.vision === "boolean") return pick.vision;
+  return provider?.defaultModelVision ?? false;
 }
 
 const STATUS_LABEL: Record<AskStatus, string> = {
@@ -167,6 +181,39 @@ function App() {
   useEffect(() => {
     setModelPick(storedModel(selectedProvider));
   }, [selectedProvider]);
+
+  // Self-heal a pre-badges pick (stored without `vision`): one model-list load
+  // (session cache / instant curated fallback — works offline) patches the flag
+  // and rewrites localStorage, so capture gating resolves correctly for
+  // returning users instead of wrongly treating them as text-only.
+  useEffect(() => {
+    if (!selectedProvider || !modelPick || typeof modelPick.vision === "boolean") {
+      return;
+    }
+    let active = true;
+    listModels(selectedProvider)
+      .then((list) => {
+        if (!active) return;
+        const found = list.models.find((m) => m.id === modelPick.id);
+        if (!found) return; // live-only / env-override id: fall back to the default
+        const patched: StoredModelPick = {
+          id: modelPick.id,
+          label: modelPick.label,
+          vision: found.vision,
+        };
+        localStorage.setItem(
+          MODEL_STORAGE_PREFIX + selectedProvider,
+          JSON.stringify(patched),
+        );
+        setModelPick(patched);
+      })
+      .catch(() => {
+        // Non-fatal: gating falls back to the provider default until next time.
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedProvider, modelPick]);
 
   // Subscribe to backend events for the lifetime of the app.
   useEffect(() => {
@@ -261,10 +308,15 @@ function App() {
     closeMenu();
   }
 
+  const provider = providers.find((p) => p.id === selectedProvider);
+  // Whether the active model can read images — gates capture and image submit.
+  const vision = activeModelVision(provider, modelPick);
+
   // Start a capture (footer button and hotkey both land here). Rust hides the
   // panel, shows the crosshair overlay, and later fires capture://attached.
+  // The `!vision` guard covers the hotkey path; the button is already disabled.
   function handleCaptureRequest() {
-    if (busy) return;
+    if (busy || !vision) return;
     setOpenMenu(null);
     void beginCapture().catch((e) => setError(String(e)));
   }
@@ -278,11 +330,13 @@ function App() {
     void clearCapture().catch(() => {});
   }
 
-  const provider = providers.find((p) => p.id === selectedProvider);
-
   async function handleSubmit() {
     const trimmed = question.trim();
     if (busy || !trimmed || !selectedGame || !selectedProvider) return;
+    // Never dispatch an image to a model that can't read it — the attachment
+    // hint already explains why; this makes Enter a no-op instead of burning a
+    // request we can predict will fail.
+    if (attachment && !vision) return;
 
     setBusy(true);
     setOpenMenu(null);
@@ -350,26 +404,39 @@ function App() {
       />
 
       {/* Attached screenshot — a direct .panel child, never inside .content
-          (its overflow would clip the strip). */}
+          (its overflow would clip the strip). Dims + explains when the active
+          model can't read images. */}
       {attachment && (
-        <div className="attachment-row">
-          <img
-            className="attachment-thumb"
-            src={attachment.thumbUri}
-            alt="Screenshot to attach"
-          />
-          <span className="attachment-meta">
-            {attachment.width}×{attachment.height}
-          </span>
-          <button
-            type="button"
-            className="attachment-remove"
-            aria-label="Remove screenshot"
-            disabled={busy}
-            onClick={handleRemoveAttachment}
+        <div className="attachment">
+          <div
+            className={
+              "attachment-row" + (!vision ? " attachment-row--blocked" : "")
+            }
           >
-            ✕
-          </button>
+            <img
+              className="attachment-thumb"
+              src={attachment.thumbUri}
+              alt="Screenshot to attach"
+            />
+            <span className="attachment-meta">
+              {attachment.width}×{attachment.height}
+            </span>
+            <button
+              type="button"
+              className="attachment-remove"
+              aria-label="Remove screenshot"
+              disabled={busy}
+              onClick={handleRemoveAttachment}
+            >
+              ✕
+            </button>
+          </div>
+          {!vision && (
+            <div className="attachment-hint">
+              This model can't read images — remove it or pick one with the Image
+              badge.
+            </div>
+          )}
         </div>
       )}
 
@@ -402,15 +469,22 @@ function App() {
             buttonRef={chipRef}
           />
         )}
-        <button
-          type="button"
-          className="quiet-chip capture-chip"
-          onClick={handleCaptureRequest}
-          disabled={busy}
-          title="Capture a screenshot (Ctrl+Shift+C)"
-        >
-          <span className="chip-name">Capture</span>
-        </button>
+        <div className="capture-cluster">
+          {!vision && <span className="chip-hint">text-only model</span>}
+          <button
+            type="button"
+            className="quiet-chip capture-chip"
+            onClick={handleCaptureRequest}
+            disabled={busy || !vision}
+            title={
+              vision
+                ? "Capture a screenshot (Ctrl+Shift+C)"
+                : "This model can't read images"
+            }
+          >
+            <span className="chip-name">Capture</span>
+          </button>
+        </div>
       </footer>
 
       {/* Menus are direct children of .panel — .content's overflow would clip them. */}

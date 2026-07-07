@@ -208,9 +208,19 @@ body {
   cursor: default;
 }
 
-/* Footer capture chip: pushed to the right edge, opposite the model chip. */
-.capture-chip {
+/* Footer capture cluster: the chip plus an optional "text-only model" hint,
+   pushed to the right edge opposite the model chip. */
+.capture-cluster {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* Muted hint beside the gated (disabled) capture chip. */
+.chip-hint {
+  color: var(--fg-muted);
+  font-size: var(--text-label);
 }
 
 .quiet-chip .caret {
@@ -605,8 +615,15 @@ body {
   opacity: var(--opacity-disabled);
 }
 
-/* Attached-screenshot strip between the prompt and the answer area. A direct
-   .panel child (like the menus) so .content's overflow can't clip it. */
+/* Attached-screenshot block between the prompt and the answer area. A direct
+   .panel child (like the menus) so .content's overflow can't clip it; stacks
+   the thumbnail row above an optional "can't read images" hint. */
+.attachment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
 .attachment-row {
   display: flex;
   align-items: center;
@@ -649,6 +666,19 @@ body {
 .attachment-remove:disabled {
   opacity: var(--opacity-disabled);
   cursor: default;
+}
+
+/* Gated: the active model can't read images. The thumbnail dims and the hint
+   below explains; submit is blocked in App until the model changes or the
+   screenshot is removed. */
+.attachment-row--blocked .attachment-thumb {
+  opacity: var(--opacity-disabled);
+}
+
+.attachment-hint {
+  color: var(--error-fg);
+  font-size: var(--text-status);
+  line-height: var(--leading-compact);
 }
 
 /* Scrollable answer/sources region fills the remaining height. */

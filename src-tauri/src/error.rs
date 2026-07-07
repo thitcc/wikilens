@@ -41,6 +41,12 @@ pub enum AppError {
     #[error("{0}")]
     Capture(String),
 
+    /// An image was sent to a model that can't read images, translated from the
+    /// provider's raw rejection into plain language (see `llm::friendly_image_error`).
+    /// The message is already complete user-facing text.
+    #[error("{0}")]
+    VisionUnsupported(String),
+
     /// Probe validation failed for a user-added wiki. The message is already
     /// complete user-facing text ("Couldn't find a MediaWiki API at …").
     #[error("{0}")]
