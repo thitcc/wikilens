@@ -1,12 +1,12 @@
 ---
 title: Improve wiki retrieval quality — suggestion-retry, eval logging, LLM query rewrite, title index
 type: plan
-status: active
+status: done
 created: 2026-07-07
 updated: 2026-07-07
 tags: [rag, wiki, llm, rust]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]", "[[2026-07-04_golden-query-retrieval-tests]]", "[[2026-07-04_rendered-html-fetch-strategy]]", "[[2026-07-02_multi-provider-llm]]"]
-commit:
+commit: 59493d6
 ---
 
 # Improve wiki retrieval quality — suggestion-retry, eval logging, LLM query rewrite, title index

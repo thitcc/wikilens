@@ -1,12 +1,12 @@
 ---
 title: LLM query rewrite in the retrieval path — lazy-first, and whether to add an LLM call to search
 type: decision
-status: active
+status: done
 created: 2026-07-07
 updated: 2026-07-07
 tags: [rag, llm, wiki, rust]
 related: ["[[2026-07-07_retrieval-quality-improvements]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]", "[[2026-07-04_golden-query-retrieval-tests]]", "[[2026-07-02_multi-provider-llm]]"]
-commit:
+commit: 59493d6
 ---
 
 # LLM query rewrite in the retrieval path — lazy-first, and whether to add an LLM call to search
