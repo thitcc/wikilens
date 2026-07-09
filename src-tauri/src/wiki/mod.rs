@@ -1,12 +1,14 @@
 //! Wiki layer: the built-in game registry + the user-added wiki store (with
-//! probe validation), plus MediaWiki search + plaintext-extract clients. No
-//! caching yet (see roadmap).
+//! probe validation), plus MediaWiki search + plaintext-extract clients and a
+//! per-session title index for typo resolution (`titles`). Page-content caching
+//! is still a roadmap item.
 
 pub mod fetch;
 pub mod games;
 pub mod html;
 pub mod probe;
 pub mod search;
+pub mod titles;
 pub mod user;
 pub mod wikitext;
 
@@ -68,9 +70,10 @@ mod live {
 
     /// Golden retrieval cases: real player questions and the page that must land
     /// in the top-N titles (hit@4 — exactly what the model gets to see). The
-    /// runner mirrors `run_ask`'s search semantics: preprocess the question, then
-    /// one simplify retry on zero hits. Run before/after any retrieval change to
-    /// turn "did it get better?" into pass/fail.
+    /// runner mirrors `run_ask`'s zero-hit recovery ladder: preprocess the
+    /// question, then on zero hits retry with the wiki's "did you mean" suggestion,
+    /// then a simplify pass. Run before/after any retrieval change to turn "did it
+    /// get better?" into pass/fail.
     #[tokio::test]
     #[ignore = "hits live game wikis; run with `cargo test -- --ignored`"]
     async fn golden_queries_hit_expected_pages() {
@@ -117,9 +120,19 @@ mod live {
             let wiki = games::find_game(game_id).expect("game is registered");
 
             let query = search::preprocess_query(question);
-            let mut titles = search::search(&client, wiki, &query, search::DEFAULT_SEARCH_LIMIT)
-                .await
-                .expect("live search should succeed");
+            let (mut titles, suggestion) =
+                search::search_full(&client, wiki, &query, search::DEFAULT_SEARCH_LIMIT)
+                    .await
+                    .expect("live search should succeed");
+            // Same zero-hit recovery ladder as run_ask: suggestion, then simplify.
+            if titles.is_empty() {
+                let sugg = suggestion.as_deref().unwrap_or("");
+                if !sugg.is_empty() && sugg != query.as_str() {
+                    titles = search::search(&client, wiki, sugg, search::DEFAULT_SEARCH_LIMIT)
+                        .await
+                        .expect("live suggestion retry should succeed");
+                }
+            }
             if titles.is_empty() {
                 let simplified = search::simplify_query(question);
                 if !simplified.is_empty() && simplified != query {

@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WikiLens — AI / RAG Workflow</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0d1117;
+    --bg-grad-1: #10151f;
+    --bg-grad-2: #0a0d13;
+    --panel: rgba(22, 27, 36, 0.72);
+    --panel-solid: #161b24;
+    --border: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --text: #e6edf3;
+    --muted: #9aa7b4;
+    --faint: #6b7683;
+    --accent: #5cc8ff;
+    --accent-2: #b98cff;
+    --green: #58d38c;
+    --amber: #f0c674;
+    --red: #ff7b72;
+    --code-bg: rgba(0, 0, 0, 0.35);
+    --code-border: rgba(255, 255, 255, 0.08);
+    --chip: rgba(92, 200, 255, 0.12);
+    --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #eef1f5;
+      --bg-grad-1: #f4f6fa;
+      --bg-grad-2: #e4e8ee;
+      --panel: rgba(255, 255, 255, 0.86);
+      --panel-solid: #ffffff;
+      --border: rgba(15, 23, 32, 0.12);
+      --border-strong: rgba(15, 23, 32, 0.20);
+      --text: #1a2129;
+      --muted: #566370;
+      --faint: #8592a0;
+      --accent: #0a6fb5;
+      --accent-2: #7a3fd6;
+      --green: #1f9d57;
+      --amber: #9a6b00;
+      --red: #c8362b;
+      --code-bg: rgba(15, 23, 32, 0.05);
+      --code-border: rgba(15, 23, 32, 0.10);
+      --chip: rgba(10, 111, 181, 0.10);
+      --shadow: 0 18px 50px rgba(20, 30, 45, 0.15);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, var(--bg-grad-1), transparent),
+      radial-gradient(900px 500px at 0% 110%, var(--bg-grad-2), transparent),
+      var(--bg);
+    color: var(--text);
+    line-height: 1.62;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    padding: 0 20px 100px;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+
+  code, pre, .mono { font-family: "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace; }
+
+  /* Header */
+  header.hero {
+    padding: 64px 0 30px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--chip);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    border-radius: 999px;
+    margin-bottom: 18px;
+    font-weight: 600;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 44px);
+    line-height: 1.1;
+    margin: 0 0 14px;
+    letter-spacing: -0.02em;
+    font-weight: 800;
+  }
+  h1 .grad {
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .lede { font-size: 18px; color: var(--muted); margin: 0; max-width: 68ch; }
+  .lede strong { color: var(--text); }
+
+  /* TL;DR card */
+  .tldr {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin: 30px 0 44px;
+    backdrop-filter: blur(8px);
+  }
+  .tldr h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+  .tldr p { margin: 0; color: var(--muted); }
+  .tldr code { color: var(--text); }
+
+  /* Sections */
+  section { margin: 0 0 54px; scroll-margin-top: 20px; }
+  h2.sec {
+    font-size: 24px;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  h2.sec .num {
+    font-size: 14px;
+    color: var(--accent);
+    background: var(--chip);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px 9px;
+    font-weight: 700;
+    flex: none;
+  }
+  .sec-sub { color: var(--faint); margin: 0 0 22px; font-size: 14.5px; }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  p { margin: 12px 0; }
+  .muted { color: var(--muted); }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; }
+  a:hover { border-bottom-color: var(--accent); }
+
+  /* file:line citation chips */
+  .cite {
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 12px;
+    color: var(--faint);
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 6px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 14px 0;
+  }
+  pre code { color: var(--text); }
+  .c-key { color: var(--accent); }
+  .c-str { color: var(--green); }
+  .c-num { color: var(--amber); }
+  .c-com { color: var(--faint); font-style: italic; }
+  .c-punc { color: var(--muted); }
+  p code, li code, td code {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 5px;
+    padding: 1px 5px;
+    font-size: 0.86em;
+    color: var(--text);
+  }
+
+  /* Callout boxes */
+  .callout {
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    border: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .callout .tag { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; display: block; margin-bottom: 6px; }
+  .callout.answer { border-left: 3px solid var(--green); }
+  .callout.answer .tag { color: var(--green); }
+  .callout.note { border-left: 3px solid var(--accent); }
+  .callout.note .tag { color: var(--accent); }
+  .callout.warn { border-left: 3px solid var(--amber); }
+  .callout.warn .tag { color: var(--amber); }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout p:first-of-type { margin-top: 0; }
+
+  /* The verbatim system prompt */
+  .prompt-box {
+    background: linear-gradient(160deg, rgba(92,200,255,0.06), rgba(185,140,255,0.06));
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 22px 24px;
+    margin: 16px 0;
+    font-size: 15px;
+    line-height: 1.66;
+  }
+  .prompt-box .plabel { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-2); font-weight: 700; display: block; margin-bottom: 10px; }
+  .prompt-box .ptext { font-style: italic; color: var(--text); }
+
+  /* Tables */
+  .table-scroll { overflow-x: auto; margin: 16px 0; border-radius: 10px; border: 1px solid var(--border); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 520px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th { background: var(--code-bg); color: var(--muted); font-weight: 600; font-size: 12.5px; letter-spacing: 0.03em; text-transform: uppercase; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.val { font-family: "SF Mono", Consolas, monospace; color: var(--accent); white-space: nowrap; }
+
+  /* Pipeline diagram */
+  .pipe-scroll { overflow-x: auto; padding: 6px 2px 14px; margin: 8px 0 6px; }
+  .pipe {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    min-width: 760px;
+  }
+  .stage {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 96px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 10px 12px;
+    text-align: center;
+    margin-right: 22px;
+  }
+  .stage:last-child { margin-right: 0; }
+  .stage::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: -22px;
+    width: 22px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    transform: translateY(-50%);
+  }
+  .stage:last-child::after { display: none; }
+  .stage .ico { font-size: 18px; display: block; margin-bottom: 4px; }
+  .stage .nm { font-size: 12.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .stage .dt { font-size: 11px; color: var(--faint); margin-top: 3px; line-height: 1.35; }
+  .stage .ev {
+    display: inline-block;
+    margin-top: 7px;
+    font-family: "SF Mono", Consolas, monospace;
+    font-size: 9.5px;
+    color: var(--accent);
+    background: var(--chip);
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+  .pipe-legend { font-size: 12.5px; color: var(--faint); text-align: center; margin-top: 4px; }
+  .pipe-legend code { color: var(--accent); }
+
+  /* Two-column request compare */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 16px 0; }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  .col h4 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .col h4 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot.anthropic { background: var(--accent-2); }
+  .dot.openai { background: var(--green); }
+  .col pre { margin-top: 0; }
+
+  ul.tight { margin: 12px 0; padding-left: 22px; }
+  ul.tight li { margin: 7px 0; }
+  ul.tight li::marker { color: var(--accent); }
+
+  hr.soft { border: none; border-top: 1px solid var(--border); margin: 34px 0; }
+
+  footer {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--faint);
+    font-size: 13px;
+  }
+  footer code { color: var(--muted); }
+
+  /* Where-the-code-lives map */
+  .filemap { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin: 16px 0; }
+  .filecard { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; }
+  .filecard .fn { font-family: "SF Mono", Consolas, monospace; font-size: 13px; color: var(--accent); font-weight: 600; }
+  .filecard .fd { font-size: 13px; color: var(--muted); margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">WikiLens · Developer Doc</span>
+    <h1>How the <span class="grad">AI answer</span> gets made</h1>
+    <p class="lede">A full technical walkthrough of the retrieval-augmented pipeline: from
+    the <strong>Shift+C</strong> hotkey to a streamed, wiki-grounded answer. Every constant,
+    the verbatim system prompt, and the exact request bodies — with <code class="mono">file:line</code>
+    citations throughout.</p>
+
+    <div class="tldr">
+      <h2>TL;DR</h2>
+      <p>A question is stripped to keywords and run through MediaWiki search; the
+      <strong>top 4 pages</strong> are fetched sequentially, rendered HTML → plaintext, and each
+      capped at <strong>8,000 chars</strong>. Those excerpts are pasted under a strict "answer only
+      from these" system prompt and streamed from the model at <strong>max&nbsp;1024 output tokens</strong>.
+      The model's text is <strong>never trimmed or post-processed</strong> — Rust and the frontend
+      both pass it through verbatim.</p>
+    </div>
+  </header>
+
+  <!-- ===================== DIAGRAM ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">Flow</span> The pipeline at a glance</h2>
+    <p class="sec-sub">Orchestrated end-to-end by <code>run_ask</code> <span class="cite">commands.rs:350</span>.
+    Data flow: <code>hotkey → prompt → ask → search → fetch → reduce → prompt → LLM stream → UI</code>.</p>
+
+    <div class="pipe-scroll">
+      <div class="pipe">
+        <div class="stage"><span class="ico">⌨️</span><span class="nm">Shift+C</span><span class="dt">overlay slides in</span></div>
+        <div class="stage"><span class="ico">✍️</span><span class="nm">Prompt</span><span class="dt">user types &amp; hits Enter</span></div>
+        <div class="stage"><span class="ico">🔎</span><span class="nm">Search</span><span class="dt">keywords → top 4 titles</span><span class="ev">searching</span></div>
+        <div class="stage"><span class="ico">📄</span><span class="nm">Fetch</span><span class="dt">≤4 pages · 12s each</span><span class="ev">reading</span></div>
+        <div class="stage"><span class="ico">✂️</span><span class="nm">Reduce</span><span class="dt">HTML→text · 8k/page</span></div>
+        <div class="stage"><span class="ico">🧩</span><span class="nm">Assemble</span><span class="dt">excerpts + question</span></div>
+        <div class="stage"><span class="ico">🤖</span><span class="nm">Stream</span><span class="dt">SSE from provider</span><span class="ev">answering</span></div>
+        <div class="stage"><span class="ico">🖥️</span><span class="nm">Render</span><span class="dt">markdown, live</span></div>
+      </div>
+    </div>
+    <p class="pipe-legend">Chips are <code>ask://status</code> events; answer text streams separately on <code>ask://delta</code>.
+    Every ask also runs an LLM query-rewrite concurrently and merges the hits; deterministic fallbacks (suggestion · keyword · title index) fire only if that comes up empty.</p>
+  </section>
+
+  <!-- ===================== STAGE 1 ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">1</span> Retrieval — searching the wiki</h2>
+    <p class="sec-sub">Yes — we fetch the <strong>first four pages</strong>. Here's exactly how they're chosen.</p>
+
+    <h3>Question → keywords</h3>
+    <p>The raw question never hits the search API. <code>preprocess_query</code>
+    <span class="cite">wiki/search.rs:24</span> splits on whitespace, trims non-alphanumeric
+    edges off each token, and drops ~68 conversational stopwords (case-insensitive; original
+    casing kept). If nothing survives, it falls back to the trimmed original — an empty
+    <code>srsearch</code> is never sent.</p>
+    <pre><code><span class="c-com">// "How do I make Abigail like me?"  →  "Abigail"</span>
+<span class="c-com">// "best crops for winter"          →  "crops winter"</span>
+<span class="c-com">// "Where is Krobus?"               →  "Krobus"</span></code></pre>
+
+    <h3>The search request</h3>
+    <p><code>search::search</code> <span class="cite">wiki/search.rs:54</span> issues a single
+    MediaWiki <code>list=search</code> GET. The page ceiling is a named constant:</p>
+    <pre><code><span class="c-com">/// Default number of pages to pull for a question. Kept small to bound tokens.</span>
+<span class="c-key">pub const</span> DEFAULT_SEARCH_LIMIT: u32 = <span class="c-num">4</span>;   <span class="c-com">// wiki/search.rs:7</span></code></pre>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Param</th><th>Value</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td class="val">action</td><td>query</td><td>—</td></tr>
+          <tr><td class="val">list</td><td>search</td><td>—</td></tr>
+          <tr><td class="val">srsearch</td><td>&lt;keywords&gt;</td><td>the preprocessed query</td></tr>
+          <tr><td class="val">srlimit</td><td>4</td><td>hard ceiling on pages that ever reach the model</td></tr>
+          <tr><td class="val">srwhat</td><td>text</td><td><strong>multi-word queries only</strong> — single words title-match better <span class="cite">search.rs:94</span></td></tr>
+          <tr><td class="val">srnamespace</td><td>e.g. 134</td><td>only when the wiki configures one (UESP/Skyrim) <span class="cite">search.rs:99</span></td></tr>
+          <tr><td class="val">format</td><td>json</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Titles come back in the wiki's own <strong>relevance order</strong> and are
+    <em>not</em> re-sorted <span class="cite">search.rs:107</span>.</p>
+
+    <h3>Eager query rewrite + merge</h3>
+    <p>Keyword search alone mis-fires on messy questions — a rambling "that profitable winter thing
+    you sell, i think it's wine" matches tangential pages ("Version History") instead of <em>Wine</em>.
+    So every ask runs <strong>two retrievals concurrently</strong> <span class="cite">commands.rs · futures_util::future::join</span>:</p>
+    <ul class="tight">
+      <li><strong>Raw keyword search</strong> — the preprocessed query (above).</li>
+      <li><strong>LLM query rewrite</strong> — a small, fast model turns the original question into wiki
+      search terms (<code>{"queries":["wine","preserves",…]}</code>) <span class="cite">llm::rewrite_query</span>.
+      It hits the model provider (a different host), so it overlaps the wiki search rather than adding latency.</li>
+    </ul>
+    <p>The top rewrite candidates are searched, then <code>merge_hits</code> combines everything —
+    <strong>consensus</strong> (pages found by both) first, then the rewrite's <strong>entity</strong> hits,
+    then the raw <strong>keyword</strong> hits, deduped to top 4. This lifts the real page to the front and
+    pushes junk out (that "wine" question now returns Wine · Wine Table · Preserves Jar). Off with
+    <code>WIKILENS_QUERY_REWRITE=0</code>.</p>
+    <div class="callout warn">
+      <span class="tag">The rewrite needs a fast, non-reasoning model</span>
+      <p>A <em>reasoning</em> model (e.g. DeepSeek v4) "thinks out loud" into a <code>reasoning_content</code>
+      field, leaves <code>content</code> empty, and takes ~13s — useless for this quick task. Pin the rewrite
+      to a fast model on any configured provider with <code>WIKILENS_REWRITE_PROVIDER</code> +
+      <code>WIKILENS_REWRITE_MODEL</code> (e.g. answer with DeepSeek, rewrite with Claude Haiku); both fall
+      back to the answer model <span class="cite">commands.rs</span>.</p>
+    </div>
+    <h3>Deterministic net (only if the merge is empty)</h3>
+    <p>If raw + rewrite both come up empty, cheap fallbacks fire in turn, each only while still empty
+    (MediaWiki etiquette): the wiki's own <code>searchinfo.suggestion</code> "did you mean"; a harsher
+    <code>simplify_query</code> keyword pass; then a <strong>local title index</strong> — Jaro-Winkler
+    (≥ 0.92) fuzzy-match of the query against the game's real page titles, fetched once per session via
+    <code>list=allpages</code> and cached in <code>AppState</code> <span class="cite">wiki/titles.rs</span>
+    (skipped for long queries; off with <code>WIKILENS_TITLE_INDEX=0</code>). Still empty → a canned
+    "I couldn't find anything…" answer <span class="cite">commands.rs</span>. <code>WIKILENS_TRACE_RETRIEVAL</code>
+    logs each round as JSON (the rewrite's candidates on a <code>wikilens.rewrite</code> line) for offline
+    eval scoring <span class="cite">commands.rs:trace_retrieval</span>.</p>
+  </section>
+
+  <!-- ===================== STAGE 2 ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">2</span> Fetch &amp; reduce — before any tokens go out</h2>
+    <p class="sec-sub">Turning ≤4 titles into bounded plaintext excerpts.</p>
+
+    <h3>One request per page, sequential</h3>
+    <p><code>fetch_pages</code> <span class="cite">wiki/fetch.rs:41</span> loops the titles
+    <strong>sequentially</strong> — MediaWiki etiquette, deliberately never parallelized — issuing
+    one <code>action=parse&amp;prop=text</code> call per page with a per-request timeout:</p>
+    <pre><code><span class="c-key">const</span> PARSE_TIMEOUT: Duration = Duration::from_secs(<span class="c-num">12</span>);  <span class="c-com">// wiki/fetch.rs:26</span>
+
+<span class="c-com">// query params, one page at a time (fetch.rs:82)</span>
+action=parse · page=&lt;title&gt; · prop=text · formatversion=2
+disableeditsection=1 · disablelimitreport=1 · redirects=1 · format=json</code></pre>
+
+    <h3>Rendered HTML → plaintext</h3>
+    <p>Each page's rendered HTML is reduced by <code>wiki::html::to_plaintext</code>
+    <span class="cite">wiki/html.rs:48</span>, a streaming tag scanner (not a DOM parser):</p>
+    <ul class="tight">
+      <li><strong>Drops</strong> <code>script</code>/<code>style</code>/<code>svg</code>, TOC, navboxes, edit-section links, print/category cruft.</li>
+      <li><strong>Keeps table data</strong> as <code>label | value</code> pipe rows, and Fandom infobox fields as <code>Label: Value</code> — structure the raw wikitext can't provide (it's template/Lua-generated server-side).</li>
+      <li>Decodes HTML entities and collapses whitespace, dropping empty/separator-only lines.</li>
+    </ul>
+
+    <h3>The one hard size cap</h3>
+    <pre><code><span class="c-com">/// Per-page character cap. Bounds LLM token cost; overflow is marked truncated.</span>
+<span class="c-key">pub const</span> MAX_PAGE_CHARS: usize = <span class="c-num">8_000</span>;   <span class="c-com">// wiki/fetch.rs:21</span></code></pre>
+    <p><code>truncate_text</code> <span class="cite">fetch.rs:226</span> cuts on a char boundary and
+    appends a literal <code>…[truncated]</code> marker.</p>
+    <div class="callout note">
+      <span class="tag">No combined-corpus cap</span>
+      <p>The only limits are <strong>4 pages</strong> × <strong>8,000 chars</strong>, so the wiki
+      context handed to the model is bounded at roughly <strong>32,000 characters</strong> worst case.
+      There is no additional trim on the assembled string. (<code>max_tokens</code> is an
+      <em>output</em> cap, not an input one.)</p>
+    </div>
+
+    <h3>Fallback path</h3>
+    <p>Any page whose parse call errors or times out is collected and retried in a single
+    <strong>batched</strong> <code>prop=revisions</code> request <span class="cite">fetch.rs:133</span>,
+    cleaned by <code>wiki::wikitext::to_plaintext</code> (prose only — tables/templates stripped).
+    Results are then re-ordered back to search-relevance rank. If everything reduces to nothing,
+    a "found pages but couldn't read them" answer is returned <span class="cite">commands.rs:423</span>.</p>
+  </section>
+
+  <!-- ===================== STAGE 3 ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">3</span> Assembly — building the prompt</h2>
+    <p class="sec-sub">How the excerpts and the question become one user message.</p>
+
+    <p><code>build_user_message</code> <span class="cite">llm.rs:262</span> concatenates each page as a
+    Markdown block, in relevance order, then appends the question on the final line:</p>
+    <pre><code><span class="c-punc">## </span>Winter
+Cold season.
+
+<span class="c-punc">## </span>Crops
+Grow food.
+
+Player question: best winter crops?</code></pre>
+
+    <div class="callout note">
+      <span class="tag">Two things worth knowing</span>
+      <p><strong>Source URLs are not sent to the model.</strong> Only each page's
+      <code>title</code> and <code>text</code> go into the prompt; the <code>url</code> is used
+      solely to build the UI's clickable source list afterward.</p>
+      <p><strong>The model gets the original question</strong> (whitespace-trimmed), <em>not</em> the
+      keyword-stripped search query — so it reads the player's full intent
+      <span class="cite">commands.rs:395</span>.</p>
+    </div>
+  </section>
+
+  <!-- ===================== STAGE 4 ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">4</span> Send — the request to the model</h2>
+    <p class="sec-sub">The grounding guardrail and the two wire protocols.</p>
+
+    <div class="prompt-box">
+      <span class="plabel">Verbatim system prompt · llm.rs:23</span>
+      <span class="ptext">You are a game-wiki assistant embedded in an in-game overlay. Answer the
+      player's question using ONLY the wiki excerpts provided below. If the excerpts do not
+      contain the answer, say so plainly and suggest what to search instead. Be concise and
+      practical — the player is mid-game. Use short markdown: bold key items, small lists when
+      comparing options. Do not mention that you were given excerpts; just answer. Wiki excerpts
+      follow, each with its page title.</span>
+    </div>
+    <p class="muted">A separate <code>SCREENSHOT_ADDENDUM</code> <span class="cite">llm.rs:29</span> is
+    appended <em>only</em> when the player attaches a screenshot — so every text-only ask sends the
+    byte-identical prompt it always has. Notice there's <strong>no "cite your sources" instruction</strong>:
+    sources are attached Rust-side from the fetched pages, not parsed out of the answer.</p>
+
+    <h3>Request shape</h3>
+    <p><code>answer_streaming</code> <span class="cite">llm.rs:49</span> branches on
+    <code>ProviderKind</code>. Both set <code>max_tokens: 1024</code> <span class="cite">llm.rs:19</span>
+    and <code>stream: true</code>; <strong>temperature is never set</strong> (provider default).</p>
+
+    <div class="cols">
+      <div class="col">
+        <h4><span class="dot anthropic"></span>Anthropic native <span class="cite">llm.rs:130</span></h4>
+        <pre><code><span class="c-com">POST https://api.anthropic.com/v1/messages</span>
+<span class="c-key">x-api-key</span>: &lt;ANTHROPIC_API_KEY&gt;
+<span class="c-key">anthropic-version</span>: 2023-06-01
+
+<span class="c-punc">{</span>
+  <span class="c-key">"model"</span>: <span class="c-str">"claude-…"</span>,
+  <span class="c-key">"max_tokens"</span>: <span class="c-num">1024</span>,
+  <span class="c-key">"stream"</span>: <span class="c-num">true</span>,
+  <span class="c-key">"system"</span>: <span class="c-str">"&lt;SYSTEM_PROMPT&gt;"</span>,
+  <span class="c-key">"messages"</span>: <span class="c-punc">[</span>
+    <span class="c-punc">{</span> <span class="c-key">"role"</span>: <span class="c-str">"user"</span>,
+      <span class="c-key">"content"</span>: <span class="c-str">"&lt;excerpts + question&gt;"</span> <span class="c-punc">}</span>
+  <span class="c-punc">]</span>
+<span class="c-punc">}</span></code></pre>
+        <p class="muted" style="font-size:13px;">System prompt is a <strong>top-level field</strong>.</p>
+      </div>
+      <div class="col">
+        <h4><span class="dot openai"></span>OpenAI-compatible <span class="cite">llm.rs:158</span></h4>
+        <pre><code><span class="c-com">POST …/chat/completions</span>  <span class="c-com">// DeepSeek / OpenRouter</span>
+<span class="c-key">Authorization</span>: Bearer &lt;API_KEY&gt;
+<span class="c-com"># OpenRouter also: HTTP-Referer, X-Title</span>
+
+<span class="c-punc">{</span>
+  <span class="c-key">"model"</span>: <span class="c-str">"…"</span>,
+  <span class="c-key">"max_tokens"</span>: <span class="c-num">1024</span>,
+  <span class="c-key">"stream"</span>: <span class="c-num">true</span>,
+  <span class="c-key">"messages"</span>: <span class="c-punc">[</span>
+    <span class="c-punc">{</span> <span class="c-key">"role"</span>: <span class="c-str">"system"</span>,
+      <span class="c-key">"content"</span>: <span class="c-str">"&lt;SYSTEM_PROMPT&gt;"</span> <span class="c-punc">}</span>,
+    <span class="c-punc">{</span> <span class="c-key">"role"</span>: <span class="c-str">"user"</span>,
+      <span class="c-key">"content"</span>: <span class="c-str">"&lt;excerpts + question&gt;"</span> <span class="c-punc">}</span>
+  <span class="c-punc">]</span>
+<span class="c-punc">}</span></code></pre>
+        <p class="muted" style="font-size:13px;">System prompt is a <strong>role message</strong>.</p>
+      </div>
+    </div>
+    <p class="muted">When a screenshot is attached, <code>content</code> becomes an array with the
+    image <em>first</em> (Anthropic base64 <code>image</code> block; OpenAI-compatible
+    <code>image_url</code> data-URI), then the text <span class="cite">llm.rs:232</span>.</p>
+  </section>
+
+  <!-- ===================== STAGE 5 ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">5</span> Stream, render — and no trimming</h2>
+    <p class="sec-sub">How chunks flow back to the panel, byte for byte.</p>
+
+    <h3>SSE parsing</h3>
+    <p>A single byte-buffered loop <span class="cite">llm.rs:97</span> drains whole lines and
+    classifies each via the <code>SseLine</code> enum <span class="cite">llm.rs:35</span> —
+    <code>Delta</code> / <code>Done</code> / <code>Ignore</code> / <code>Error</code>. It gracefully
+    skips <code>[DONE]</code>, SSE comment/keep-alive lines, role-only and null-content chunks, and
+    surfaces a mid-stream error that arrives on an already-200 body. Each text delta is emitted to
+    the frontend on <code>ask://delta</code> and appended to the running answer:</p>
+    <pre><code><span class="c-key">SseLine</span>::Delta(delta) => <span class="c-punc">{</span>
+    on_delta(&amp;delta);            <span class="c-com">// → emit("ask://delta", …)  commands.rs:441</span>
+    answer.push_str(&amp;delta);     <span class="c-com">// raw append, no processing   llm.rs:107</span>
+<span class="c-punc">}</span></code></pre>
+
+    <h3>Frontend accumulation &amp; render</h3>
+    <pre><code><span class="c-com">// App.tsx:233 — pure concatenation, no separator, no normalization</span>
+onAskDelta((chunk) => setAnswer((prev) => prev + chunk));
+
+<span class="c-com">// App.tsx:360 — final result assigned as-is when ask() resolves</span>
+setAnswer(result.answer);</code></pre>
+    <p>The accumulated string is rendered by <code>AnswerView</code> through react-markdown with a
+    single override that forces links to open in the system browser. No <code>rehype-raw</code> is
+    configured, so raw HTML in the model's output is never rendered — safe by default.</p>
+
+    <div class="callout answer">
+      <span class="tag">Do we trim the AI response? — No, nowhere.</span>
+      <p>Neither Rust nor the frontend trims, truncates, caps, or post-processes the answer text.
+      Deltas are appended raw <span class="cite">llm.rs:107</span> and returned as-is
+      <span class="cite">llm.rs:126</span>; the frontend concatenates verbatim
+      <span class="cite">App.tsx:233</span> and renders untouched. The <em>only</em> caps in the
+      whole path are <code>max_tokens: 1024</code> (an output-generation cap the provider enforces)
+      and a <code>.trim()</code> on the <strong>input</strong> question <span class="cite">commands.rs:361</span>.</p>
+    </div>
+
+    <h3>What comes back</h3>
+    <p><code>run_ask</code> returns <code>AskResult { answer, sources }</code>
+    <span class="cite">commands.rs:60,460</span>. <code>sources</code> is built by mapping over the
+    <em>same</em> fetched pages — every retrieved page becomes a <code>{ title, url }</code> source,
+    regardless of whether the model actually cited it. On success the attached screenshot (if any)
+    is cleared; any earlier failure keeps it for a retry.</p>
+  </section>
+
+  <hr class="soft">
+
+  <!-- ===================== CONSTANTS ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">Ref</span> Constants that shape the answer</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>What</th><th>Value</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Pages retrieved per ask</td><td class="val">4</td><td><code>DEFAULT_SEARCH_LIMIT</code> · search.rs:7</td></tr>
+          <tr><td>Per-page character cap</td><td class="val">8,000</td><td><code>MAX_PAGE_CHARS</code> · fetch.rs:21</td></tr>
+          <tr><td>Wiki corpus, worst case</td><td class="val">≈ 32,000</td><td>4 × 8,000 (no combined cap)</td></tr>
+          <tr><td>Per-page fetch timeout</td><td class="val">12 s</td><td><code>PARSE_TIMEOUT</code> · fetch.rs:26</td></tr>
+          <tr><td>Model output cap</td><td class="val">1,024 tok</td><td><code>MAX_TOKENS</code> · llm.rs:19</td></tr>
+          <tr><td>Temperature</td><td class="val">unset</td><td>provider default (llm.rs:139,167)</td></tr>
+          <tr><td>Query rewrite</td><td class="val">eager + merge</td><td>fast model via <code>WIKILENS_REWRITE_PROVIDER/MODEL</code> · commands.rs</td></tr>
+          <tr><td>Empty-merge fallbacks</td><td class="val">3</td><td>suggestion · keyword · title-index · commands.rs</td></tr>
+          <tr><td>Concurrent asks</td><td class="val">1</td><td><code>AskGuard</code> · commands.rs:320</td></tr>
+          <tr><td>Page cache</td><td class="val">none</td><td>every ask is a live round-trip</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== FILE MAP ===================== -->
+  <section>
+    <h2 class="sec"><span class="num">Map</span> Where the code lives</h2>
+    <div class="filemap">
+      <div class="filecard"><div class="fn">commands.rs · run_ask</div><div class="fd">The orchestrator: resolves game/provider/key/model, emits status, drives search → fetch → stream, returns <code>AskResult</code>.</div></div>
+      <div class="filecard"><div class="fn">wiki/search.rs</div><div class="fd">Keyword preprocessing, <code>list=search</code> params, the <code>srwhat</code>/namespace rules, zero-hit simplify.</div></div>
+      <div class="filecard"><div class="fn">wiki/fetch.rs</div><div class="fd">Sequential per-page <code>action=parse</code>, 12s timeout, 8k truncation, batched wikitext fallback.</div></div>
+      <div class="filecard"><div class="fn">wiki/html.rs</div><div class="fd">Rendered HTML → plaintext; keeps <code>label | value</code> tables and infobox rows.</div></div>
+      <div class="filecard"><div class="fn">llm.rs</div><div class="fd">System prompt, prompt assembly, both request builders, the byte-buffered SSE loop and per-provider parsers.</div></div>
+      <div class="filecard"><div class="fn">providers.rs</div><div class="fd">Provider registry: endpoints, <code>ProviderKind</code>, auth headers, curated fallbacks.</div></div>
+      <div class="filecard"><div class="fn">App.tsx</div><div class="fd">Fires <code>ask()</code>, subscribes to <code>ask://*</code> events, accumulates deltas, shows status labels.</div></div>
+      <div class="filecard"><div class="fn">components/AnswerView.tsx</div><div class="fd">react-markdown render with external-link override; no raw-HTML plugin.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>WikiLens — Tauri v2 (Rust) + Vite/React/TypeScript. All paths relative to <code>src-tauri/src/</code>
+    (Rust) and <code>src/</code> (frontend). Line numbers reflect the source at the time of writing; if a
+    constant moved, search for its name — the names are stable.</p>
+  </footer>
+
+</div>
+</body>
+</html>
