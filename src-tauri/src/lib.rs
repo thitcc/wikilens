@@ -5,6 +5,7 @@
 
 mod capture;
 mod commands;
+mod debug;
 mod error;
 mod hotkey;
 mod llm;

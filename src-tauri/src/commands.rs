@@ -7,6 +7,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::capture::{self, CropRect};
+use crate::debug::DebugReport;
 use crate::error::AppError;
 use crate::models::{self, ModelInfo, ModelSource};
 use crate::state::AppState;
@@ -406,6 +407,19 @@ async fn run_ask(
     // The wiki search gets a keyword-stripped query; the LLM still receives the
     // original question below.
     let query = search::preprocess_query(question);
+    // WIKILENS_DEBUG collector — filled below, prints itself on every exit path
+    // (including `?` errors) via Drop. Created only now because the header rows
+    // need the resolved models; the pre-flight failures above print no table.
+    let mut report = DebugReport::new(
+        &wiki.name,
+        game_id,
+        question,
+        &query,
+        provider.id,
+        &model,
+        rewrite_provider.id,
+        &rewrite_model,
+    );
     let search_start = std::time::Instant::now();
     let tracing = std::env::var_os("WIKILENS_TRACE_RETRIEVAL").is_some();
     let rewrite_on = stage_enabled("WIKILENS_QUERY_REWRITE");
@@ -415,11 +429,22 @@ async fn run_ask(
     // so it overlaps the wiki search instead of adding latency. Eager (every query)
     // because the search often returns wrong-but-nonzero pages a zero-hit-only rewrite
     // would never reach. The rewrite yields no candidates on any failure (graceful).
-    let raw_fut = search::search_full(&state.http, &wiki, &query, search::DEFAULT_SEARCH_LIMIT);
+    // Each future times itself and returns data (never touches `report` — two
+    // concurrent futures can't share a `&mut`); the phase rows are recorded
+    // after the join. The rewrite future's extra fields: usage is `Some` iff
+    // the request was actually sent, elapsed is `None` when the stage was
+    // disabled, and the last field carries an error message when the call failed.
+    let raw_fut = async {
+        let timer = std::time::Instant::now();
+        let result =
+            search::search_full(&state.http, &wiki, &query, search::DEFAULT_SEARCH_LIMIT).await;
+        (result, timer.elapsed())
+    };
     let rewrite_fut = async {
         if !rewrite_on {
-            return Vec::new();
+            return (Vec::new(), None, None, None);
         }
+        let timer = std::time::Instant::now();
         match llm::rewrite_query(
             &state.http,
             rewrite_provider,
@@ -430,28 +455,61 @@ async fn run_ask(
         )
         .await
         {
-            Ok(candidates) => {
+            Ok(outcome) => {
                 if tracing {
-                    eprintln!("wikilens.rewrite candidates={candidates:?}");
+                    eprintln!("wikilens.rewrite candidates={:?}", outcome.queries);
                 }
-                candidates
+                (
+                    outcome.queries,
+                    Some(outcome.usage),
+                    Some(timer.elapsed()),
+                    None,
+                )
             }
             Err(e) => {
                 if tracing {
                     eprintln!("wikilens.rewrite error={e}");
                 }
-                Vec::new()
+                (
+                    Vec::new(),
+                    Some(llm::TokenUsage::default()),
+                    Some(timer.elapsed()),
+                    Some(e.to_string()),
+                )
             }
         }
     };
-    let (raw_result, rewrite_candidates) =
+    let ((raw_result, raw_elapsed), (rewrite_candidates, rewrite_usage, rewrite_elapsed, rewrite_error)) =
         futures_util::future::join(raw_fut, rewrite_fut).await;
+
+    match rewrite_elapsed {
+        Some(elapsed) => {
+            let detail = match &rewrite_error {
+                Some(e) => format!("error: {}", truncate_detail(e)),
+                None => format!("{} candidates", rewrite_candidates.len()),
+            };
+            report.phase("rewrite", elapsed, detail);
+        }
+        None => report.phase_skipped("rewrite", "disabled (WIKILENS_QUERY_REWRITE)"),
+    }
+    if let Some(usage) = rewrite_usage {
+        report.set_rewrite_usage(usage);
+    }
+    report.set_candidates(&rewrite_candidates);
+    // Recorded before the `?` so a raw-search failure still shows its row.
+    let raw_detail = match &raw_result {
+        Ok((titles, _)) => format!("{} hits", titles.len()),
+        Err(e) => format!("error: {}", truncate_detail(&e.to_string())),
+    };
+    report.phase("raw search", raw_elapsed, raw_detail);
     let (raw_titles, suggestion) = raw_result?;
 
     // Search the top rewrite candidates (sequential, bounded) and merge with the raw
     // hits: consensus (in both) first, then entity hits, then keyword hits.
     let mut retries: Vec<(&str, String)> = Vec::new();
     let mut rewrite_hits: Vec<String> = Vec::new();
+    let cand_timer = std::time::Instant::now();
+    let cand_count = rewrite_candidates.len().min(REWRITE_SEARCH_LIMIT);
     for rq in rewrite_candidates.iter().take(REWRITE_SEARCH_LIMIT) {
         let hits = search::search(&state.http, &wiki, rq, search::DEFAULT_SEARCH_LIMIT)
             .await
@@ -460,6 +518,13 @@ async fn run_ask(
             retries.push(("rewrite", rq.clone()));
         }
         rewrite_hits.extend(hits);
+    }
+    if cand_count > 0 {
+        report.phase(
+            "cand search",
+            cand_timer.elapsed(),
+            format!("{cand_count} queries -> {} hits", rewrite_hits.len()),
+        );
     }
     let mut titles = merge_hits(&raw_titles, &rewrite_hits, search::DEFAULT_SEARCH_LIMIT as usize);
 
@@ -470,7 +535,10 @@ async fn run_ask(
         let sugg = suggestion.as_deref().unwrap_or("");
         if !sugg.is_empty() && sugg != query.as_str() {
             let _ = app.emit("ask://status", "retrying");
-            titles = search::search(&state.http, &wiki, sugg, search::DEFAULT_SEARCH_LIMIT).await?;
+            let timer = std::time::Instant::now();
+            let result = search::search(&state.http, &wiki, sugg, search::DEFAULT_SEARCH_LIMIT).await;
+            report.phase("retry:suggestion", timer.elapsed(), retry_detail(sugg, &result));
+            titles = result?;
             retries.push(("suggestion", sugg.to_string()));
         }
     }
@@ -478,9 +546,12 @@ async fn run_ask(
         let simplified = search::simplify_query(question);
         if !simplified.is_empty() && simplified != query {
             let _ = app.emit("ask://status", "retrying");
-            titles =
+            let timer = std::time::Instant::now();
+            let result =
                 search::search(&state.http, &wiki, &simplified, search::DEFAULT_SEARCH_LIMIT)
-                    .await?;
+                    .await;
+            report.phase("retry:simplify", timer.elapsed(), retry_detail(&simplified, &result));
+            titles = result?;
             retries.push(("simplify", simplified));
         }
     }
@@ -496,14 +567,26 @@ async fn run_ask(
         // Emit before the (possibly multi-second, first-time-per-session) fetch so
         // the UI isn't stalled on a stale status.
         let _ = app.emit("ask://status", "retrying");
-        if let Some(index) = titles::get_or_fetch(&state.title_cache, &state.http, &wiki).await {
-            match index.best_match(&query) {
+        let timer = std::time::Instant::now();
+        match titles::get_or_fetch(&state.title_cache, &state.http, &wiki).await {
+            Some(index) => match index.best_match(&query) {
                 Some(matched) => {
+                    report.phase(
+                        "retry:title-index",
+                        timer.elapsed(),
+                        format!("\"{matched}\" -> 1 hit"),
+                    );
                     retries.push(("title-index", matched.clone()));
                     titles = vec![matched];
                 }
                 // Record the fired-but-missed round too (trace fidelity).
-                None => retries.push(("title-index", "(no match)".to_string())),
+                None => {
+                    report.phase("retry:title-index", timer.elapsed(), "(no match)".to_string());
+                    retries.push(("title-index", "(no match)".to_string()));
+                }
+            },
+            None => {
+                report.phase("retry:title-index", timer.elapsed(), "index unavailable".to_string());
             }
         }
     }
@@ -515,6 +598,7 @@ async fn run_ask(
     trace_retrieval(&wiki, question, &query, &retries, &titles, search_start.elapsed());
 
     if titles.is_empty() {
+        report.finish("no results");
         return Ok(AskResult {
             answer: format!(
                 "I couldn't find anything on the {} wiki for that. Try rephrasing with different keywords.",
@@ -525,8 +609,33 @@ async fn run_ask(
     }
 
     let _ = app.emit("ask://status", "reading");
-    let pages = fetch::fetch_pages(&state.http, &wiki, &titles).await?;
+    let fetch_timer = std::time::Instant::now();
+    let pages_result = fetch::fetch_pages(&state.http, &wiki, &titles).await;
+    // Recorded before the `?` so a fetch failure still shows its row. The table
+    // gets titles and char counts only — never the page text.
+    match &pages_result {
+        Ok(pages) => {
+            let sizes: Vec<(String, usize)> = pages
+                .iter()
+                .map(|p| (p.title.clone(), p.text.chars().count()))
+                .collect();
+            let total: usize = sizes.iter().map(|(_, chars)| chars).sum();
+            report.phase(
+                "fetch",
+                fetch_timer.elapsed(),
+                format!("{} pages, {total} chars", sizes.len()),
+            );
+            report.set_pages(sizes);
+        }
+        Err(e) => report.phase(
+            "fetch",
+            fetch_timer.elapsed(),
+            format!("error: {}", truncate_detail(&e.to_string())),
+        ),
+    }
+    let pages = pages_result?;
     if pages.is_empty() {
+        report.finish("pages unreadable");
         return Ok(AskResult {
             answer: "I found matching pages but couldn't read their contents. Please try again."
                 .to_string(),
@@ -536,7 +645,8 @@ async fn run_ask(
 
     let _ = app.emit("ask://status", "answering");
     let delta_app = app.clone();
-    let answer = llm::answer_streaming(
+    let answer_timer = std::time::Instant::now();
+    let streamed = llm::answer_streaming(
         &state.http,
         provider,
         &model,
@@ -548,7 +658,19 @@ async fn run_ask(
             let _ = delta_app.emit("ask://delta", delta);
         },
     )
-    .await?;
+    .await;
+    let answer_detail = match &streamed {
+        Ok(s) => match s.ttft {
+            Some(ttft) => format!("first token {} ms", ttft.as_millis()),
+            None => "no first token".to_string(),
+        },
+        Err(e) => format!("error: {}", truncate_detail(&e.to_string())),
+    };
+    report.phase("answer", answer_timer.elapsed(), answer_detail);
+    let streamed = streamed?;
+    report.set_answer_usage(streamed.usage);
+    report.finish("answered");
+    let answer = streamed.text;
 
     // The model answered — consume the attachment (clears-on-success). Every
     // earlier `?`/return keeps it, so a failed or empty ask leaves the shot
@@ -669,6 +791,27 @@ mod merge_tests {
         assert_eq!(merge_hits(&raw, &[], 4), vec!["A".to_string()]);
         assert_eq!(merge_hits(&[], &raw, 4), vec!["A".to_string()]);
         assert!(merge_hits(&[], &[], 4).is_empty());
+    }
+}
+
+/// Detail cell for a retry-ladder row in the debug table: the retried query and
+/// its hit count, or the (capped) error when the retry search itself failed.
+fn retry_detail(retry_query: &str, result: &Result<Vec<String>, AppError>) -> String {
+    match result {
+        Ok(hits) => format!("\"{retry_query}\" -> {} hits", hits.len()),
+        Err(e) => format!("error: {}", truncate_detail(&e.to_string())),
+    }
+}
+
+/// Cap an error string for a debug-table detail cell — LLM/wiki error bodies
+/// can be whole JSON documents.
+fn truncate_detail(s: &str) -> String {
+    const MAX_DETAIL_CHARS: usize = 120;
+    if s.chars().count() <= MAX_DETAIL_CHARS {
+        s.to_string()
+    } else {
+        let capped: String = s.chars().take(MAX_DETAIL_CHARS).collect();
+        format!("{capped}…")
     }
 }
 

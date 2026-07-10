@@ -110,6 +110,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   OpenAI-compatible, shared by DeepSeek/OpenRouter). `llm.rs` and `models.rs`
   branch request-build + parsing on it.
 - Concurrency: `ask` rejects if one is already running (`AppState::ask_in_progress`).
+- **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
+  phase timings, models, token counts, queries, page titles + char counts;
+  never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
+  exits still report). Independent of `WIKILENS_TRACE_RETRIEVAL`.
 
 ## 5. Gotchas
 
