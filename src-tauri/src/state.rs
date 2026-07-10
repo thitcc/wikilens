@@ -2,10 +2,11 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::capture::{Attachment, PendingShot};
 use crate::models::ModelInfo;
+use crate::wiki::titles::TitleIndex;
 
 /// Global app state. A single `reqwest::Client` is reused for every wiki and
 /// LLM request (connection pooling + the shared wiki User-Agent), and a flag
@@ -27,6 +28,11 @@ pub struct AppState {
     /// The one screenshot currently attached to the prompt, if any. Consumed
     /// by a successful `ask`, replaced by a new capture, or dropped on clear.
     pub attachment: Mutex<Option<Attachment>>,
+    /// Per-session title index per game, for the zero-hit fuzzy-match recovery
+    /// (`wiki::titles`). Populated lazily on first zero-hit for a game and reused
+    /// for the rest of the session. Same never-held-across-await discipline as
+    /// `models_cache`.
+    pub title_cache: Mutex<HashMap<String, Arc<TitleIndex>>>,
 }
 
 impl AppState {
@@ -44,6 +50,7 @@ impl AppState {
             models_cache: Mutex::new(HashMap::new()),
             pending_shot: Mutex::new(None),
             attachment: Mutex::new(None),
+            title_cache: Mutex::new(HashMap::new()),
         }
     }
 }

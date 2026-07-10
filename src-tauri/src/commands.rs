@@ -12,7 +12,7 @@ use crate::models::{self, ModelInfo, ModelSource};
 use crate::state::AppState;
 use crate::wiki::games::GameWiki;
 use crate::wiki::user::UserWikiStore;
-use crate::wiki::{fetch, games, probe, search};
+use crate::wiki::{fetch, games, probe, search, titles};
 use crate::{llm, providers, window};
 
 /// A supported game, as sent to the frontend game picker.
@@ -390,24 +390,130 @@ async fn run_ask(
         env_var: provider.api_key_env,
     })?;
     let model = effective_model(model, provider.model());
+    // The query rewrite is a lightweight utility task that wants a *fast,
+    // non-reasoning* model. A whole provider can be reasoning-only (DeepSeek v4
+    // flash and pro both reason), so allow pinning the rewrite to a model on any
+    // configured provider: `WIKILENS_REWRITE_PROVIDER` (+ its key) and
+    // `WIKILENS_REWRITE_MODEL`. Both optional; each falls back to the answer
+    // provider/model. Not validated here — the provider is the authoritative validator.
+    let rewrite_model = env_nonempty("WIKILENS_REWRITE_MODEL").unwrap_or_else(|| model.clone());
+    let (rewrite_provider, rewrite_key) = env_nonempty("WIKILENS_REWRITE_PROVIDER")
+        .and_then(|pid| providers::find_provider(&pid))
+        .and_then(|p| p.api_key().map(|k| (p, k)))
+        .unwrap_or_else(|| (provider, api_key.clone()));
 
     let _ = app.emit("ask://status", "searching");
     // The wiki search gets a keyword-stripped query; the LLM still receives the
     // original question below.
     let query = search::preprocess_query(question);
-    let mut titles =
-        search::search(&state.http, &wiki, &query, search::DEFAULT_SEARCH_LIMIT).await?;
+    let search_start = std::time::Instant::now();
+    let tracing = std::env::var_os("WIKILENS_TRACE_RETRIEVAL").is_some();
+    let rewrite_on = stage_enabled("WIKILENS_QUERY_REWRITE");
+
+    // Eager query understanding: run the raw keyword search and an LLM rewrite of the
+    // question *concurrently*. The rewrite hits the model provider — a different host —
+    // so it overlaps the wiki search instead of adding latency. Eager (every query)
+    // because the search often returns wrong-but-nonzero pages a zero-hit-only rewrite
+    // would never reach. The rewrite yields no candidates on any failure (graceful).
+    let raw_fut = search::search_full(&state.http, &wiki, &query, search::DEFAULT_SEARCH_LIMIT);
+    let rewrite_fut = async {
+        if !rewrite_on {
+            return Vec::new();
+        }
+        match llm::rewrite_query(
+            &state.http,
+            rewrite_provider,
+            &rewrite_model,
+            &rewrite_key,
+            &wiki.name,
+            question,
+        )
+        .await
+        {
+            Ok(candidates) => {
+                if tracing {
+                    eprintln!("wikilens.rewrite candidates={candidates:?}");
+                }
+                candidates
+            }
+            Err(e) => {
+                if tracing {
+                    eprintln!("wikilens.rewrite error={e}");
+                }
+                Vec::new()
+            }
+        }
+    };
+    let (raw_result, rewrite_candidates) =
+        futures_util::future::join(raw_fut, rewrite_fut).await;
+    let (raw_titles, suggestion) = raw_result?;
+
+    // Search the top rewrite candidates (sequential, bounded) and merge with the raw
+    // hits: consensus (in both) first, then entity hits, then keyword hits.
+    let mut retries: Vec<(&str, String)> = Vec::new();
+    let mut rewrite_hits: Vec<String> = Vec::new();
+    for rq in rewrite_candidates.iter().take(REWRITE_SEARCH_LIMIT) {
+        let hits = search::search(&state.http, &wiki, rq, search::DEFAULT_SEARCH_LIMIT)
+            .await
+            .unwrap_or_default();
+        if !hits.is_empty() {
+            retries.push(("rewrite", rq.clone()));
+        }
+        rewrite_hits.extend(hits);
+    }
+    let mut titles = merge_hits(&raw_titles, &rewrite_hits, search::DEFAULT_SEARCH_LIMIT as usize);
+
+    // Deterministic net — only when raw + rewrite both came up empty. Cheapest first,
+    // each firing only while still empty (MediaWiki etiquette): the wiki's own "did
+    // you mean" suggestion, a harsher keyword pass, then the local title index.
     if titles.is_empty() {
-        // One bounded retry with a harsher keyword pass — a single extra request,
-        // only on the zero-hit path (MediaWiki etiquette).
+        let sugg = suggestion.as_deref().unwrap_or("");
+        if !sugg.is_empty() && sugg != query.as_str() {
+            let _ = app.emit("ask://status", "retrying");
+            titles = search::search(&state.http, &wiki, sugg, search::DEFAULT_SEARCH_LIMIT).await?;
+            retries.push(("suggestion", sugg.to_string()));
+        }
+    }
+    if titles.is_empty() {
         let simplified = search::simplify_query(question);
         if !simplified.is_empty() && simplified != query {
             let _ = app.emit("ask://status", "retrying");
             titles =
                 search::search(&state.http, &wiki, &simplified, search::DEFAULT_SEARCH_LIMIT)
                     .await?;
+            retries.push(("simplify", simplified));
         }
     }
+    // Deterministic typo→title fallback: fuzzy-match the query against the game's real
+    // page titles (fetched once per session), no model call, can't hallucinate. Off
+    // with `WIKILENS_TITLE_INDEX=0`. Skipped for long queries — `best_match` compares
+    // the whole query to whole titles, so a many-word question can never match a short
+    // title (the length guard rejects it); fetching titles for it would just stall.
+    if titles.is_empty()
+        && stage_enabled("WIKILENS_TITLE_INDEX")
+        && query.split_whitespace().count() <= TITLE_INDEX_MAX_WORDS
+    {
+        // Emit before the (possibly multi-second, first-time-per-session) fetch so
+        // the UI isn't stalled on a stale status.
+        let _ = app.emit("ask://status", "retrying");
+        if let Some(index) = titles::get_or_fetch(&state.title_cache, &state.http, &wiki).await {
+            match index.best_match(&query) {
+                Some(matched) => {
+                    retries.push(("title-index", matched.clone()));
+                    titles = vec![matched];
+                }
+                // Record the fired-but-missed round too (trace fidelity).
+                None => retries.push(("title-index", "(no match)".to_string())),
+            }
+        }
+    }
+
+    // Opt-in retrieval trace for offline eval scoring (Phase 2 of the
+    // retrieval-quality plan). Off unless `WIKILENS_TRACE_RETRIEVAL` is set; records
+    // each rewrite candidate / recovery stage that contributed (the eager rewrite's
+    // full candidate list prints on the separate `wikilens.rewrite` line).
+    trace_retrieval(&wiki, question, &query, &retries, &titles, search_start.elapsed());
+
     if titles.is_empty() {
         return Ok(AskResult {
             answer: format!(
@@ -472,6 +578,152 @@ fn effective_model(requested: &str, fallback: String) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// How many of the rewrite's candidate queries to actually search per ask. Bounds
+/// the extra wiki round-trips the eager rewrite adds (each ~0.5s, sequential).
+const REWRITE_SEARCH_LIMIT: usize = 2;
+
+/// Max preprocessed-query word count for the title-index fallback to bother
+/// fetching. `best_match` scores whole-query-vs-whole-title, so a longer query
+/// can't match a short entity title anyway — skip the (multi-second) allpages walk.
+const TITLE_INDEX_MAX_WORDS: usize = 4;
+
+/// Merge the raw-search and rewrite-search hit lists into the final ≤`limit` titles,
+/// ranked: consensus (a title in *both* lists — the strongest signal) first, then
+/// rewrite-only hits (the targeted entity), then raw-only hits (keyword match).
+/// Case-insensitive dedup, order-preserving; consensus keeps the raw/canonical casing.
+fn merge_hits(raw: &[String], rewrite: &[String], limit: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    // 1) consensus — titles in both lists, using the raw (canonical) casing.
+    for t in rewrite {
+        if let Some(canonical) = raw.iter().find(|r| r.eq_ignore_ascii_case(t)) {
+            push_unique(&mut out, canonical, limit);
+        }
+    }
+    // 2) remaining rewrite hits, then 3) remaining raw hits.
+    for t in rewrite {
+        push_unique(&mut out, t, limit);
+    }
+    for t in raw {
+        push_unique(&mut out, t, limit);
+    }
+    out
+}
+
+/// Append `title` to `out` if there is room (`limit`) and no case-insensitive dup.
+fn push_unique(out: &mut Vec<String>, title: &str, limit: usize) {
+    if out.len() < limit && !out.iter().any(|e| e.eq_ignore_ascii_case(title)) {
+        out.push(title.to_string());
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    #[test]
+    fn ranks_consensus_then_rewrite_then_raw() {
+        let raw = vec![
+            "Trinity".to_string(),
+            "Sirius & Orion".to_string(),
+            "Mag".to_string(),
+        ];
+        let rewrite = vec!["Sirius & Orion".to_string(), "Wisp".to_string()];
+        // Consensus (Sirius & Orion) first, then rewrite-only (Wisp), then raw-only.
+        assert_eq!(
+            merge_hits(&raw, &rewrite, 4),
+            vec![
+                "Sirius & Orion".to_string(),
+                "Wisp".to_string(),
+                "Trinity".to_string(),
+                "Mag".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn injects_the_entity_when_raw_is_junk() {
+        let raw = vec!["Version History".to_string()];
+        let rewrite = vec!["Wine".to_string()];
+        assert_eq!(
+            merge_hits(&raw, &rewrite, 4),
+            vec!["Wine".to_string(), "Version History".to_string()]
+        );
+    }
+
+    #[test]
+    fn dedupes_case_insensitively_keeps_canonical_and_truncates() {
+        let raw = vec!["Wood".to_string(), "Stone".to_string()];
+        let rewrite = vec!["wood".to_string(), "Clay".to_string()];
+        // "wood"/"Wood" collapse to the raw casing (consensus); limit caps the rest.
+        assert_eq!(
+            merge_hits(&raw, &rewrite, 2),
+            vec!["Wood".to_string(), "Clay".to_string()]
+        );
+    }
+
+    #[test]
+    fn handles_empty_inputs() {
+        let raw = vec!["A".to_string()];
+        assert_eq!(merge_hits(&raw, &[], 4), vec!["A".to_string()]);
+        assert_eq!(merge_hits(&[], &raw, 4), vec!["A".to_string()]);
+        assert!(merge_hits(&[], &[], 4).is_empty());
+    }
+}
+
+/// A trimmed, non-empty environment variable, or `None` if unset/blank.
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// A zero-hit recovery stage (the title index, the LLM rewrite) is on unless its
+/// env var is explicitly falsey (`0`/`false`/`off`) — an off-switch for the two
+/// unvalidated stages that needs no rebuild.
+fn stage_enabled(var: &str) -> bool {
+    match std::env::var(var) {
+        Ok(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "off" | "no"
+        ),
+        Err(_) => true,
+    }
+}
+
+/// Opt-in, one-line JSON trace of a retrieval round for offline eval scoring
+/// (Phase 2 of the retrieval-quality plan). Silent unless `WIKILENS_TRACE_RETRIEVAL`
+/// is set. Emits only public wiki data — game id, the question, the search query,
+/// which retry (if any) fired, the resulting titles, and search latency — to
+/// stderr, so `npm run tauri dev 2> eval.jsonl` collects a scorable dataset. Never
+/// touches API keys or answer text.
+fn trace_retrieval(
+    wiki: &GameWiki,
+    question: &str,
+    query: &str,
+    retries: &[(&str, String)],
+    titles: &[String],
+    elapsed: std::time::Duration,
+) {
+    if std::env::var_os("WIKILENS_TRACE_RETRIEVAL").is_none() {
+        return;
+    }
+    let record = serde_json::json!({
+        "game": wiki.id,
+        "question": question,
+        "query": query,
+        // Every retry stage that fired, in order (`search_ms` covers them all).
+        "retries": retries
+            .iter()
+            .map(|(kind, q)| serde_json::json!({ "kind": kind, "query": q }))
+            .collect::<Vec<_>>(),
+        "titles": titles,
+        "hits": titles.len(),
+        "search_ms": elapsed.as_millis(),
+    });
+    eprintln!("wikilens.retrieval {record}");
 }
 
 #[cfg(test)]

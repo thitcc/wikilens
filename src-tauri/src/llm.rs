@@ -273,6 +273,224 @@ fn build_user_message(question: &str, pages: &[WikiPage]) -> String {
     msg
 }
 
+/// Max output tokens for the query-rewrite completion — the JSON object is tiny,
+/// so keep the cap tight. The rewrite is meant to run on a fast *non-reasoning*
+/// model (`WIKILENS_REWRITE_MODEL`); a tight cap also makes a mis-configured
+/// reasoning model fail fast (empty `content`, seen in the trace) rather than
+/// reasoning for many seconds.
+const REWRITE_MAX_TOKENS: u32 = 256;
+
+/// System prompt for the lazy query-rewrite (Phase 3 of the retrieval-quality
+/// plan). The player's own wiki search found nothing — usually a typo, a
+/// paraphrase, or an item/character the wiki names differently. Turn the question
+/// into a few concrete wiki queries. Strict JSON out; `parse_rewrite_queries`
+/// tolerates fences/prose defensively.
+const REWRITE_SYSTEM_PROMPT: &str = "You convert a player's question into search queries for a specific game's wiki. Their own search returned nothing — usually a typo, a paraphrase, or an item/character the wiki names differently. Reply with ONLY a compact JSON object of the form {\"queries\":[\"...\"]}: 1 to 3 short keyword queries, best guess first, exact proper nouns / item / enemy names preferred. No prose, no markdown, no code fences.";
+
+/// Rewrite a failed question into candidate wiki search queries via a cheap,
+/// non-streaming model call (the reply is tiny). Returns the parsed queries; an
+/// empty vec means "no usable rewrite" and the caller falls back to the raw query.
+/// Only invoked on the zero-hit dead-end, so its cost lands only when a search has
+/// already failed. See `vault/2026-07-07_llm-query-rewrite-in-retrieval.md`.
+pub async fn rewrite_query(
+    client: &reqwest::Client,
+    provider: &Provider,
+    model: &str,
+    api_key: &str,
+    game: &str,
+    question: &str,
+) -> Result<Vec<String>, AppError> {
+    let user = format!("Game: {game}\nPlayer question: {question}");
+    let request = match provider.kind {
+        ProviderKind::Anthropic => {
+            build_completion_anthropic(client, provider, model, api_key, REWRITE_SYSTEM_PROMPT, &user)
+        }
+        ProviderKind::OpenAiCompatible => {
+            build_completion_openai(client, provider, model, api_key, REWRITE_SYSTEM_PROMPT, &user)
+        }
+    };
+    let resp = request.send().await?;
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(AppError::Llm {
+            provider: provider.name,
+            status,
+            body,
+        });
+    }
+    let body = resp.text().await?;
+    // Diagnostic: the rewrite is un-live-validated; when tracing, dump the raw
+    // response so an empty/prose reply (vs. a clean JSON one) is visible.
+    if std::env::var_os("WIKILENS_TRACE_RETRIEVAL").is_some() {
+        let preview: String = body.chars().take(500).collect();
+        eprintln!("wikilens.rewrite.raw {preview}");
+    }
+    let text = extract_completion_text(provider.kind, &body)?;
+    Ok(parse_rewrite_queries(&text))
+}
+
+/// Non-streaming Anthropic Messages request (no wiki pages, no image) for the
+/// query rewrite: same auth/version as the answer path but `stream` omitted.
+fn build_completion_anthropic(
+    client: &reqwest::Client,
+    provider: &Provider,
+    model: &str,
+    api_key: &str,
+    system: &str,
+    user: &str,
+) -> reqwest::RequestBuilder {
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": REWRITE_MAX_TOKENS,
+        "system": system,
+        "messages": [ { "role": "user", "content": user } ]
+    });
+    client
+        .post(provider.endpoint)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .json(&body)
+}
+
+/// Non-streaming OpenAI-compatible Chat Completions request for the query rewrite.
+fn build_completion_openai(
+    client: &reqwest::Client,
+    provider: &Provider,
+    model: &str,
+    api_key: &str,
+    system: &str,
+    user: &str,
+) -> reqwest::RequestBuilder {
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": REWRITE_MAX_TOKENS,
+        "messages": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": user }
+        ]
+    });
+    let mut request = client
+        .post(provider.endpoint)
+        .header("Authorization", format!("Bearer {api_key}"));
+    for (name, value) in provider.extra_headers {
+        request = request.header(*name, *value);
+    }
+    request.json(&body)
+}
+
+/// Pull the assistant's text out of a non-streaming completion body, branching on
+/// the provider's response shape (Anthropic `content[].text`; OpenAI-compatible
+/// `choices[0].message.content`).
+fn extract_completion_text(kind: ProviderKind, body: &str) -> Result<String, AppError> {
+    let json: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| AppError::Parse(e.to_string()))?;
+    let text = match kind {
+        ProviderKind::Anthropic => json
+            .get("content")
+            .and_then(|c| c.as_array())
+            .and_then(|blocks| {
+                blocks.iter().find_map(|b| {
+                    if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                        b.get("text").and_then(|t| t.as_str())
+                    } else {
+                        None
+                    }
+                })
+            }),
+        ProviderKind::OpenAiCompatible => json
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str()),
+    };
+    text.map(str::to_string)
+        .ok_or_else(|| AppError::Parse("no text in completion response".into()))
+}
+
+/// Extract the `queries` array from the model's reply, tolerating code fences or
+/// stray prose by scanning for the outermost `{`…`}`. Returns trimmed, de-duped
+/// (case-insensitive), non-empty queries; an empty vec on any shape it can't read,
+/// so the caller falls back to the raw query.
+pub fn parse_rewrite_queries(text: &str) -> Vec<String> {
+    let slice = extract_json_object(text).unwrap_or(text);
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(slice) else {
+        return Vec::new();
+    };
+    let Some(items) = value.get("queries").and_then(|q| q.as_array()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        if let Some(s) = item.as_str() {
+            let s = s.trim();
+            if !s.is_empty() && !out.iter().any(|e| e.eq_ignore_ascii_case(s)) {
+                out.push(s.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// The outermost `{`…`}` slice of `text`, if any — lets `parse_rewrite_queries`
+/// survive a model that wraps its JSON in prose or ```json fences.
+fn extract_json_object(text: &str) -> Option<&str> {
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    (end > start).then(|| &text[start..=end])
+}
+
+#[cfg(test)]
+mod rewrite_tests {
+    use super::*;
+
+    #[test]
+    fn parses_a_plain_queries_object() {
+        let out = parse_rewrite_queries(r#"{"queries":["Arcane Persistence","Arcane"]}"#);
+        assert_eq!(
+            out,
+            vec!["Arcane Persistence".to_string(), "Arcane".to_string()]
+        );
+    }
+
+    #[test]
+    fn tolerates_code_fences_and_prose() {
+        let text = "Sure!\n```json\n{ \"queries\": [\"Last Gasp\"] }\n```";
+        assert_eq!(parse_rewrite_queries(text), vec!["Last Gasp".to_string()]);
+    }
+
+    #[test]
+    fn trims_dedupes_and_drops_blanks() {
+        let out = parse_rewrite_queries(r#"{"queries":["  Nova  ","nova","", "Nova Prime"]}"#);
+        assert_eq!(out, vec!["Nova".to_string(), "Nova Prime".to_string()]);
+    }
+
+    #[test]
+    fn empty_on_missing_key_or_garbage() {
+        assert!(parse_rewrite_queries(r#"{"foo":1}"#).is_empty());
+        assert!(parse_rewrite_queries("not json at all").is_empty());
+        assert!(parse_rewrite_queries(r#"{"queries":"notarray"}"#).is_empty());
+        assert!(parse_rewrite_queries(r#"{"queries":[1,2,3]}"#).is_empty());
+    }
+
+    #[test]
+    fn extracts_completion_text_per_provider() {
+        let anthropic = r#"{"content":[{"type":"text","text":"hi"}]}"#;
+        assert_eq!(
+            extract_completion_text(ProviderKind::Anthropic, anthropic).unwrap(),
+            "hi"
+        );
+        let openai = r#"{"choices":[{"message":{"role":"assistant","content":"hey"}}]}"#;
+        assert_eq!(
+            extract_completion_text(ProviderKind::OpenAiCompatible, openai).unwrap(),
+            "hey"
+        );
+        // Missing text is a parse error, not a panic.
+        assert!(extract_completion_text(ProviderKind::Anthropic, r#"{"content":[]}"#).is_err());
+    }
+}
+
 /// Parse one Anthropic SSE line, yielding the text of a `content_block_delta`
 /// `text_delta` and ignoring every other event (pings, non-text deltas, blanks).
 fn parse_anthropic_sse_line(line: &str) -> SseLine {

@@ -57,6 +57,21 @@ pub async fn search(
     query: &str,
     limit: u32,
 ) -> Result<Vec<String>, AppError> {
+    Ok(search_full(client, wiki, query, limit).await?.0)
+}
+
+/// Like [`search`], but also returns MediaWiki's "did you mean" suggestion when
+/// the wiki offers one. The single round-trip already carries it — `srinfo`
+/// defaults to `totalhits|suggestion`, so CirrusSearch wikis (Fandom, wiki.gg,
+/// minecraft.wiki) include `query.searchinfo.suggestion` on a misspelled query;
+/// default-engine wikis (Stardew) simply omit it. We just stop discarding it, to
+/// feed the zero-hit retry in `run_ask`.
+pub async fn search_full(
+    client: &reqwest::Client,
+    wiki: &GameWiki,
+    query: &str,
+    limit: u32,
+) -> Result<(Vec<String>, Option<String>), AppError> {
     let limit = limit.to_string();
     let params = build_search_params(query, &limit, wiki.search_namespace.as_deref());
     let body = client
@@ -68,7 +83,7 @@ pub async fn search(
         .text()
         .await?;
 
-    parse_search_response(&body)
+    Ok((parse_search_response(&body)?, parse_search_suggestion(&body)))
 }
 
 /// Build the `list=search` query params. Split out so the `srwhat` and
@@ -121,6 +136,21 @@ pub fn parse_search_response(body: &str) -> Result<Vec<String>, AppError> {
         .collect();
 
     Ok(titles)
+}
+
+/// Extract MediaWiki's "did you mean" spelling suggestion
+/// (`query.searchinfo.suggestion`) if present, trimmed and non-empty. Unlike
+/// [`parse_search_response`] this never errors — the suggestion is an optional
+/// hint, so a missing field or a malformed body is just `None`.
+pub fn parse_search_suggestion(body: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(body).ok()?;
+    let suggestion = json
+        .get("query")?
+        .get("searchinfo")?
+        .get("suggestion")?
+        .as_str()?
+        .trim();
+    (!suggestion.is_empty()).then(|| suggestion.to_string())
 }
 
 #[cfg(test)]
@@ -189,6 +219,44 @@ mod tests {
             parse_search_response("not json"),
             Err(AppError::Parse(_))
         ));
+    }
+
+    #[test]
+    fn parses_the_search_suggestion_when_present() {
+        // Shape of a CirrusSearch zero-hit response with a spelling suggestion.
+        let sample = r#"{
+            "batchcomplete": "",
+            "query": {
+                "searchinfo": {
+                    "totalhits": 0,
+                    "suggestion": "arcane persistence",
+                    "suggestionsnippet": "arcane persistence"
+                },
+                "search": []
+            }
+        }"#;
+        assert_eq!(
+            parse_search_suggestion(sample).as_deref(),
+            Some("arcane persistence")
+        );
+    }
+
+    #[test]
+    fn suggestion_is_none_when_absent_blank_or_unparseable() {
+        // No searchinfo at all (a clean hit, or a default-engine wiki like Stardew).
+        assert_eq!(parse_search_suggestion(r#"{ "query": { "search": [] } }"#), None);
+        // searchinfo present but carries no suggestion field.
+        assert_eq!(
+            parse_search_suggestion(r#"{ "query": { "searchinfo": { "totalhits": 5 } } }"#),
+            None
+        );
+        // A blank/whitespace suggestion is treated as no suggestion.
+        assert_eq!(
+            parse_search_suggestion(r#"{ "query": { "searchinfo": { "suggestion": "   " } } }"#),
+            None
+        );
+        // Not JSON at all.
+        assert_eq!(parse_search_suggestion("not json"), None);
     }
 
     #[test]
