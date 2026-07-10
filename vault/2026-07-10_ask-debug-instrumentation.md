@@ -1,12 +1,12 @@
 ---
 title: Per-ask debug table — phase timings, models, and token counts behind WIKILENS_DEBUG
 type: plan
-status: active
+status: done
 created: 2026-07-10
 updated: 2026-07-10
 tags: [llm, rag, rust]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-07_retrieval-quality-improvements]]"]
-commit:
+commit: 2916c71
 ---
 
 # Per-ask debug table — phase timings, models, and token counts behind WIKILENS_DEBUG
@@ -69,5 +69,8 @@ there is no way to see live, per prompt, what each part cost.
   `debug.rs` collector with golden render test, `run_ask` instrumented on every phase.
   138 offline tests green (+10 new); two new `#[ignore]` live tests
   (`*_live_streaming_reports_usage`) passed against the real Anthropic and DeepSeek
-  gateways — `stream_options` accepted, usage + TTFT reported. Close to `done` +
-  `commit:` when the change is committed.
+  gateways — `stream_options` accepted, usage + TTFT reported.
+- 2026-07-10 — first live table on a real ask (Abigail gifts, 10.0s total) immediately
+  localized the cost: rewrite 2432ms serialized into the join (raw search only 464ms),
+  fetch 3842ms, and a likely finding-#8 eviction (Abigail's page missing from the
+  merged top-4). Done; shipped as 2916c71.
