@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend (type-check)
+    name: Frontend (type-check + tests)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -28,8 +28,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
-      # `npx vitest run` goes here once the frontend test harness lands
-      # (vault/2026-07-13_frontend-test-harness.md).
+      - run: npm test
 
   rust:
     name: Rust (clippy + tests, Windows)

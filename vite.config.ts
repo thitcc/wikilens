@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // @ts-expect-error process is a nodejs global
@@ -19,6 +19,14 @@ export default defineConfig(async () => ({
         capture: fileURLToPath(new URL("./capture.html", import.meta.url)),
       },
     },
+  },
+
+  // Vitest — see vault/2026-07-13_frontend-test-harness.md. Globals stay off:
+  // tests import from "vitest" explicitly, so tsconfig needs no type wiring.
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
