@@ -63,8 +63,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Rust: `cd src-tauri && cargo check` · `cargo test` ·
   lint: `cargo clippy --all-targets -- -D warnings`
 - Verify all: `/check` bundles the type-check + `npm test` + clippy +
-  `cargo test` — the exact gates CI runs (`.github/workflows/ci.yml`, every PR
-  and push to main)
+  `cargo test` — the code gates CI runs (`.github/workflows/ci.yml`, every PR
+  and push to main). CI additionally audits dependencies (`cargo audit`,
+  `npm audit --audit-level=high`) — CI-only, since they depend on the network
+  and advisory databases
 - Release: `npm run tauri build`
 
 ## 4. Conventions
@@ -120,9 +122,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `vault/2026-07-13_pr-delivery-workflow.md`). Branch `<type>/<slug>` off `main`
   (e.g. `ci/github-actions-pipeline`), conventional commit prefixes (`feat:`,
   `fix:`, `chore:`, `ci:`, `docs(vault):`), push, `gh pr create` — no direct
-  commits to `main`. Run `/check` before pushing (it mirrors CI exactly) and
-  `/vault-lint` when `vault/` changed. A PR merges only when CI is green, and the
-  **human merges — always a merge commit, never squash/rebase** (vault docs pin
+  commits to `main`. Run `/check` before pushing (it mirrors CI's code gates;
+  CI adds the dependency audits) and `/vault-lint` when `vault/` changed. A PR
+  merges only when CI is green, and the **human merges — always a merge
+  commit, never squash/rebase** (vault docs pin
   branch `commit:` hashes; squashing orphans them); Claude never merges. The
   `docs(vault): close …` commit rides in the same PR as the code it closes.
 

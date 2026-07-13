@@ -5,6 +5,8 @@
 
 mod capture;
 mod commands;
+#[cfg(test)]
+mod config_guardrails;
 mod error;
 mod hotkey;
 mod llm;
