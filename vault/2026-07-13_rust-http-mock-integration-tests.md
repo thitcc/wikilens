@@ -1,12 +1,12 @@
 ---
 title: Offline HTTP-mock integration tests for streaming and fetch orchestration
 type: plan
-status: todo
+status: done
 created: 2026-07-13
 updated: 2026-07-13
 tags: [testing, rust, llm, wiki]
 related: ["[[2026-07-13_testing-audit]]", "[[2026-07-03_retrieval-integration-test]]"]
-commit:
+commit: [15b5496, 7e9ce79, 9485d01, bdcb13e]
 ---
 
 # Offline HTTP-mock integration tests for streaming and fetch orchestration
@@ -66,3 +66,23 @@ exercise failure shapes on demand.
 ## Status log
 - 2026-07-13 — created from [[2026-07-13_testing-audit]]; queued as priority 3.
   No work started.
+- 2026-07-13 — **done.** wiremock 0.6 landed with 19 offline tests across four
+  inline `http_tests` modules (llm 8, models 3, wiki/fetch 5, wiki/probe 3),
+  covering all five targets. Deviations from the approach as written:
+  - **The "prerequisite refactor: make base URLs injectable" was unnecessary.**
+    `Provider` is all-pub `Copy`, so a `#[cfg(test)]` `test_support` module
+    builds a literal and `Box::leak`s the per-test wiremock URI into the
+    `&'static str` endpoint fields — zero production changes (the allowed
+    constructor parameter was never needed). Tests live inline (not
+    `src-tauri/tests/`): every `lib.rs` module is private, and inline is the
+    existing convention (the live `#[ignore]` tier already sits there).
+  - **Chunk-boundary delta splits can't be forced through wiremock** — it
+    delivers bodies whole, exactly the limitation the chunk-timing non-goal
+    already conceded. Covered instead by multi-line accumulation, a
+    multi-byte-UTF-8 delta through the byte buffer, and the loop's
+    only-complete-lines construction; the axum dripping server stays the
+    documented escape hatch.
+  - **Target 5's `suggest` stays live-only:** its candidate hosts are
+    hardcoded `.wiki.gg`/`.fandom.com` domains, unmockable without a prod
+    seam this plan avoids. Its network halves (`fetch_siteinfo`,
+    `validate_search`) are fully exercised through the `probe_base` tests.
