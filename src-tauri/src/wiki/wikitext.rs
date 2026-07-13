@@ -66,23 +66,30 @@ fn remove_html_comments(input: &str) -> String {
 /// Remove every balanced `open..close` region, honoring nesting. `open`/`close`
 /// must be ASCII (they are: `{{`/`}}`, `{|`/`|}`), so byte scanning is safe even
 /// through multi-byte UTF-8 text.
+///
+/// Unbalanced markers degrade gracefully instead of eating the page: an
+/// unmatched `open` is dropped and everything after it kept (inner balanced
+/// regions still removed), and a stray `close` at depth zero stays literal —
+/// unlike `convert_wiki_links`, which keeps an unmatched `[[` as-is, dropping
+/// the bare marker reads cleaner in prose handed to the LLM.
 fn remove_balanced(input: &str, open: &str, close: &str) -> String {
     let bytes = input.as_bytes();
     let (ob, cb) = (open.as_bytes(), close.as_bytes());
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    // `out.len()` at each still-unmatched `open`: emit everything as we go, and
+    // truncate back to the mark when its `close` arrives. Marks left at the end
+    // are unmatched opens — their content already survived in `out`.
+    let mut marks: Vec<usize> = Vec::new();
     let mut i = 0;
-    let mut depth = 0usize;
     while i < bytes.len() {
         if bytes[i..].starts_with(ob) {
-            depth += 1;
+            marks.push(out.len());
             i += ob.len();
-        } else if depth > 0 && bytes[i..].starts_with(cb) {
-            depth -= 1;
+        } else if !marks.is_empty() && bytes[i..].starts_with(cb) {
+            out.truncate(marks.pop().expect("guarded by !marks.is_empty()"));
             i += cb.len();
         } else {
-            if depth == 0 {
-                out.push(bytes[i]);
-            }
+            out.push(bytes[i]);
             i += 1;
         }
     }
@@ -260,6 +267,33 @@ mod tests {
     fn removes_nested_templates() {
         assert_eq!(remove_balanced("a{{b{{c}}d}}e", "{{", "}}"), "ae");
         assert_eq!(remove_balanced("keep {{drop}} keep", "{{", "}}"), "keep  keep");
+    }
+
+    #[test]
+    fn unclosed_open_keeps_the_rest_of_the_page() {
+        // The bug this pins: an unclosed {{ or {| used to silently discard
+        // everything after it, so the page cleaned to empty and was dropped.
+        for wikitext in [
+            "intro {{Infobox\n|name=X\n rest of the article",
+            "intro {|\n|-\n| cell\n rest of the article",
+        ] {
+            let text = to_plaintext(wikitext);
+            assert!(text.contains("intro"), "prefix lost: {text:?}");
+            assert!(text.contains("rest of the article"), "tail lost: {text:?}");
+        }
+    }
+
+    #[test]
+    fn unmatched_opens_drop_the_marker_but_keep_content() {
+        // Inner balanced regions are still removed under an unmatched outer.
+        assert_eq!(remove_balanced("x{{a{{b}}c", "{{", "}}"), "xac");
+        assert_eq!(remove_balanced("x{{y{{z", "{{", "}}"), "xyz");
+    }
+
+    #[test]
+    fn stray_close_markers_stay_literal() {
+        assert_eq!(remove_balanced("a}}b", "{{", "}}"), "a}}b");
+        assert_eq!(remove_balanced("a|}b", "{|", "|}"), "a|}b");
     }
 
     #[test]
