@@ -1,8 +1,9 @@
 # CI — see vault/2026-07-13_ci-pipeline-github-actions.md
 #
-# Two jobs: the frontend needs no Windows (cheap ubuntu runner); the Rust side
+# Three jobs: the frontend needs no Windows (cheap ubuntu runner); the Rust side
 # runs on windows-latest because Windows is the only shipping platform — a
-# Linux-only `cargo test` could green-light Windows-specific breakage.
+# Linux-only `cargo test` could green-light Windows-specific breakage; the
+# dependency audits only read lockfiles, so they run on ubuntu too.
 # Live-network tests stay `#[ignore]`-gated, so CI needs no API keys.
 name: CI
 
@@ -51,3 +52,29 @@ jobs:
           workspaces: src-tauri
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  audits:
+    # Dependency-vulnerability gates (vault/2026-07-13_dependency-audit-lint-gates.md).
+    # PR/push-triggered only — no scheduled cron (deliberately descoped: a solo
+    # project hears about a new advisory on the next PR, which is soon enough).
+    name: Dependency audits (npm + cargo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # npm audit resolves the tree from package-lock.json alone — no `npm ci`,
+      # no node_modules, no cache. Non-zero exit only at high/critical.
+      - run: npm audit --audit-level=high
+      # Prebuilt cargo-audit binary (seconds; `cargo install` compiles for minutes).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Fails on RUSTSEC vulnerability advisories; informational advisories
+      # (unmaintained/unsound/yanked) warn without failing — cargo-audit has no
+      # CVSS-threshold flag, so this is the closest mapping to "fail on
+      # high/critical, warn below" (the gate stays credible, noise stays yellow).
+      - run: cargo audit
+        working-directory: src-tauri
