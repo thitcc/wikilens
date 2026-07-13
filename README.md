@@ -132,6 +132,10 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 
 ## Manual smoke test
 
+> Maintainers: this is the quick first-run walkthrough. The full pre-release
+> checklist (hotkey, tray, DPI, transparency, Esc layering, packaged build) is
+> [`docs/smoke-checklist.md`](docs/smoke-checklist.md).
+
 1. Set a key: `cp .env.example .env` and fill in one provider's key (or export it,
    e.g. `$env:ANTHROPIC_API_KEY = "sk-ant-..."`).
 2. From the repo root: `npm install` then `npm run tauri dev`.
