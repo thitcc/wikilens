@@ -477,10 +477,7 @@ mod tests {
         use super::super::*;
 
         fn client() -> reqwest::Client {
-            reqwest::Client::builder()
-                .user_agent(crate::wiki::USER_AGENT)
-                .build()
-                .expect("build reqwest client")
+            crate::http::build_client()
         }
 
         #[tokio::test]
@@ -591,7 +588,7 @@ mod http_tests {
         )
         .await;
 
-        let candidate = probe_base(&reqwest::Client::new(), &uri).await.unwrap();
+        let candidate = probe_base(&crate::http::build_client(), &uri).await.unwrap();
         assert_eq!(
             candidate,
             WikiCandidate {
@@ -616,7 +613,7 @@ mod http_tests {
         mount_siteinfo(&server, "/api.php", "").await;
         mount_search(&server, "/api.php", ResponseTemplate::new(500)).await;
 
-        let err = probe_base(&reqwest::Client::new(), &uri).await.unwrap_err();
+        let err = probe_base(&crate::http::build_client(), &uri).await.unwrap_err();
         match err {
             AppError::Probe(msg) => {
                 assert!(msg.contains("search API didn't answer"), "msg: {msg}")
@@ -644,7 +641,7 @@ mod http_tests {
         )
         .await;
 
-        let candidate = probe_base(&reqwest::Client::new(), &format!("{uri}/custom/api.php"))
+        let candidate = probe_base(&crate::http::build_client(), &format!("{uri}/custom/api.php"))
             .await
             .unwrap();
         assert_eq!(candidate.api_url, format!("{uri}/custom/api.php"));

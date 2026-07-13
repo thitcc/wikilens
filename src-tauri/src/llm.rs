@@ -781,7 +781,7 @@ mod http_tests {
         provider: &Provider,
         image_png: Option<&[u8]>,
     ) -> (Result<String, AppError>, Vec<String>) {
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = [wiki_page("Fishing", "Use a fishing rod at water.")];
         let mut deltas: Vec<String> = Vec::new();
         let result = answer_streaming(

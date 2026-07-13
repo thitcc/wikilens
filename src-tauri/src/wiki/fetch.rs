@@ -480,7 +480,7 @@ mod http_tests {
         .await;
         mount_revisions(&server, ResponseTemplate::new(200).set_body_string("{}"), 0).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
 
         let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
@@ -520,7 +520,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
 
         let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
@@ -542,7 +542,7 @@ mod http_tests {
         mount_parse(&server, "Iron", ResponseTemplate::new(500)).await;
         mount_revisions(&server, ResponseTemplate::new(500), 1).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
 
         // The dead fallback costs Iron, never the whole answer.
@@ -558,7 +558,7 @@ mod http_tests {
         mount_parse(&server, "Iron", ResponseTemplate::new(500)).await;
         mount_revisions(&server, ResponseTemplate::new(500), 1).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let err = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap_err();
         // Everything failed — the revisions transport error must surface.
         assert!(matches!(err, AppError::Http(_)), "got {err:?}");
@@ -577,7 +577,7 @@ mod http_tests {
         .await;
         mount_revisions(&server, ResponseTemplate::new(200).set_body_string("{}"), 0).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Stub"])).await.unwrap();
         assert!(pages.is_empty());
     }

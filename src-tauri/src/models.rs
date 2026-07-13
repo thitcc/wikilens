@@ -365,7 +365,7 @@ mod tests {
     #[ignore = "hits the live OpenRouter API"]
     async fn openrouter_live_catalog_parses() {
         let provider = crate::providers::find_provider("openrouter").unwrap();
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let models = fetch_models(&client, provider, None).await.unwrap();
         assert!(models.len() > 100, "got {} models", models.len());
         assert!(models.iter().all(|m| !m.id.is_empty() && !m.label.is_empty()));
@@ -402,7 +402,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let models = fetch_models(&client, &provider, None).await.unwrap();
         assert_eq!(
             models,
@@ -441,7 +441,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let models = fetch_models(&client, &provider, Some("k")).await.unwrap();
         assert_eq!(models[0].label, "Claude Haiku 4.5");
         assert!(models[0].vision, "absent capabilities → default true");
@@ -461,7 +461,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let err = fetch_models(&client, &provider, None).await.unwrap_err();
         match err {
             AppError::Llm {

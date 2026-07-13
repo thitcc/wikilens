@@ -69,10 +69,7 @@ mod live {
     #[tokio::test]
     #[ignore = "hits the live Stardew Valley wiki; run with `cargo test -- --ignored`"]
     async fn stardew_search_then_fetch_returns_clean_pages() {
-        let client = reqwest::Client::builder()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .expect("build reqwest client");
+        let client = crate::http::build_client();
 
         let wiki = games::find_game("stardew").expect("stardew is registered");
 
@@ -115,10 +112,7 @@ mod live {
     #[tokio::test]
     #[ignore = "hits live game wikis; run with `cargo test -- --ignored`"]
     async fn golden_queries_hit_expected_pages() {
-        let client = reqwest::Client::builder()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .expect("build reqwest client");
+        let client = crate::http::build_client();
 
         // Sequential on purpose — MediaWiki etiquette, same as production.
         let mut misses = Vec::new();
@@ -174,10 +168,7 @@ mod live {
     #[tokio::test]
     #[ignore = "hits several live game wikis; run with `cargo test -- --ignored`"]
     async fn new_wikis_search_then_fetch_one_page() {
-        let client = reqwest::Client::builder()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .expect("build reqwest client");
+        let client = crate::http::build_client();
 
         // Sequential on purpose — MediaWiki etiquette, same as production.
         let cases: &[(&str, &str)] = &[
@@ -223,10 +214,7 @@ mod live {
     #[tokio::test]
     #[ignore = "hits the live Stardew Valley wiki; run with `cargo test -- --ignored`"]
     async fn stardew_fetch_includes_infobox_and_table_data() {
-        let client = reqwest::Client::builder()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .expect("build reqwest client");
+        let client = crate::http::build_client();
         let wiki = games::find_game("stardew").expect("stardew is registered");
 
         let pages = fetch::fetch_pages(&client, wiki, &["Powdermelon".to_string()])
@@ -242,10 +230,7 @@ mod live {
     #[tokio::test]
     #[ignore = "hits the live Core Keeper wiki; run with `cargo test -- --ignored`"]
     async fn fandom_fetch_includes_infobox_data() {
-        let client = reqwest::Client::builder()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .expect("build reqwest client");
+        let client = crate::http::build_client();
         let wiki = games::find_game("corekeeper").expect("corekeeper is registered");
 
         let pages = fetch::fetch_pages(&client, wiki, &["Copper Ore".to_string()])
@@ -262,10 +247,7 @@ mod live {
     #[tokio::test]
     #[ignore = "hits the live Stardew Valley wiki; run with `cargo test -- --ignored`"]
     async fn nonsense_query_returns_empty_not_error() {
-        let client = reqwest::Client::builder()
-            .user_agent(super::USER_AGENT)
-            .build()
-            .expect("build reqwest client");
+        let client = crate::http::build_client();
 
         let wiki = games::find_game("stardew").expect("stardew is registered");
         let titles = search::search(

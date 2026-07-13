@@ -45,6 +45,7 @@ wikilens/
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models
         ├── error.rs              # AppError (thiserror) + Into<String>
+        ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}

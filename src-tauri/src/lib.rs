@@ -9,6 +9,7 @@ mod commands;
 mod config_guardrails;
 mod error;
 mod hotkey;
+mod http;
 mod llm;
 mod models;
 mod providers;
