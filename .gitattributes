@@ -1,4 +1,6 @@
 # Snapshot files must stay byte-identical across platforms, or Windows
-# autocrlf churns them on every checkout. Extend with fixture directories when
-# the parser snapshot suite lands (vault/2026-07-13_parser-snapshot-property-tests.md).
+# autocrlf churns them on every checkout — and the fixtures they derive from
+# must match, or local snapshots desync from CI
+# (vault/2026-07-13_parser-snapshot-property-tests.md).
 *.snap text eol=lf
+src-tauri/src/wiki/fixtures/** text eol=lf

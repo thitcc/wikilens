@@ -1,12 +1,12 @@
 ---
 title: Parser snapshot and property tests (insta + proptest)
 type: plan
-status: todo
+status: done
 created: 2026-07-13
 updated: 2026-07-13
 tags: [testing, rust, wiki]
 related: ["[[2026-07-13_testing-audit]]", "[[2026-07-04_rendered-html-extraction]]", "[[2026-07-02_wikitext-extraction]]"]
-commit:
+commit: [d596925, 61ae86d, b5903a7]
 ---
 
 # Parser snapshot and property tests (insta + proptest)
@@ -61,3 +61,27 @@ empty and gets dropped ("couldn't read their contents").
 ## Status log
 - 2026-07-13 — created from [[2026-07-13_testing-audit]]; queued as priority 4.
   No work started.
+- 2026-07-13 — **done.** Landed as fix → snapshots → properties:
+  - **`remove_balanced` fix** shipped as a single-pass mark-stack (emit
+    everything, record `out.len()` at each open, truncate back on its close)
+    instead of the depth-gated suppressor: balanced removal byte-identical,
+    an unmatched open drops just its marker and keeps the trailing content
+    (inner balanced regions still removed), stray closes stay literal —
+    matching the module's leave-ambiguous-text-literal philosophy.
+  - **Snapshots** (insta, 4): stardewvalleywiki Parsnip (default-engine 2-col
+    infobox), Core Keeper Copper Ore (Fandom portable infobox), UESP
+    Skyrim:Iron (namespaced), and Stardew Wood raw wikitext through the
+    fallback cleaner. Fixtures carry provenance headers (stripped as HTML
+    comments, never reach output); `.gitattributes` pins them to LF next to
+    the existing `*.snap` rule. Intentional cleaner changes are re-accepted
+    with `INSTA_UPDATE=always` and reviewed as a `.snap` diff.
+  - **Properties** (proptest, 10): no-panic + byte-length bound for both
+    cleaners on arbitrary chars and marker soup; no-panic + non-`data:` →
+    `Ignore` for both SSE line parsers; no marker residue over generated
+    balanced wikitext; unmatched-open tail preservation for both marker
+    pairs. **Deviation from the plan as written:** the no-residue property is
+    scoped to a balanced-construct strategy, not arbitrary input — the
+    universal claim is provably false (replace-with-empty passes can join
+    separated `{` bytes: `{''{` cleans to `{{`), and unclosed `[[` keeps its
+    literal marker by design. Stray closes were kept literal (the plan's
+    seeded stray-`}}`/`|}` cases pin passthrough, not dropping).

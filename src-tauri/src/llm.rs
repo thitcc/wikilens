@@ -1050,3 +1050,39 @@ mod http_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod sse_property_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{arbitrary_text, marker_soup};
+
+    const SSE_MARKERS: &[&str] = &[
+        "data:", "data: ", ": OPENROUTER PROCESSING", ":", "event: ", "[DONE]",
+        r#"{"choices":["#, r#"{"type":"content_block_delta""#, r#""delta":{"#,
+        r#""content":"#, r#""text":"#, r#""error":{"#, r#""finish_reason":"#,
+        "null", "{", "}", "]", "\"", "\\",
+    ];
+
+    proptest! {
+        #[test]
+        fn sse_parsers_never_panic_on_arbitrary_lines(line in arbitrary_text()) {
+            let _ = parse_openai_sse_line(&line);
+            let _ = parse_anthropic_sse_line(&line);
+        }
+
+        #[test]
+        fn sse_parsers_never_panic_on_sse_shaped_soup(line in marker_soup(SSE_MARKERS)) {
+            let _ = parse_openai_sse_line(&line);
+            let _ = parse_anthropic_sse_line(&line);
+        }
+
+        #[test]
+        fn lines_without_a_data_prefix_are_ignored(line in arbitrary_text()) {
+            prop_assume!(!line.starts_with("data:"));
+            prop_assert_eq!(parse_openai_sse_line(&line), SseLine::Ignore);
+            prop_assert_eq!(parse_anthropic_sse_line(&line), SseLine::Ignore);
+        }
+    }
+}

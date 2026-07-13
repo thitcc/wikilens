@@ -1,6 +1,10 @@
 //! Shared fixtures for the offline HTTP-mock test tier (wiremock; see
-//! `vault/2026-07-13_rust-http-mock-integration-tests.md`). Compiled only
+//! `vault/2026-07-13_rust-http-mock-integration-tests.md`) and shared proptest
+//! strategies for the parser property tests
+//! (`vault/2026-07-13_parser-snapshot-property-tests.md`). Compiled only
 //! under `#[cfg(test)]` — the `mod` declaration in `lib.rs` is gated.
+
+use proptest::prelude::*;
 
 use crate::providers::{Provider, ProviderKind};
 use crate::wiki::fetch::WikiPage;
@@ -70,4 +74,21 @@ pub fn anthropic_delta(text: &str) -> String {
     format!(
         r#"data: {{"type":"content_block_delta","index":0,"delta":{{"type":"text_delta","text":"{text}"}}}}"#
     )
+}
+
+/// Strategy: fully arbitrary text (every valid `char`, including controls and
+/// multi-byte scalars) — the honest no-panic input for the parsers.
+pub fn arbitrary_text() -> impl Strategy<Value = String> {
+    proptest::collection::vec(any::<char>(), 0..200).prop_map(String::from_iter)
+}
+
+/// Strategy: concatenations of parser-relevant marker fragments interleaved
+/// with short arbitrary runs — hits the scanners' state transitions far more
+/// densely than uniform random text ever would.
+pub fn marker_soup(markers: &'static [&'static str]) -> impl Strategy<Value = String> {
+    let fragment = prop_oneof![
+        3 => proptest::sample::select(markers).prop_map(str::to_string),
+        1 => proptest::string::string_regex("\\PC{0,6}").expect("valid regex"),
+    ];
+    proptest::collection::vec(fragment, 0..48).prop_map(|v| v.concat())
 }

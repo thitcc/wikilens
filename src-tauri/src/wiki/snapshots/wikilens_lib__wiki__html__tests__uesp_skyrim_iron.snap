@@ -1,0 +1,153 @@
+---
+source: src/wiki/html.rs
+expression: "to_plaintext(include_str!(\"fixtures/uesp_page.html\"))"
+---
+Iron Ingot
+An Iron Ore Vein
+Iron weapons and heavy armor are commonplace, low-quality items, crafted out of iron ingots, which can be mined at any of hundreds of ore veins scattered across Skyrim.
+Overview
+| Name | ID | |
+| Iron Ore | 00071cf3 | 1 | 2
+| Iron Ingot | 0005ace4 | 1 | 7
+3 Iron Ores are obtained by mining Iron Ore Veins. Can be purchased at all levels.
+1 Iron Ingot is obtained by smelting 1 Iron Ore (this is the only case where only one ore is required to make an ingot). Can be purchased at all levels.
+1 Steel Ingot is obtained by smelting 1 Iron Ore and 1 Corundum Ore.
+Iron Smithing is available from the start of the game, without any Smithing perks.
+Iron Armor is level 1 Heavy Armor, made from Iron Ingots and Leather Strips.
+Iron weapons are level 1 weapons, made from Iron Ingots and Leather Strips.
+Mineral Sources
+In addition to the following guaranteed sources, the best random locations are:
+Iron Ingots are always sold by all blacksmith merchants, at all levels.
+Iron Ingots may be sold by general goods merchants at all levels.
+Iron Ore may be sold by blacksmiths and general goods merchants at all levels.
+There are a total of 668 veins, 81 ores, and 275 ingots available in the game. Individual iron ore vein outcroppings are found scattered everywhere across Skyrim. Only particularly notable locations are included in the following list, including places where large amount of the metal may be found and places that are particularly easy to access. The Iron Veins category contains a more complete list of places containing smaller numbers of veins.
+All exterior ore veins are shown on (map). Note, however, that only 50 veins are shown on the map at one time; to see the next set of 50 veins, click on "Next" at the bottom of the list of results. Given the high density of iron veins on the map, a more efficient way to find veins near your current location is to not use the search feature, but instead simply zoom in at your current location on the map. Veins are shown at either of the two highest zoom levels.
+Region | Location | Veins | Ores | Ingots | Details (see place pages for full information)
+Whiterun Hold | Halted Stream Camp | 16 | 4 | |
+Haafingar | Solitude Blacksmith | | 5 | 27 | 3 Ores and 4 Ingots are outside the building; the others are all inside.
+Winterhold | Fort Fellhammer | 10 | 10 | |
+Falkreath Hold | Embershard Mine | 8 | 2 | 2 |
+The Rift | Treva's Watch | 1 | 3 | 18 |
+Hjaalmarch | Sorli's House | | 4 | 19 |
+Haafingar | East Empire Company Warehouse | | 3 | 15 | In the hold of the Red Wave.
+Falkreath Hold | Knifepoint Ridge | 6 | 3 | |
+The Rift | The Scorched Hammer | | 2 | 15 |
+The Pale | Forsaken Cave | | | 11 |
+Haafingar | Haafingar Stormcloak Camp | | | 10 |
+The Pale | Nightgate Inn | | | 10 |
+Hjaalmarch | Stonehills | | | 10 |
+The Pale | Iron-Breaker Mine | 6 | 1 | |
+Haafingar | Jala's House | | | 9 |
+The Reach | Blind Cliff Cave | 6 | | |
+Eastmarch | Gloombound Mine | 6 | | |
+Haafingar | Solitude Lighthouse | | 1 | 8 |
+Haafingar | Proudspire Manor | | | 8 |
+The Reach | Left Hand Mine | 5 | | |
+The Rift | Forelhost | | 5 | 5 |
+The Reach | Nchuand-Zel | 4 | | |
+Hjaalmarch | Rockwallow Mine | 4 | | |
+Haafingar | Evette San's House | | | 5 |
+Whiterun Hold | Riverwood | | | 5 | At Alvor's work area.
+Eastmarch | Lost Knife Hideout | 3 | | |
+The Rift | Northwind Mine | 3 | | |
+Winterhold | Whistling Mine | 2 | 3 | |
+The Reach | Understone Keep | | 4 | 1 | At Moth gro-Bagol's work area.
+Iron Smithing
+Iron items appear in leveled lists from the start of the game, and can be forged without the need to unlock any Smithing perks. This also means that only normal-level tempering of iron items is possible (there is no perk that provides the ability to "improve them twice as much").
+Iron Armor
+Iron Armor is the lowest-quality heavy armor in the game. All items can be tempered using 1 Iron Ingot.
+The Fearsome Fists Creation adds the Brawler's iron gauntlets, a new gauntlet variant. The base pair can be crafted and differ only in appearance, while a pair with a 10 point Fortify Unarmed enchantment can be bought from vendors.
+A male Nord wearing iron armor
+| Name (ID) | | | | Raw Materials | Delta | Ratio
+Iron | Strips | | | |
+| Iron Armor
+(00012e49) | 30 | 125 | 25 | 5 | 3 | 24.7 | 81 | 5.66 | 2.84
+| Iron Boots
+(00012e4b) | 6 | 25 | 10 | 3 | 2 | 2.8 | -2 | 1.88 | 0.93
+| Iron Gauntlets
+(00012e46) | 5 | 25 | 10 | 2 | 2 | 2.8 | 5 | 2.27 | 1.25
+| Brawler's Iron GauntletsCC
+(FExxx852) | 5 | 25 | 10 | 2 | 2 | 2.8 | 5 | 2.27 | 1.25
+| Iron Helmet
+(00012e4d) | 5 | 60 | 15 | 3 | 2 | 1.8 | 33 | 1.56 | 2.22
+| Iron Shield
+(00012eb6) | 12 | 60 | 20 | 4 | 1 | 7.9 | 29 | 2.93 | 1.94
+Totals (with shield): | 58 | 295 | 80 | 17 | 10 |
+Totals (without shield): | 46 | 235 | 60 | 13 | 9 |
+A female Imperial wearing iron armor
+Brawler's iron gauntletsCC
+Iron Plate ArmorCC
+Iron Plate Armor is a variant set added by the Alternative Armors - Iron Creation. A full enchanted set can be recovered through the quest Brothers in IronsCC, while unenchanted pieces can be crafted and also appear in random loot.
+Each piece has a slightly higher armor rating and higher value than regular iron. Only the cuirass weighs slightly more.
+A female Imperial wearing iron plate armor with a banded iron shield
+| Name (ID) | | | | Raw Materials | Delta | Ratio
+Iron | Strips | | | |
+| Iron Plate Armor
+(FExxx801) | 31 | 150 | 27 | 5 | 3 | 25.7 | 106 | 5.85 | 3.41
+| Iron Plate Boots
+(FExxx800) | 6 | 35 | 11 | 3 | 2 | 2.8 | 8 | 1.88 | 1.3
+| Iron Plate Gauntlets
+(FExxx802) | 5 | 35 | 11 | 2 | 2 | 2.8 | 15 | 2.27 | 1.75
+| Iron Plate Helmet
+(FExxx803) | 5 | 75 | 16 | 3 | 2 | 1.8 | 48 | 1.56 | 2.78
+Totals (with iron shield): | 59 | 355 | 85 | 17 | 10 |
+Totals: | 47 | 295 | 65 | 13 | 9 |
+A male Nord wearing iron plate armor with a banded iron shield
+Banded Iron Armor
+Banded Iron Armor is marginally better quality heavy armor than standard Iron Armor. One drawback of Banded Iron armor is that only a cuirass and shield are available, meaning that it is impossible to create a Matching Set of Banded Iron armor (Patch 1.9 later addressed this bug). Both items can be tempered using 1 Corundum Ingot.
+A male Nord wearing banded iron armor
+| Name (ID) | | | | Raw Materials | Delta | Ratio
+Corundum | Iron | Strips | | | |
+| Banded Iron Armor
+(00013948) | 35 | 200 | 28 | 1 | 5 | 3 | 28.7 | 116 | 5.56 | 2.38
+| Banded Iron Shield
+(0001394b) | 12 | 100 | 22 | 1 | 4 | 1 | 6.9 | 29 | 2.35 | 1.41
+A female Imperial wearing banded iron armor
+Iron Weapons
+Iron weapons are the lowest-quality weapons in the game, and appear in leveled lists from the start of the game. All items except ammunition can be tempered using 1 Iron Ingot. Arrows can only be smithed if the Dawnguard add-on has been installed. Bolts are only available with the Rare Curios Creation installed.
+There is no "Iron Bow", only Iron Arrows. The bow found at similar levels is the Long Bow, which cannot be crafted but can be improved with firewood.
+| Name (ID) | | | | Crit.
+| Speed | Reach | Raw Materials | Delta | Ratio
+Iron | Strips | | | |
+| Iron Dagger
+(0001397e) | 2 | 10 | 4 | 2 | 1.3 | 0.7 | 1 | 1 | 0.9 | 0 | 1.82 | 1.00
+| Iron Sword
+(00012eb7) | 9 | 25 | 7 | 3 | 1 | 1 | 2 | 1 | 6.9 | 8 | 4.29 | 1.47
+| Iron War Axe
+(00013790) | 11 | 30 | 8 | 4 | 0.9 | 1 | 2 | 2 | 8.8 | 10 | 5.00 | 1.50
+| Iron Mace
+(00013982) | 13 | 35 | 9 | 4 | 0.8 | 1 | 3 | 2 | 9.8 | 8 | 4.06 | 1.30
+| Iron Greatsword
+(0001359d) | 16 | 50 | 15 | 7 | 0.7 | 1.3 | 4 | 2 | 11.8 | 16 | 3.81 | 1.47
+| Iron Battleaxe
+(00013980) | 20 | 55 | 16 | 7 | 0.7 | 1.3 | 4 | 2 | 15.8 | 21 | 4.76 | 1.62
+| Iron Warhammer
+(00013981) | 24 | 60 | 18 | 9 | 0.6 | 1.3 | 4 | 3 | 19.7 | 23 | 5.58 | 1.62
+| Iron Arrow
+(0001397d) | 0 | 1 | 8 | N/A | 1 Iron + 1 Firewood =
+24 Iron ArrowsDG | -6 | 12 | 0.00 | 2.00
+| Iron BoltCC ‡
+(FExxx83a) | 0 | 1 | 8 | N/A | 1 Iron + 1 Firewood =
+Makes 10 bolts | (?) | (?) | (?) | (?)
+‡This item can only be crafted by siding with the Dawnguard.
+Building MaterialsHF
+| Name (ID) | | | Raw Materials | Delta | Notes
+Iron | Corundum | |
+| Hinge
+(xx003011) | 0.5 | 4 | 1 | - | 0 | 1 | Produces two at one time.
+| Iron Fittings
+(xx003035) | 1 | 4 | 1 | - | 0 | -3 |
+| Lock
+(xx003012) | 0.5 | 10 | 1 | 1 | -1.5 | -37 |
+| Nails
+(xx00300f) | 0.1 | 1 | 1 | - | 0 | 3 | Produces 10 at one time.
+These items will appear under the "Building Materials" section of a blacksmith forge.
+Notes
+Iron Ore can be transmuted into Silver Ore, which in turn can be transmuted into Gold Ore. Iron Ore can also be master transmuted into Gold OreCC.
+Iron Ore can be sold to Beitild, Gestur Rockbreaker, Grogmar gro-Burzag, Skaggi Scar-Face, or Thorgar for the quest Mine Ore. Note that these people will pay you 7 gold (instead of 2 gold) for each ore.
+Iron Ingots are needed when forging all varieties of Iron, Steel, Orcish, Dwarven, Elven, Ancient Nord, and Dragonscale armor and weapons.
+1 Iron Ingot is needed at Workbenches to improve all varieties of Iron armor (except Banded Iron armor and Banded Iron shields, which require 1 Corundum ingot), Ancient Nord armor, and numerous unique items and artifacts.
+1 Iron Ingot is needed at Grindstones to improve all varieties of Iron weapons, as well as numerous unique items and artifacts.
+Ore veins of all types sometimes do not respawn normally. See Mining bugs.
+HF All crafted housebuilding items use Iron Ingots in their Creation, and many items built at a carpenter's workbench also require them. The hinges recipe produces 2 per ingot, and the nails recipe produces 10 per ingot. The other two recipes (iron fittings and locks) produce one at a time. Mining Iron Ore and smelting the ore into Iron Ingots is an excellent way to prepare for construction, as you may need up to 300 ingots per property.
+Due to a cross-promotion between Bethesda Game Studios and Valve, in the game Team Fortress 2 the Iron Helmet appeared as the "Dragonborn Helmet".
