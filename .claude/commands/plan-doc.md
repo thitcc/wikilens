@@ -24,7 +24,9 @@ Steps:
    - `tags`: only tags already in the registry in `vault/index.md` — never invent
      one; leave `[]` if none fit
    - `related`: quoted wikilinks (e.g. `"[[2026-07-02_scaffold]]"`) if any, else `[]`
-   - `commit`: leave empty — set it on close, once the code is committed
+   - `commit`: leave empty — set it on close, once the code is committed. Branch
+     hashes are fine: PRs merge via merge commit (never squash), so they stay
+     valid on `main`.
 4. Fill **Context / Goal / Approach** from what we discussed; leave the remaining
    sections as the template's prompts.
 5. Add the doc to the manual index list in `vault/index.md` under **Active / blocked**

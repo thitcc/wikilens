@@ -1,5 +1,7 @@
 # WikiLens
 
+[![CI](https://github.com/thitcc/wikilens/actions/workflows/ci.yml/badge.svg)](https://github.com/thitcc/wikilens/actions/workflows/ci.yml)
+
 A Windows desktop overlay for wiki-heavy games (Stardew Valley, Conan Exiles,
 Core Keeper, …). Press a global hotkey while in-game, type a natural-language
 question, and get a concise answer drawn **only** from the game's official wiki,
@@ -84,7 +86,20 @@ Run frontend/Tauri commands from the repo root; run `cargo` commands in `src-tau
 | Frontend production build | `npm run build` |
 | Type-check the frontend | `npx tsc --noEmit` |
 | Check the Rust code | `cd src-tauri && cargo check` |
+| Lint the Rust code | `cd src-tauri && cargo clippy --all-targets -- -D warnings` |
 | Run Rust unit tests | `cd src-tauri && cargo test` |
+
+## Development workflow
+
+All changes land through a pull request — no direct commits to `main`:
+
+1. Branch off `main` as `<type>/<slug>` (e.g. `ci/github-actions-pipeline`).
+2. Commit with conventional prefixes (`feat:`, `fix:`, `chore:`, `ci:`, `docs(vault):`).
+3. Verify locally before pushing — the same gates CI runs: `npx tsc --noEmit`,
+   `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+4. Open a PR; CI (`.github/workflows/ci.yml`) must be green before merging.
+5. Merge with a **merge commit** (never squash) — the planning vault pins commit
+   hashes from PR branches, and squashing would orphan them.
 
 ## Using it
 
