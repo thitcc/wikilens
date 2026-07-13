@@ -1,0 +1,54 @@
+# CI — see vault/2026-07-13_ci-pipeline-github-actions.md
+#
+# Two jobs: the frontend needs no Windows (cheap ubuntu runner); the Rust side
+# runs on windows-latest because Windows is the only shipping platform — a
+# Linux-only `cargo test` could green-light Windows-specific breakage.
+# Live-network tests stay `#[ignore]`-gated, so CI needs no API keys.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend (type-check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      # `npx vitest run` goes here once the frontend test harness lands
+      # (vault/2026-07-13_frontend-test-harness.md).
+
+  rust:
+    name: Rust (clippy + tests, Windows)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      # No debuginfo in CI builds — halves the target-dir cache, which matters
+      # most on the slower Windows runners.
+      CARGO_PROFILE_DEV_DEBUG: 0
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test

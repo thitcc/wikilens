@@ -1,12 +1,12 @@
 ---
 title: CI pipeline on GitHub Actions
 type: plan
-status: todo
+status: done
 created: 2026-07-13
 updated: 2026-07-13
 tags: [testing, build]
 related: ["[[2026-07-13_testing-audit]]", "[[2026-07-13_frontend-test-harness]]", "[[2026-07-13_dependency-audit-lint-gates]]"]
-commit:
+commit: [c68f99a, 4c2a05a]
 ---
 
 # CI pipeline on GitHub Actions
@@ -54,4 +54,10 @@ side effect of `npm run build`; the Rust suite gates nothing unless run by hand
 
 ## Status log
 - 2026-07-13 — created from [[2026-07-13_testing-audit]]; queued as priority 1.
-  No work started.
+- 2026-07-13 — done; workflow in `4c2a05a` on the `ci/github-actions-pipeline`
+  PR. Preflight surfaced 4 clippy errors (never gated before): two justified
+  `#[allow(too_many_arguments)]` (ask's IPC contract, answer_streaming) and two
+  mechanical fixes (`is_none_or`, char-array pattern) — `c68f99a`. One deviation:
+  `.gitattributes` ships now with only the `*.snap` LF rule; fixture-dir entries
+  wait for [[2026-07-13_parser-snapshot-property-tests]]. tsc + clippy + 128
+  offline tests green locally; PR checks verified green before handoff.
