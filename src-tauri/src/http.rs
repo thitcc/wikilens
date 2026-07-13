@@ -8,7 +8,10 @@
 
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use reqwest::redirect;
+
+use crate::error::AppError;
 
 /// Redirect hop limit. reqwest's default follows 10; wikis legitimately
 /// redirect (apex→www, http→https upgrades, wiki-farm moves) but never this
@@ -47,6 +50,86 @@ pub fn build_client() -> reqwest::Client {
         .read_timeout(READ_TIMEOUT)
         .build()
         .expect("HTTP client: platform TLS init failed")
+}
+
+/// Whole-body cap for every non-streaming response read. Wiki API responses
+/// are KBs (a monster rendered page is low-single-digit MB inside JSON); the
+/// ceiling case is OpenRouter's ~2 MB decompressed model catalog — 8 MiB is
+/// 4× that. Pass to [`read_body_capped`] at every call site so the cap stays
+/// greppable next to the request it bounds.
+pub const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+
+/// Cap for non-2xx error bodies, which feed user-facing `AppError::Llm` text
+/// shown verbatim in the error box (previously unbounded). Real provider
+/// errors are well under 16 KiB; anything past it is noise, so
+/// [`read_error_body`] truncates instead of failing.
+const MAX_ERROR_BODY_BYTES: usize = 16 * 1024;
+
+/// Read a whole response body, refusing past `cap`. A `Content-Length` over
+/// the cap fails fast, but that header is a hint only — gzip responses lose
+/// it and `bytes_stream()` yields DECOMPRESSED bytes, so the running total on
+/// the stream is the real guard (a gzip bomb is caught here, not by the
+/// header).
+///
+/// Byte-parity note vs the `.text()` this replaces: `.text()` honors the
+/// Content-Type charset, but every endpoint we call emits UTF-8 JSON, so
+/// lossy UTF-8 decoding is equivalent.
+pub async fn read_body_capped(resp: reqwest::Response, cap: usize) -> Result<String, AppError> {
+    let host = resp
+        .url()
+        .host_str()
+        .unwrap_or("the server")
+        .to_string();
+    if let Some(len) = resp.content_length() {
+        if len > cap as u64 {
+            return Err(AppError::BodyTooLarge(too_large_message(&host, cap)));
+        }
+    }
+    let mut body: Vec<u8> = Vec::new();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk?;
+        if body.len() + chunk.len() > cap {
+            return Err(AppError::BodyTooLarge(too_large_message(&host, cap)));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+/// Best-effort error-body read for user-facing display, truncated to
+/// [`MAX_ERROR_BODY_BYTES`] (with a trailing `…` when cut). Never fails: a
+/// transport error mid-read returns what already arrived — this replaces
+/// `.text().await.unwrap_or_default()` on non-2xx paths.
+pub async fn read_error_body(resp: reqwest::Response) -> String {
+    let mut body: Vec<u8> = Vec::new();
+    let mut truncated = false;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let Ok(chunk) = chunk else { break };
+        let room = MAX_ERROR_BODY_BYTES - body.len();
+        if chunk.len() > room {
+            body.extend_from_slice(&chunk[..room]);
+            truncated = true;
+            break;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let mut text = String::from_utf8_lossy(&body).into_owned();
+    if truncated {
+        text.push('…');
+    }
+    text
+}
+
+/// Complete user-facing text for a [`AppError::BodyTooLarge`] refusal.
+fn too_large_message(host: &str, cap: usize) -> String {
+    let limit = if cap >= 1024 * 1024 {
+        format!("{} MB", cap / (1024 * 1024))
+    } else {
+        format!("{} KB", cap / 1024)
+    };
+    format!("The response from {host} was too large (over {limit}) and was not read.")
 }
 
 /// The redirect rule, split from the `Policy` so it unit-tests offline
@@ -269,5 +352,110 @@ mod http_tests {
             msg.contains("refused to follow more than 5 redirects"),
             "user-facing message lost the refusal reason: {msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn read_body_capped_returns_small_bodies_intact() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/small"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("hello wiki"))
+            .mount(&server)
+            .await;
+
+        let resp = build_client()
+            .get(format!("{}/small", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        let body = read_body_capped(resp, 1024).await.unwrap();
+        assert_eq!(body, "hello wiki");
+    }
+
+    #[tokio::test]
+    async fn read_body_capped_refuses_an_oversized_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/big"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(vec![b'a'; 4096], "text/plain"))
+            .mount(&server)
+            .await;
+
+        let resp = build_client()
+            .get(format!("{}/big", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        let err = read_body_capped(resp, 1024).await.unwrap_err();
+        match err {
+            AppError::BodyTooLarge(msg) => {
+                assert!(msg.contains("too large"), "msg: {msg}");
+                assert!(msg.contains("1 KB"), "msg must name the limit: {msg}");
+            }
+            other => panic!("expected BodyTooLarge, got {other:?}"),
+        }
+    }
+
+    /// The gzip-bomb pin — the whole reason the cap counts STREAM bytes: a
+    /// tiny wire payload decompresses far past the cap, and Content-Length
+    /// (when present at all) only ever describes the wire size.
+    #[tokio::test]
+    async fn read_body_capped_counts_decompressed_bytes() {
+        use std::io::Write as _;
+
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        enc.write_all(&vec![b'a'; 64 * 1024]).unwrap();
+        let gz = enc.finish().unwrap();
+        assert!(gz.len() < 1024, "wire payload must be tiny, got {} bytes", gz.len());
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bomb"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-encoding", "gzip")
+                    .set_body_raw(gz, "application/json"),
+            )
+            .mount(&server)
+            .await;
+
+        let resp = build_client()
+            .get(format!("{}/bomb", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        let err = read_body_capped(resp, 16 * 1024).await.unwrap_err();
+        assert!(matches!(err, AppError::BodyTooLarge(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn read_error_body_truncates_instead_of_failing() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/err"))
+            .respond_with(ResponseTemplate::new(500).set_body_raw(vec![b'e'; 64 * 1024], "text/plain"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/small-err"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("upstream down"))
+            .mount(&server)
+            .await;
+
+        let resp = build_client()
+            .get(format!("{}/err", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        let text = read_error_body(resp).await;
+        assert!(text.ends_with('…'), "truncated body must end with an ellipsis");
+        assert!(text.len() <= 16 * 1024 + '…'.len_utf8());
+
+        let resp = build_client()
+            .get(format!("{}/small-err", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(read_error_body(resp).await, "upstream down");
     }
 }

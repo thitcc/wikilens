@@ -9,14 +9,24 @@
 //! model from answering beyond them. The API key is passed in from the command
 //! layer and never stored or logged here.
 
+use std::time::Duration;
+
 use base64::Engine as _;
 use futures_util::StreamExt;
 
 use crate::error::AppError;
+use crate::http;
 use crate::providers::{Provider, ProviderKind};
 use crate::wiki::fetch::WikiPage;
 
 const MAX_TOKENS: u32 = 1024;
+
+/// Transport-level cap on the whole SSE answer stream. With `MAX_TOKENS` =
+/// 1024 a real answer is a few KB even with SSE framing, keep-alives, and
+/// ignored non-text events — 1 MiB is a runaway or hostile endpoint, not a
+/// slow one. The running total also bounds the line buffer against a
+/// newline-less flood.
+const MAX_STREAM_BYTES: usize = 1024 * 1024;
 
 /// Verbatim system prompt from the scaffold spec (§4.6). Do not edit casually —
 /// it is the guardrail that keeps answers grounded in the provided wiki text.
@@ -72,7 +82,7 @@ where
     let resp = request.send().await?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
+        let body = http::read_error_body(resp).await;
         // With an image attached, translate the two known non-vision rejections
         // into plain language; everything else keeps the verbatim error body.
         if image_png.is_some() {
@@ -93,10 +103,19 @@ where
     // directly would split a multi-byte char and produce replacement chars.
     let mut answer = String::new();
     let mut buffer: Vec<u8> = Vec::new();
+    let mut received: usize = 0;
     let mut stream = resp.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk?;
+        received += chunk.len();
+        if received > MAX_STREAM_BYTES {
+            return Err(AppError::BodyTooLarge(format!(
+                "The {} answer stream exceeded {} MB and was stopped. Try asking again.",
+                provider.name,
+                MAX_STREAM_BYTES / (1024 * 1024)
+            )));
+        }
         buffer.extend_from_slice(&chunk);
 
         while let Some(newline) = buffer.iter().position(|&b| b == b'\n') {
@@ -281,6 +300,14 @@ fn build_user_message(question: &str, pages: &[WikiPage]) -> String {
 /// reasoning for many seconds.
 const REWRITE_MAX_TOKENS: u32 = 256;
 
+/// Total-request cap for the rewrite completion. `run_ask` joins the rewrite
+/// with the raw retry search and waits for both, so a stalled rewrite
+/// provider used to add its whole stall to every zero-hit ask (forever, being
+/// untimed). Rewrite errors are already swallowed into "no candidates", so
+/// timing out degrades gracefully — and a 256-token completion that hasn't
+/// answered in 15s isn't going to help this ask.
+const REWRITE_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// System prompt for the lazy query-rewrite (Phase 3 of the retrieval-quality
 /// plan). The player's own wiki search found nothing — usually a typo, a
 /// paraphrase, or an item/character the wiki names differently. Turn the question
@@ -310,17 +337,17 @@ pub async fn rewrite_query(
             build_completion_openai(client, provider, model, api_key, REWRITE_SYSTEM_PROMPT, &user)
         }
     };
-    let resp = request.send().await?;
+    let resp = request.timeout(REWRITE_TIMEOUT).send().await?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
+        let body = http::read_error_body(resp).await;
         return Err(AppError::Llm {
             provider: provider.name,
             status,
             body,
         });
     }
-    let body = resp.text().await?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
     // Diagnostic: the rewrite is un-live-validated; when tracing, dump the raw
     // response so an empty/prose reply (vs. a clean JSON one) is visible.
     if std::env::var_os("WIKILENS_TRACE_RETRIEVAL").is_some() {
@@ -796,6 +823,65 @@ mod http_tests {
         )
         .await;
         (result, deltas)
+    }
+
+    /// A runaway/hostile stream (no `[DONE]`, endless deltas) must abort at
+    /// `MAX_STREAM_BYTES` with a user-readable error naming the provider —
+    /// not grow the answer unbounded.
+    #[tokio::test]
+    async fn stream_exceeding_byte_cap_aborts_with_clear_error() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        let delta = openai_delta("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        let per_line = delta.len() + 1; // sse_body joins lines with '\n'
+        let lines = vec![delta.as_str(); MAX_STREAM_BYTES / per_line + 64];
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(sse_body(&lines), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let (result, deltas) = ask(&provider, None).await;
+        match result.unwrap_err() {
+            AppError::BodyTooLarge(msg) => {
+                assert!(msg.contains("MockProv"), "must name the provider: {msg}")
+            }
+            other => panic!("expected BodyTooLarge, got {other:?}"),
+        }
+        assert!(!deltas.is_empty(), "deltas must stream until the cap hits");
+    }
+
+    /// Non-2xx bodies feed the error box verbatim and were previously
+    /// unbounded — `read_error_body` truncates instead of failing.
+    #[tokio::test]
+    async fn oversized_error_body_is_truncated() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(400).set_body_raw(vec![b'x'; 64 * 1024], "text/plain"))
+            .mount(&server)
+            .await;
+
+        let (result, _) = ask(&provider, None).await;
+        match result.unwrap_err() {
+            AppError::Llm { status, body, .. } => {
+                assert_eq!(status, 400);
+                assert!(body.ends_with('…'), "truncated body must end with an ellipsis");
+                assert!(body.len() < 20 * 1024, "body must be capped, got {} bytes", body.len());
+            }
+            other => panic!("expected AppError::Llm, got {other:?}"),
+        }
     }
 
     #[tokio::test]

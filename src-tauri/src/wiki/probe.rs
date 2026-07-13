@@ -16,6 +16,7 @@ use std::time::Duration;
 use serde::Serialize;
 
 use crate::error::AppError;
+use crate::http;
 use crate::wiki::search;
 
 /// Per-request cap, matching the model-list fetch precedent (`models.rs`).
@@ -196,7 +197,7 @@ pub async fn suggest(client: &reqwest::Client, name: &str) -> Vec<WikiCandidate>
 /// One siteinfo round-trip; any network/HTTP/parse failure is a `None`
 /// ("not a MediaWiki here" — the caller tries the next candidate).
 async fn fetch_siteinfo(client: &reqwest::Client, api_url: &str) -> Option<SiteInfo> {
-    let body = client
+    let resp = client
         .get(api_url)
         .query(&[
             ("action", "query"),
@@ -209,8 +210,8 @@ async fn fetch_siteinfo(client: &reqwest::Client, api_url: &str) -> Option<SiteI
         .await
         .ok()?
         .error_for_status()
-        .ok()?
-        .text()
+        .ok()?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES)
         .await
         .ok()?;
     parse_siteinfo(&body).ok()
@@ -225,7 +226,7 @@ async fn validate_search(client: &reqwest::Client, api_url: &str) -> Result<(), 
             "Found a MediaWiki at {api_url}, but its search API didn't answer — WikiLens can't use it."
         ))
     };
-    let body = client
+    let resp = client
         .get(api_url)
         .query(&[
             ("action", "query"),
@@ -239,8 +240,8 @@ async fn validate_search(client: &reqwest::Client, api_url: &str) -> Result<(), 
         .await
         .map_err(|_| broken())?
         .error_for_status()
-        .map_err(|_| broken())?
-        .text()
+        .map_err(|_| broken())?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES)
         .await
         .map_err(|_| broken())?;
     search::parse_search_response(&body).map_err(|_| broken())?;

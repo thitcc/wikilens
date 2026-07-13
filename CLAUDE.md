@@ -79,8 +79,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 ## 4. Conventions
 
-- **All HTTP happens in Rust.** The webview has no network/http/fs permissions
-  (see `capabilities/default.json`).
+- **All HTTP happens in Rust** — and every client comes from
+  `http::build_client()` (shared User-Agent, ≤5-hop redirect policy refusing
+  https→http downgrades, connect/read timeouts). Read bodies via
+  `http::read_body_capped` / `read_error_body`, never bare `.text()` — new
+  fetch paths inherit the byte caps only through the helpers. The webview has
+  no network/http/fs permissions (see `capabilities/default.json`).
 - **API keys:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`,
   from a `.env` file (dotenvy, loaded at the top of `run()`) or OS env vars (which
   take precedence). Read Rust-side only in `commands.rs`; never logged, never

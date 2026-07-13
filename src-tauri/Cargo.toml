@@ -46,6 +46,9 @@ tempfile = "3"
 # Local mock HTTP server for the offline streaming/fetch orchestration tests
 # (vault/2026-07-13_rust-http-mock-integration-tests.md).
 wiremock = "0.6"
+# Builds the tiny-wire/huge-decompressed body for the byte-cap gzip-bomb test
+# (vault/2026-07-13_wiki-fetch-hardening.md).
+flate2 = "1"
 # Snapshot tests freezing the cleaners' output over captured wiki pages, and
 # property tests proving the cleaners and SSE line parsers never panic
 # (vault/2026-07-13_parser-snapshot-property-tests.md).

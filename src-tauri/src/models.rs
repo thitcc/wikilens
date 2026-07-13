@@ -12,6 +12,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+use crate::http;
 use crate::providers::{CuratedModel, Provider, ProviderKind};
 
 /// One selectable model, as sent to the frontend menu.
@@ -64,10 +65,10 @@ pub async fn fetch_models(
         return Err(AppError::Llm {
             provider: provider.name,
             status: status.as_u16(),
-            body: resp.text().await.unwrap_or_default(),
+            body: http::read_error_body(resp).await,
         });
     }
-    let body = resp.text().await?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
 
     match provider.kind {
         ProviderKind::Anthropic => parse_anthropic_models(&body),

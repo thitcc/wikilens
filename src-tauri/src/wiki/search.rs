@@ -1,10 +1,19 @@
 //! MediaWiki `list=search` client.
 
+use std::time::Duration;
+
 use crate::error::AppError;
+use crate::http;
 use crate::wiki::games::GameWiki;
 
 /// Default number of pages to pull for a question. Kept small to bound tokens.
 pub const DEFAULT_SEARCH_LIMIT: u32 = 4;
+
+/// Per-request cap, matching the 8s probe/model-list precedent. This is the
+/// hottest request in the app — the recovery ladder can run several searches
+/// per ask, so each must stay short (previously untimed: one stalled search
+/// hung the whole ask).
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Conversational filler dropped before searching. Default-engine (MySQL
 /// fulltext) wikis require every remaining term to literally appear on a page,
@@ -74,14 +83,14 @@ pub async fn search_full(
 ) -> Result<(Vec<String>, Option<String>), AppError> {
     let limit = limit.to_string();
     let params = build_search_params(query, &limit, wiki.search_namespace.as_deref());
-    let body = client
+    let resp = client
         .get(&wiki.api_url)
         .query(&params)
+        .timeout(SEARCH_TIMEOUT)
         .send()
         .await?
-        .error_for_status()?
-        .text()
-        .await?;
+        .error_for_status()?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
 
     Ok((parse_search_response(&body)?, parse_search_suggestion(&body)))
 }
@@ -289,5 +298,93 @@ mod tests {
     #[test]
     fn simplify_can_return_empty() {
         assert_eq!(simplify_query("how to get it"), "");
+    }
+}
+
+/// Offline wiremock tier: the hardening pins on the production search path —
+/// redirect-following through the factory client, the response byte cap, and
+/// (in the `--ignored` tier, because it takes the full 8s) the request
+/// timeout (`vault/2026-07-13_wiki-fetch-hardening.md`).
+#[cfg(test)]
+mod http_tests {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+    use crate::test_support::mock_wiki;
+
+    const SEARCH_BODY: &str =
+        r#"{"query":{"search":[{"title":"Wood"},{"title":"Wood Chipper"}]}}"#;
+
+    /// The legit apex→www case: a wiki that 302s its api.php must keep
+    /// working end-to-end under the factory client's redirect policy.
+    #[tokio::test]
+    async fn search_full_follows_a_wiki_redirect() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("Location", format!("{}/w/api.php", server.uri()).as_str()),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/w/api.php"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(SEARCH_BODY))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let (titles, _) = search_full(&client, &wiki, "wood", 4).await.unwrap();
+        assert_eq!(titles, vec!["Wood", "Wood Chipper"]);
+    }
+
+    /// The call site must pass the production cap, not just have one available.
+    #[tokio::test]
+    async fn search_full_refuses_an_oversized_body() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        // Over MAX_RESPONSE_BYTES of valid-JSON padding.
+        let body = format!(
+            r#"{{"query":{{"search":[]}},"pad":"{}"}}"#,
+            "a".repeat(9 * 1024 * 1024)
+        );
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let err = search_full(&client, &wiki, "wood", 4).await.unwrap_err();
+        assert!(matches!(err, AppError::BodyTooLarge(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    #[ignore = "slow (~8s): pins the SEARCH_TIMEOUT behavior"]
+    async fn search_hang_times_out() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(SEARCH_BODY)
+                    .set_delay(SEARCH_TIMEOUT + Duration::from_secs(2)),
+            )
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let start = std::time::Instant::now();
+        let err = search_full(&client, &wiki, "wood", 4).await.unwrap_err();
+        assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+        assert!(
+            start.elapsed() < SEARCH_TIMEOUT + Duration::from_secs(1),
+            "must fail via SEARCH_TIMEOUT, not the mock's longer delay"
+        );
     }
 }

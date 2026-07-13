@@ -59,6 +59,11 @@ pub enum AppError {
 
     #[error("Couldn't save your games: {0}")]
     Storage(String),
+
+    /// A response body or stream exceeded its byte cap and was abandoned
+    /// (see `crate::http`). The message is already complete user-facing text.
+    #[error("{0}")]
+    BodyTooLarge(String),
 }
 
 /// reqwest 0.12 (hyper 1.x) stopped inlining error sources in `Display`, so a
