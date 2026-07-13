@@ -20,7 +20,9 @@ wikilens/
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
 │   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
+│   ├── modelPick.ts              # stored model pick + vision resolution (pure helpers, unit-tested)
 │   ├── styles.css                # Transparent body + glass dark panel
+│   ├── test/                     # Vitest harness: setup, fake IPC backend (mockIPC), mount helpers
 │   └── components/
 │       ├── GameChip.tsx          # header chip: current game, opens the game menu
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
@@ -56,11 +58,13 @@ search/fetch → LLM stream → events → UI`.
 Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 - Dev app: `npm run tauri dev`
-- Frontend build: `npm run build` · Type-check: `npx tsc --noEmit`
+- Frontend build: `npm run build` · Type-check: `npx tsc --noEmit` ·
+  Tests: `npm test` (Vitest; `npm run test:watch` while developing)
 - Rust: `cd src-tauri && cargo check` · `cargo test` ·
   lint: `cargo clippy --all-targets -- -D warnings`
-- Verify all: `/check` bundles the type-check + clippy + `cargo test` — the exact
-  gates CI runs (`.github/workflows/ci.yml`, every PR and push to main)
+- Verify all: `/check` bundles the type-check + `npm test` + clippy +
+  `cargo test` — the exact gates CI runs (`.github/workflows/ci.yml`, every PR
+  and push to main)
 - Release: `npm run tauri build`
 
 ## 4. Conventions
