@@ -59,3 +59,7 @@ runtime") is exactly the class of drift only a config test catches. See
 ## Status log
 - 2026-07-13 — created from [[2026-07-13_testing-audit]]; queued as priority 5.
   No work started.
+- 2026-07-13 — one slice landed early: the clippy `-D warnings` gate is live in
+  CI (`4c2a05a`) and `/check` now runs it (`b80df5d`, with
+  [[2026-07-13_pr-delivery-workflow]]). Remaining scope here: cargo-audit /
+  npm audit in CI, explicit `tsc` gate, and the config-as-data guardrail tests.
