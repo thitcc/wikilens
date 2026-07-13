@@ -1,12 +1,12 @@
 ---
 title: Frontend test harness (Vitest + Testing Library + Tauri IPC mocks)
 type: plan
-status: todo
+status: done
 created: 2026-07-13
 updated: 2026-07-13
 tags: [testing, frontend]
 related: ["[[2026-07-13_testing-audit]]", "[[2026-07-13_ci-pipeline-github-actions]]"]
-commit:
+commit: [aa33c88, 02feac9, 187da46, 5c7d88a]
 ---
 
 # Frontend test harness (Vitest + Testing Library + Tauri IPC mocks)
@@ -64,3 +64,18 @@ changing the delta accumulator `setAnswer((prev) => prev + chunk)` (App.tsx) to
 ## Status log
 - 2026-07-13 — created from [[2026-07-13_testing-audit]]; queued as priority 2.
   No work started.
+- 2026-07-13 — **done.** Vitest 4 + jsdom + Testing Library landed; 17 tests
+  across 6 files cover the full worth-testing list; `npm test` wired into
+  `/check` and the frontend CI job. Deviations from the approach as written:
+  - The anticipated mockIPC rough edges never materialized —
+    `mockIPC(cb, { shouldMockEvents: true })` handles
+    `plugin:event|listen/emit/unlisten` natively, so tests fire backend events
+    with the real `emit()` and the `vi.mock` fallback was never needed.
+  - Writing the "exactly one `list_models`" self-heal test exposed a real app
+    bug: the provider re-read effect produced a fresh content-equal pick object
+    on mount, re-arming the self-heal effect (two fetches, first aborted).
+    Fixed by extracting the helpers to `src/modelPick.ts` with a
+    `sameModelPick` bailout (`aa33c88`); the test fails without the fix.
+  - `monogram` stayed in GameMenu.tsx — extracting it only to test trivial
+    rendering would contradict the non-goals; `storedModel`/`activeModelVision`
+    were extracted and unit-tested as planned.
