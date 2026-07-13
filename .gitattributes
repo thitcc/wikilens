@@ -1,0 +1,4 @@
+# Snapshot files must stay byte-identical across platforms, or Windows
+# autocrlf churns them on every checkout. Extend with fixture directories when
+# the parser snapshot suite lands (vault/2026-07-13_parser-snapshot-property-tests.md).
+*.snap text eol=lf
