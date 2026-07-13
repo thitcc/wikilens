@@ -1,12 +1,12 @@
 ---
 title: Manual smoke checklist and live golden-suite cadence
 type: plan
-status: todo
+status: done
 created: 2026-07-13
 updated: 2026-07-13
 tags: [testing, overlay, hotkey, wiki]
 related: ["[[2026-07-13_testing-audit]]", "[[2026-07-04_golden-query-retrieval-tests]]"]
-commit:
+commit: [766be60, 781fb95]
 ---
 
 # Manual smoke checklist and live golden-suite cadence
@@ -67,3 +67,29 @@ runs. See [[2026-07-13_testing-audit]].
 ## Status log
 - 2026-07-13 — created from [[2026-07-13_testing-audit]]; queued as priority 6.
   No work started.
+- 2026-07-13 — **done.** Notes against the plan as written:
+  - **Checklist** shipped as `docs/smoke-checklist.md` (`781fb95`): the 8 items
+    as checkbox sections plus a prerequisites block (borderless game, vision +
+    text-only models for the attach step, >100% DPI monitor if available,
+    dev-run vs packaged-installer split). Referenced from CLAUDE.md §2/§3
+    (Release bullet now ends at the checklist) and from README's first-run
+    smoke section via a maintainer pointer.
+  - **Cadence** landed with its primary home in the checklist doc (the release
+    ritual doc), CLAUDE.md §3 pointing at it — the three triggers as planned,
+    plus a note from experience: the very first documented run hit a transient
+    403 from wiki.guildwars2.com that vanished on rerun, so the doc says to
+    rerun once before treating a mid-suite 403 as drift.
+  - **Golden-coverage invariant** (`766be60`): the table was a function-local
+    `let` inside the live runner, so it was hoisted to a shared `#[cfg(test)]
+    const GOLDEN_CASES` at the `wiki` module level; `wiki/mod.rs::tests` now
+    holds `every_builtin_game_has_a_golden_query` (with anti-vacuity asserts)
+    plus a reverse-direction `golden_case_game_ids_are_registered` (a typo'd
+    table id used to surface only when the opt-in live suite panicked). Both
+    bite-checked: a commented-out case and a typo'd id each fail naming the
+    exact game.
+  - **Deviation:** the invariant immediately exposed conanexiles as the one
+    built-in (of 15) without a golden case — fixed with a live-verified strict
+    anchor ("how do I make steel" → Steel Bar/Steelfire; Steel Bar ranks #1)
+    rather than an exemption. Suite is 20 cases: 18 strict OK, 2 known gaps.
+    Full live run green (details in
+    [[2026-07-04_golden-query-retrieval-tests]]'s log).
