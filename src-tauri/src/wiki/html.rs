@@ -414,3 +414,32 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod property_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{arbitrary_text, marker_soup};
+
+    const HTML_MARKERS: &[&str] = &[
+        "<td>", "</td>", "<th>", "<tr>", "</tr>", "<table", "</table>", "<aside ",
+        "class=\"", "id=\"toc\"", "id=\"navbox\"", "pi-data-label", "navbox",
+        "<script>", "</script>", "<svg>", "<!--", "-->", "<br />", "/>", "&#",
+        "&#x", "&amp;", "&nbsp;", "<", ">", "\"", "'", "=", "|", "\n",
+    ];
+
+    proptest! {
+        #[test]
+        fn never_panics_and_never_grows_on_arbitrary_text(s in arbitrary_text()) {
+            let out = to_plaintext(&s);
+            prop_assert!(out.len() <= s.len(), "grew: {} -> {}", s.len(), out.len());
+        }
+
+        #[test]
+        fn never_panics_and_never_grows_on_marker_soup(s in marker_soup(HTML_MARKERS)) {
+            let out = to_plaintext(&s);
+            prop_assert!(out.len() <= s.len(), "grew: {} -> {}", s.len(), out.len());
+        }
+    }
+}

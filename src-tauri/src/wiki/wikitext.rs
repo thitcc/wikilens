@@ -371,3 +371,85 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod property_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{arbitrary_text, marker_soup};
+
+    const WIKITEXT_MARKERS: &[&str] = &[
+        "{{", "}}", "{|", "|}", "[[", "]]", "<!--", "-->", "''", "'''", "&#", "&amp;",
+        "__NOTOC__", "[File:", "[[Category:", "== ", "[https://", "]", "<br>", "<item>",
+        "<", ">", "|", "=", "*", ":", "\n",
+    ];
+
+    /// Marker-free prose for building balanced constructs: excludes every byte
+    /// that participates in a marker, so removals can never join fragments
+    /// into a new marker (replace-with-empty passes make a universal
+    /// no-residue claim over arbitrary input provably false — `{''{` cleans
+    /// to `{{`).
+    fn prose() -> impl Strategy<Value = String> {
+        "[A-Za-z0-9 .,\\n-]{0,20}"
+    }
+
+    /// Well-formed wikitext: prose and non-nested links, recursively wrapped
+    /// in balanced templates and tables. Links never nest inside links —
+    /// `convert_wiki_links` is non-nesting-aware by design.
+    fn balanced_wikitext() -> impl Strategy<Value = String> {
+        let link = (prose(), proptest::option::of(prose())).prop_map(|(t, d)| match d {
+            Some(d) => format!("[[{t}|{d}]]"),
+            None => format!("[[{t}]]"),
+        });
+        let leaf = prop_oneof![prose(), link];
+        leaf.prop_recursive(3, 24, 3, |inner| {
+            let seq = proptest::collection::vec(inner, 0..4).prop_map(|v| v.concat());
+            prop_oneof![
+                seq.clone().prop_map(|b| format!("{{{{Tpl|{b}}}}}")),
+                seq.clone().prop_map(|b| format!("{{|\n|-\n| {b}\n|}}")),
+                seq,
+            ]
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn never_panics_and_never_grows_on_arbitrary_text(s in arbitrary_text()) {
+            let out = to_plaintext(&s);
+            prop_assert!(out.len() <= s.len(), "grew: {} -> {}", s.len(), out.len());
+        }
+
+        #[test]
+        fn never_panics_and_never_grows_on_marker_soup(s in marker_soup(WIKITEXT_MARKERS)) {
+            let out = to_plaintext(&s);
+            prop_assert!(out.len() <= s.len(), "grew: {} -> {}", s.len(), out.len());
+        }
+
+        #[test]
+        fn balanced_wikitext_leaves_no_marker_residue(s in balanced_wikitext()) {
+            let out = to_plaintext(&s);
+            for marker in ["{{", "}}", "{|", "|}", "[[", "]]"] {
+                prop_assert!(!out.contains(marker), "{marker} leaked from {s:?}: {out:?}");
+            }
+        }
+
+        #[test]
+        fn unmatched_template_open_keeps_prefix_and_tail(
+            a in "[^{}]{0,30}",
+            b in "[^{}]{0,30}",
+        ) {
+            let cleaned = remove_balanced(&format!("{a}{{{{{b}"), "{{", "}}");
+            prop_assert_eq!(cleaned, format!("{a}{b}"));
+        }
+
+        #[test]
+        fn unmatched_table_open_keeps_prefix_and_tail(
+            a in "[^{|}]{0,30}",
+            b in "[^{|}]{0,30}",
+        ) {
+            let cleaned = remove_balanced(&format!("{a}{{|{b}"), "{|", "|}");
+            prop_assert_eq!(cleaned, format!("{a}{b}"));
+        }
+    }
+}

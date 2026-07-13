@@ -46,6 +46,8 @@ tempfile = "3"
 # Local mock HTTP server for the offline streaming/fetch orchestration tests
 # (vault/2026-07-13_rust-http-mock-integration-tests.md).
 wiremock = "0.6"
-# Snapshot tests freezing the cleaners' output over captured wiki pages
+# Snapshot tests freezing the cleaners' output over captured wiki pages, and
+# property tests proving the cleaners and SSE line parsers never panic
 # (vault/2026-07-13_parser-snapshot-property-tests.md).
 insta = "1"
+proptest = "1"
