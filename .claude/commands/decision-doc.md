@@ -25,7 +25,9 @@ Steps:
      one; leave `[]` if none fit
    - `related`: quoted wikilinks — if this decision came out of a plan, set it to that
      plan's wikilink (and add the back-link on the plan). Else `[]`.
-   - `commit`: leave empty — set it on close, once the code is committed
+   - `commit`: leave empty — set it on close, once the code is committed. Branch
+     hashes are fine: PRs merge via merge commit (never squash), so they stay
+     valid on `main`.
 4. Fill **Context / Decision / Consequences / Alternatives considered** from what we
    discussed. The **Alternatives considered** section is the point of a decision doc:
    name what we rejected and why.
