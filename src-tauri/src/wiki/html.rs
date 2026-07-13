@@ -384,4 +384,33 @@ mod tests {
         let html = "<table><tr><td></td><td></td></tr><tr><td>real</td></tr></table>";
         assert_eq!(to_plaintext(html), "real");
     }
+
+    // Snapshots freeze the cleaner's exact output over real captured pages
+    // (fixtures/ carries provenance headers; the comments never reach output).
+    // Intentional cleaner changes: re-accept with INSTA_UPDATE=always and
+    // review the .snap diff — that diff IS the answer-quality review.
+
+    #[test]
+    fn snapshot_stardew_default_engine_infobox_page() {
+        insta::assert_snapshot!(
+            "stardew_parsnip",
+            to_plaintext(include_str!("fixtures/stardew_parsnip.html"))
+        );
+    }
+
+    #[test]
+    fn snapshot_fandom_portable_infobox_page() {
+        insta::assert_snapshot!(
+            "fandom_portable_infobox",
+            to_plaintext(include_str!("fixtures/fandom_portable_infobox.html"))
+        );
+    }
+
+    #[test]
+    fn snapshot_uesp_namespaced_page() {
+        insta::assert_snapshot!(
+            "uesp_skyrim_iron",
+            to_plaintext(include_str!("fixtures/uesp_page.html"))
+        );
+    }
 }

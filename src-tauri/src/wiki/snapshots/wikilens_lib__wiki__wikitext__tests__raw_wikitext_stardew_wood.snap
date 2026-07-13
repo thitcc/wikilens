@@ -1,0 +1,50 @@
+---
+source: src/wiki/wikitext.rs
+expression: "to_plaintext(include_str!(\"fixtures/raw_wikitext.txt\"))"
+---
+Wood is a basic  that can be obtained by felling Trees and branches with an axe or bought from Robin at the Carpenter's Shop. The Bookseller trades 100 Wood for 1 Woodcutter's Weekly. Robin sells up to 500 Wood in her shop at the Desert Festival for  Calico Egg each.
+
+Wood can also be found in Fishing Treasure Chests. Ninety-nine Wood can be received as a gift from Robin at the Feast of the Winter Star. One to 10 Wood can be produced in a Woodskip Fish Pond, depending on the population of the pond. Wood can additionally be obtained from chipped Hardwood and from recycled or chipped Driftwood.
+
+Felling a fully grown tree will yield between 12 and 16 Wood. After felling the tree, the stump can be destroyed to yield between 5 and 9 Wood. The amount of Wood dropped will depend on Luck and the player's Foraging level. Additionally, the Forester profession will increase yields from both trees and stumps, while reading Woody's Secret will only increase yields from trees. Felling trees near water can result in the loss of some or all of the Wood. To prevent this, players can destroy the tree while standing on the side where they do not want the tree to fall to, as it will always fall away from them.
+
+Uses
+Wood can be spent on a variety of different things, including:
+Building and upgrading buildings at the Carpenter's Shop.
+Crafting various items.
+Creating 1 coal by placing 10 wood into the Charcoal Kiln.
+198 Wood are used (in two stacks of 99) in the .
+300 Wood are used for repairing the tide pool bridge at the Beach.
+950 Wood are used for the Community Upgrade.
+
+Purchase Price
+The price of wood at the Carpenter's Shop increases from  to  starting in Year 2. The player will receive a letter in the mail on Spring 1 of Year 2 saying "Notice: The price of raw materials at Robin's shop and Clint's shop has increased." The gold obtained by selling wood to Robin or through the Shipping Bin is unchanged.
+
+Crafting
+
+Buildings
+
+Gifting
+
+Tailoring
+Wood is used in the spool of the Sewing Machine with Cloth in the feed to create a dyeable Basic Pullover.
+Male version:
+Female version:
+It is a brown dye when used in the spool of the Sewing Machine with a dyeable clothing item in the feed. It can be placed in the orange dye pot at Emily's and Haley's house for use in dyeing.
+
+Quests
+Robin may ask the player to gather 1000 pieces of wood within one week in the "Robin's Resource Rush" special order. The player may keep the harvested wood. If completed on time, Robin will mail the farmer the recipe to create a Stone Chest.
+
+History
+
+de:Holz
+es:Madera
+fr:Bois
+it:Legno
+ja:木材
+ko:나무
+hu:Fa
+pt:Madeira
+ru:Древесина
+tr:Odun
+zh:木材

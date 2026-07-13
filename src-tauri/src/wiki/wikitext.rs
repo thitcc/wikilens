@@ -360,4 +360,14 @@ mod tests {
         assert_eq!(remove_html_tags("Type /give <item> <amount>"), "Type /give <item> <amount>");
         assert_eq!(remove_html_tags("if level < 5 and hp > 0"), "if level < 5 and hp > 0");
     }
+
+    // Freezes the fallback cleaner's exact output over a real captured
+    // wikitext revision (see the matching snapshot suite in html.rs).
+    #[test]
+    fn snapshot_raw_wikitext_fallback_page() {
+        insta::assert_snapshot!(
+            "raw_wikitext_stardew_wood",
+            to_plaintext(include_str!("fixtures/raw_wikitext.txt"))
+        );
+    }
 }
