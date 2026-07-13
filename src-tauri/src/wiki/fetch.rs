@@ -411,3 +411,174 @@ mod tests {
         assert!(pages.is_empty());
     }
 }
+
+/// Offline wiremock tier: the rendered-HTML → batched-wikitext fallback
+/// ladder of `fetch_pages`, which no unit test can reach
+/// (`vault/2026-07-13_rust-http-mock-integration-tests.md`). Single-word
+/// titles keep query matching free of space-encoding ambiguity.
+#[cfg(test)]
+mod http_tests {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+    use crate::test_support::mock_wiki;
+
+    /// A successful `action=parse` body for one title.
+    fn parse_ok(title: &str, html: &str) -> String {
+        serde_json::json!({
+            "parse": {
+                "title": title,
+                "text": format!("<div class=\"mw-parser-output\">{html}</div>"),
+            }
+        })
+        .to_string()
+    }
+
+    /// Mount a mock for one title's `action=parse` request.
+    async fn mount_parse(server: &MockServer, title: &str, response: ResponseTemplate) {
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .and(query_param("action", "parse"))
+            .and(query_param("page", title))
+            .respond_with(response)
+            .mount(server)
+            .await;
+    }
+
+    /// Mount the batched `prop=revisions` fallback mock, with a call-count
+    /// expectation — `expect(0)` is what proves the ladder was never climbed.
+    async fn mount_revisions(server: &MockServer, response: ResponseTemplate, expected_calls: u64) {
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .and(query_param("prop", "revisions"))
+            .respond_with(response)
+            .expect(expected_calls)
+            .mount(server)
+            .await;
+    }
+
+    fn titles(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn all_parses_succeed_without_touching_fallback() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        mount_parse(
+            &server,
+            "Wood",
+            ResponseTemplate::new(200).set_body_string(parse_ok("Wood", "<p>Wood is a material.</p>")),
+        )
+        .await;
+        mount_parse(
+            &server,
+            "Iron",
+            ResponseTemplate::new(200).set_body_string(parse_ok("Iron", "<p>Iron is a metal.</p>")),
+        )
+        .await;
+        mount_revisions(&server, ResponseTemplate::new(200).set_body_string("{}"), 0).await;
+
+        let client = reqwest::Client::new();
+        let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
+
+        let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
+        assert_eq!(got, vec!["Wood", "Iron"]);
+        assert!(pages[0].text.contains("Wood is a material"));
+        assert!(pages[0].url.starts_with(&wiki.page_url));
+    }
+
+    #[tokio::test]
+    async fn failed_parse_falls_back_to_one_batched_revisions_request() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        mount_parse(
+            &server,
+            "Wood",
+            ResponseTemplate::new(200).set_body_string(parse_ok("Wood", "<p>Wood is a material.</p>")),
+        )
+        .await;
+        // A missing page is an HTTP-200 error object — the fallback must
+        // trigger on the parse failure, not only on transport failures.
+        mount_parse(
+            &server,
+            "Iron",
+            ResponseTemplate::new(200).set_body_string(
+                r#"{"error":{"code":"missingtitle","info":"The page you specified doesn't exist."}}"#,
+            ),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .and(query_param("prop", "revisions"))
+            .and(query_param("titles", "Iron"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"query":{"pages":{"1":{"pageid":1,"title":"Iron","revisions":[{"slots":{"main":{"*":"'''Iron''' is a metal."}}}]}}}}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
+
+        let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
+        assert_eq!(got, vec!["Wood", "Iron"], "relevance order survives the mixed paths");
+        assert!(pages[1].text.contains("Iron is a metal"));
+        assert!(!pages[1].text.contains("'''"), "wikitext markup cleaned");
+    }
+
+    #[tokio::test]
+    async fn fallback_error_is_swallowed_when_something_else_fetched() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        mount_parse(
+            &server,
+            "Wood",
+            ResponseTemplate::new(200).set_body_string(parse_ok("Wood", "<p>Wood is a material.</p>")),
+        )
+        .await;
+        mount_parse(&server, "Iron", ResponseTemplate::new(500)).await;
+        mount_revisions(&server, ResponseTemplate::new(500), 1).await;
+
+        let client = reqwest::Client::new();
+        let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
+
+        // The dead fallback costs Iron, never the whole answer.
+        let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
+        assert_eq!(got, vec!["Wood"]);
+    }
+
+    #[tokio::test]
+    async fn fallback_error_surfaces_when_nothing_fetched() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        mount_parse(&server, "Wood", ResponseTemplate::new(500)).await;
+        mount_parse(&server, "Iron", ResponseTemplate::new(500)).await;
+        mount_revisions(&server, ResponseTemplate::new(500), 1).await;
+
+        let client = reqwest::Client::new();
+        let err = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap_err();
+        // Everything failed — the revisions transport error must surface.
+        assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn empty_render_is_skipped_not_sent_to_fallback() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        // Rendered fine but reduces to nothing — a skip, not a failure.
+        mount_parse(
+            &server,
+            "Stub",
+            ResponseTemplate::new(200).set_body_string(parse_ok("Stub", "")),
+        )
+        .await;
+        mount_revisions(&server, ResponseTemplate::new(200).set_body_string("{}"), 0).await;
+
+        let client = reqwest::Client::new();
+        let pages = fetch_pages(&client, &wiki, &titles(&["Stub"])).await.unwrap();
+        assert!(pages.is_empty());
+    }
+}

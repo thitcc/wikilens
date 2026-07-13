@@ -43,3 +43,6 @@ tokio = { version = "1", features = ["time"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # Scratch dirs for the user-wiki store's persistence tests (wiki/user.rs).
 tempfile = "3"
+# Local mock HTTP server for the offline streaming/fetch orchestration tests
+# (vault/2026-07-13_rust-http-mock-integration-tests.md).
+wiremock = "0.6"

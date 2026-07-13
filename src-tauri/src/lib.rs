@@ -11,6 +11,8 @@ mod llm;
 mod models;
 mod providers;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod tray;
 mod window;
 mod wiki;
