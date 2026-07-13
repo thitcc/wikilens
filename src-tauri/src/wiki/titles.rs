@@ -89,7 +89,7 @@ impl TitleIndex {
                 continue;
             }
             let score = jaro_winkler(&q, &cand);
-            if score >= MATCH_THRESHOLD && best.map_or(true, |(b, _)| score > b) {
+            if score >= MATCH_THRESHOLD && best.is_none_or(|(b, _)| score > b) {
                 best = Some((score, title));
             }
         }

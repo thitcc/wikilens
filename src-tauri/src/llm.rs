@@ -46,6 +46,7 @@ enum SseLine {
 
 /// Stream an answer from the given provider/model. Each text delta is handed to
 /// `on_delta` as it arrives; the full accumulated answer is returned at the end.
+#[allow(clippy::too_many_arguments)] // one arg per request ingredient; callers pass them all anyway
 pub async fn answer_streaming<F>(
     client: &reqwest::Client,
     provider: &Provider,

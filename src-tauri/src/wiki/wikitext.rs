@@ -172,7 +172,7 @@ fn strip_formatting(input: &str) -> String {
             trimmed.trim_matches('=').trim().to_string()
         } else {
             trimmed
-                .trim_start_matches(|c| c == '*' || c == '#' || c == ':' || c == ';')
+                .trim_start_matches(['*', '#', ':', ';'])
                 .trim_start()
                 .to_string()
         };
