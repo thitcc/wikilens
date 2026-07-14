@@ -12,8 +12,6 @@
 
 use std::time::Duration;
 
-use serde::Serialize;
-
 use crate::error::AppError;
 use crate::http;
 use crate::wiki::games::GameWiki;
@@ -29,7 +27,7 @@ pub const MAX_PAGE_CHARS: usize = 8_000;
 const PARSE_TIMEOUT: Duration = Duration::from_secs(12);
 
 /// A single wiki page reduced to plaintext, with a human-readable URL.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct WikiPage {
     pub title: String,
     pub text: String,

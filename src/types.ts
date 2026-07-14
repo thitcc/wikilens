@@ -80,12 +80,3 @@ export interface AskResult {
 /** Progress phases emitted on the `ask://status` event, in order.
  * `retrying` only appears when the first search found nothing. */
 export type AskStatus = "searching" | "retrying" | "reading" | "answering";
-
-/**
- * Streaming events emitted by the `ask` command while it runs.
- * - `status`: a new phase (`ask://status`)
- * - `delta`: a chunk of answer text (`ask://delta`)
- */
-export type StreamEvent =
-  | { kind: "status"; status: AskStatus }
-  | { kind: "delta"; text: string };
