@@ -1,12 +1,12 @@
 ---
 title: Human-readable PR descriptions — plain summary, behavior bullets, details folds
 type: plan
-status: active
+status: done
 created: 2026-07-14
 updated: 2026-07-14
 tags: [build]
 related: ["[[2026-07-13_pr-delivery-workflow]]"]
-commit:
+commit: 00df75b
 ---
 
 # Human-readable PR descriptions — plain summary, behavior bullets, details folds
@@ -53,3 +53,5 @@ the user on 2026-07-14.
 
 ## Status log
 - 2026-07-14 — created; anatomy agreed with the user.
+- 2026-07-14 — **done.** Template + CLAUDE.md §4 bullet + README pointer landed
+  (`00df75b`); the delivery PR dogfoods the anatomy.
