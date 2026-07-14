@@ -1,15 +1,15 @@
 ---
-title: Human-readable PR descriptions — plain summary, behavior bullets, details folds
+title: Human-readable PR descriptions — plain summary, behavior bullets, quoted details
 type: plan
 status: done
 created: 2026-07-14
 updated: 2026-07-14
 tags: [build]
 related: ["[[2026-07-13_pr-delivery-workflow]]"]
-commit: [00df75b, 47542dc]
+commit: [00df75b, 47542dc, 10404e6]
 ---
 
-# Human-readable PR descriptions — plain summary, behavior bullets, details folds
+# Human-readable PR descriptions — plain summary, behavior bullets, quoted details
 
 ## Context / problem
 PR bodies to date (PR #10 is the reference offender) are dense 90-word bullets
@@ -51,6 +51,14 @@ the user on 2026-07-14.
   PR/issue bodies as line breaks (unlike README rendering), so 80-column
   wrapping comes out as ragged short lines — each paragraph/bullet is one
   source line.
+- **Titles are headlines, not commit messages** (added 2026-07-14, after
+  PR #13 merged): imperative verb first, sentence case, no `type:` prefix or
+  other decorations, ≤ ~70 chars. Merge-commit-only history frees the title
+  from conventional-commit duty — the branch commits keep the prefixes.
+  Title tags/labels/emoji considered and skipped: the type already lives in
+  the branch name, commits, and merge commit; GitHub labels are the tool if
+  category scanning is ever wanted. PRs are assigned to the owner on open
+  (`gh pr create --assignee @me`).
 - **CLAUDE.md enforces; the template is the skeleton.** `gh pr create --body`
   — how Claude opens every PR — bypasses GitHub's template auto-fill, so the
   template alone would never reach Claude-authored bodies. It still serves
@@ -65,3 +73,6 @@ the user on 2026-07-14.
 - 2026-07-14 — revised after the first dogfood render (PR #13): per-bullet
   detail folds → `>` quotes, and PR bodies are written without hard line
   wraps (`47542dc`).
+- 2026-07-14 — extended with the title convention (sentence-case imperative
+  headline, no `type:` prefix or decorations) and `gh pr create --assignee @me`;
+  landed directly on `main` with the user's authorization (`10404e6`).
