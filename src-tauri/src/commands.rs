@@ -447,6 +447,13 @@ async fn run_ask(
         if !rewrite_on {
             return (Vec::new(), None, None, None);
         }
+        // Session circuit breaker: a rewrite model that never yields candidates
+        // (see AppState::record_rewrite_outcome) stops costing every ask its
+        // full timeout budget. Same all-None tuple as the off-switch — the
+        // call was never made. Skips never touch the counter.
+        if state.rewrite_breaker_tripped() {
+            return (Vec::new(), None, None, None);
+        }
         let timer = std::time::Instant::now();
         match llm::rewrite_query(
             &state.http,
@@ -462,6 +469,9 @@ async fn run_ask(
                 if tracing {
                     eprintln!("wikilens.rewrite candidates={:?}", outcome.queries);
                 }
+                // An empty parse counts as a strike: the reasoning-only-model
+                // failure mode is a successful call with an unusable body.
+                state.record_rewrite_outcome(!outcome.queries.is_empty());
                 (
                     outcome.queries,
                     Some(outcome.usage),
@@ -473,6 +483,7 @@ async fn run_ask(
                 if tracing {
                     eprintln!("wikilens.rewrite error={e}");
                 }
+                state.record_rewrite_outcome(false);
                 (
                     Vec::new(),
                     Some(llm::TokenUsage::default()),
@@ -493,6 +504,11 @@ async fn run_ask(
             };
             report.phase("rewrite", elapsed, detail);
         }
+        // `rewrite_elapsed` is `None` only when an early return fired; with the
+        // stage on, the only early return left is the breaker. Derived from
+        // `rewrite_on` rather than re-reading the counter — race-free even
+        // though this ask's own failure may have just tripped it.
+        None if rewrite_on => report.phase_skipped("rewrite", "skipped (circuit breaker)"),
         None => report.phase_skipped("rewrite", "disabled (WIKILENS_QUERY_REWRITE)"),
     }
     if let Some(usage) = rewrite_usage {
