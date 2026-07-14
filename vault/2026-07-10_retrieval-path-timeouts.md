@@ -1,12 +1,12 @@
 ---
 title: Bound the retrieval path — 4s rewrite timeout, 8s search timeout
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-14
 tags: [llm, wiki, rust]
-related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_rewrite-circuit-breaker]]"]
-commit:
+related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_rewrite-circuit-breaker]]", "[[2026-07-13_wiki-fetch-hardening]]"]
+commit: a245f18
 ---
 
 # Bound the retrieval path — 4s rewrite timeout, 8s search timeout
@@ -61,3 +61,13 @@ even the *healthy* case cost 2432ms of rewrite against a 464ms raw search — th
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#1, priority 1); execution order:
   first of the seven finding plans.
+- 2026-07-14 — **done** in `a245f18`. Most of the plan had already landed via the
+  [[2026-07-13_wiki-fetch-hardening]] sweep (`a1db9d7`): `SEARCH_TIMEOUT = 8s` in
+  `search_full` (this plan's exact target, with its `#[ignore]`d pin
+  `search_hang_times_out`) and an interim `REWRITE_TIMEOUT = 15s`. This change delivers
+  the remaining delta: the rewrite budget drops 15s → 4s per the rationale above, the
+  constant's doc comment loses its stale "zero-hit ask" premise (the rewrite is eager
+  now), and the missing timeout pin lands (`rewrite_hang_times_out`, `#[ignore]`d like
+  the search/fetch pins; passes in ~4.0s — via the timeout, not the mock's 6s delay).
+  `RewriteOutcome` gains `#[derive(Debug)]` for the test's `unwrap_err`. Step 2 of the
+  approach (search timeout) required no code — verified present and pinned.

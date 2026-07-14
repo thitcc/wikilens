@@ -383,12 +383,14 @@ fn build_user_message(question: &str, pages: &[WikiPage]) -> String {
 const REWRITE_MAX_TOKENS: u32 = 256;
 
 /// Total-request cap for the rewrite completion. `run_ask` joins the rewrite
-/// with the raw retry search and waits for both, so a stalled rewrite
-/// provider used to add its whole stall to every zero-hit ask (forever, being
-/// untimed). Rewrite errors are already swallowed into "no candidates", so
-/// timing out degrades gracefully — and a 256-token completion that hasn't
-/// answered in 15s isn't going to help this ask.
-const REWRITE_TIMEOUT: Duration = Duration::from_secs(15);
+/// with the raw search and waits for both, so a stalled rewrite provider
+/// stalls every ask — and the shared client deliberately has no global
+/// timeout (`http.rs` bounds connects and read gaps only). The budget is
+/// deliberately tight: the reply is ≤`REWRITE_MAX_TOKENS` on a model expected
+/// to be fast (~2.4s cold in live measurement), and a slower rewrite is worth
+/// abandoning — the raw search already has hits by then. Errors are already
+/// swallowed into "no candidates", so timing out degrades gracefully.
+const REWRITE_TIMEOUT: Duration = Duration::from_secs(4);
 
 /// System prompt for the lazy query-rewrite (Phase 3 of the retrieval-quality
 /// plan). The player's own wiki search found nothing — usually a typo, a
@@ -398,6 +400,7 @@ const REWRITE_TIMEOUT: Duration = Duration::from_secs(15);
 const REWRITE_SYSTEM_PROMPT: &str = "You convert a player's question into search queries for a specific game's wiki. Their own search returned nothing — usually a typo, a paraphrase, or an item/character the wiki names differently. Reply with ONLY a compact JSON object of the form {\"queries\":[\"...\"]}: 1 to 3 short keyword queries, best guess first, exact proper nouns / item / enemy names preferred. No prose, no markdown, no code fences.";
 
 /// A parsed query rewrite plus the token usage the provider reported for it.
+#[derive(Debug)]
 pub struct RewriteOutcome {
     /// Candidate wiki search queries; empty means "no usable rewrite" and the
     /// caller falls back to the raw query.
@@ -1464,6 +1467,39 @@ mod http_tests {
             }
             other => panic!("expected AppError::Llm, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "slow (~4s): pins the REWRITE_TIMEOUT behavior"]
+    async fn rewrite_hang_times_out() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        r#"{"choices":[{"message":{"content":"{\"queries\":[\"wood\"]}"}}]}"#,
+                    )
+                    .set_delay(REWRITE_TIMEOUT + Duration::from_secs(2)),
+            )
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let start = std::time::Instant::now();
+        let err = rewrite_query(&client, &provider, "mock-model", "test-key", "Mockland", "where is wood?")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+        assert!(
+            start.elapsed() < REWRITE_TIMEOUT + Duration::from_secs(1),
+            "must fail via REWRITE_TIMEOUT, not the mock's longer delay"
+        );
     }
 }
 
