@@ -146,6 +146,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   commit, never squash/rebase** (vault docs pin
   branch `commit:` hashes; squashing orphans them); Claude never merges. The
   `docs(vault): close …` commit rides in the same PR as the code it closes.
+- **PR descriptions** follow `.github/PULL_REQUEST_TEMPLATE.md` — and since
+  `gh pr create --body` bypasses template auto-fill, write the body to that
+  skeleton yourself: plain-language 2–3-sentence summary linking the vault plan
+  doc; change bullets at behavior level (what works differently — never
+  file/function jargon), each with a nested `<details>` technical fold;
+  "⚠️ Behavior changes" (or "None"); a Verification table (check | result).
+  ~20 rendered lines above the fold; war stories go in `<details>` folds.
 
 ## 5. Gotchas
 
