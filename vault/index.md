@@ -3,7 +3,7 @@ title: WikiLens planning vault — index
 type: note
 status: active
 created: 2026-07-02
-updated: 2026-07-10
+updated: 2026-07-14
 tags: []
 related: []
 ---
@@ -67,16 +67,18 @@ SORT updated DESC
 ## Index (manual fallback — grep `status:` if this drifts)
 
 - **Active / blocked:** [[2026-07-05_design-tokens-claude-design-sync]] · [[2026-07-06_screenshot-capture-to-prompt]] · [[2026-07-06_model-vision-badges]] · [[2026-07-06_image-attach-guardrails]]
-- **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-07_llm-query-rewrite-in-retrieval]]
-- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]] · [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-05_model-picker-menu]] · [[2026-07-05_builtin-game-registry-expansion]] · [[2026-07-05_user-added-game-wikis]] · [[2026-07-05_game-picker-owned-menu]] · [[2026-07-07_retrieval-quality-improvements]] · [[2026-07-07_llm-query-rewrite-in-retrieval]] · [[2026-07-10_ask-debug-instrumentation]]
+- **Todo:** [[2026-07-13_wiki-fetch-hardening]]
+- **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-07_llm-query-rewrite-in-retrieval]] · [[2026-07-13_pr-delivery-workflow]]
+- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]] · [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-05_model-picker-menu]] · [[2026-07-05_builtin-game-registry-expansion]] · [[2026-07-05_user-added-game-wikis]] · [[2026-07-05_game-picker-owned-menu]] · [[2026-07-07_retrieval-quality-improvements]] · [[2026-07-07_llm-query-rewrite-in-retrieval]] · [[2026-07-10_ask-debug-instrumentation]] · [[2026-07-13_testing-audit]] · [[2026-07-13_ci-pipeline-github-actions]] · [[2026-07-13_pr-delivery-workflow]] · [[2026-07-13_frontend-test-harness]] · [[2026-07-13_rust-http-mock-integration-tests]] · [[2026-07-13_parser-snapshot-property-tests]] · [[2026-07-13_dependency-audit-lint-gates]] · [[2026-07-13_manual-smoke-checklist-live-cadence]]
 
 Pure-grep, no Obsidian:
 `grep -rl 'status: active' .` · `grep -rl 'type: decision' .`
 
 ## Tag registry (closed — add a tag here before using it)
 
-`wiki` · `llm` · `rag` · `frontend` · `rust` · `tauri` · `overlay` · `hotkey` · `capture` · `security` · `build` · `vault`
+`wiki` · `llm` · `rag` · `frontend` · `rust` · `tauri` · `overlay` · `hotkey` · `capture` · `security` · `build` · `vault` · `testing`
 
 `vault` = the planning vault's own tooling and conventions. `capture` = in-game
-screenshot capture and image attachments. Reserved for when that work starts:
-`cache`, `perf`.
+screenshot capture and image attachments. `testing` = test infrastructure and
+coverage work (harnesses, CI, guardrail suites). Reserved for when that work
+starts: `cache`, `perf`.

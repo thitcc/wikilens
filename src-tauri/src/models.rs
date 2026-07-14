@@ -374,3 +374,106 @@ mod tests {
         assert!(models.iter().any(|m| m.vision), "no vision models parsed");
     }
 }
+
+/// Offline wiremock tier: `fetch_models`' auth-header wiring and non-2xx
+/// routing (`vault/2026-07-13_rust-http-mock-integration-tests.md`).
+#[cfg(test)]
+mod http_tests {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+    use crate::test_support::mock_provider;
+
+    #[tokio::test]
+    async fn keyless_fetch_sends_no_auth_headers_and_parses() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &server.uri(),
+            &format!("{}/models", server.uri()),
+        );
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"data":[{"id":"openai/gpt-4o-mini","name":"GPT-4o mini","architecture":{"input_modalities":["text","image"]}}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let models = fetch_models(&client, &provider, None).await.unwrap();
+        assert_eq!(
+            models,
+            vec![ModelInfo {
+                id: "openai/gpt-4o-mini".into(),
+                label: "GPT-4o mini".into(),
+                vision: true,
+            }]
+        );
+
+        // "Never send a key where it isn't needed": no auth header of either
+        // protocol may be on the wire. Asserted on the recorded request —
+        // wiremock has no absent-header matcher.
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].headers.get("authorization").is_none());
+        assert!(requests[0].headers.get("x-api-key").is_none());
+    }
+
+    #[tokio::test]
+    async fn keyed_anthropic_fetch_sends_api_key_headers() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::Anthropic,
+            &server.uri(),
+            &format!("{}/models", server.uri()),
+        );
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .and(header("x-api-key", "k"))
+            .and(header("anthropic-version", "2023-06-01"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"data":[{"id":"claude-haiku-4-5-20251001","display_name":"Claude Haiku 4.5"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let models = fetch_models(&client, &provider, Some("k")).await.unwrap();
+        assert_eq!(models[0].label, "Claude Haiku 4.5");
+        assert!(models[0].vision, "absent capabilities → default true");
+    }
+
+    #[tokio::test]
+    async fn non_2xx_models_fetch_is_llm_error() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &server.uri(),
+            &format!("{}/models", server.uri()),
+        );
+        Mock::given(method("GET"))
+            .and(path("/models"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("upstream down"))
+            .mount(&server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let err = fetch_models(&client, &provider, None).await.unwrap_err();
+        match err {
+            AppError::Llm {
+                provider,
+                status,
+                body,
+            } => {
+                assert_eq!(provider, "MockProv");
+                assert_eq!(status, 500);
+                assert_eq!(body, "upstream down");
+            }
+            other => panic!("expected AppError::Llm, got {other:?}"),
+        }
+    }
+}

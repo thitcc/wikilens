@@ -100,6 +100,7 @@ pub struct StreamedAnswer {
 /// Stream an answer from the given provider/model. Each text delta is handed to
 /// `on_delta` as it arrives; the full accumulated answer is returned at the end,
 /// along with reported token usage and time-to-first-token for the debug table.
+#[allow(clippy::too_many_arguments)] // one arg per request ingredient; callers pass them all anyway
 pub async fn answer_streaming<F>(
     client: &reqwest::Client,
     provider: &Provider,
@@ -1058,5 +1059,331 @@ mod tests {
     fn openai_top_level_error_aborts() {
         let line = r#"data: {"error":{"message":"rate limited","code":429}}"#;
         assert!(matches!(parse_openai_sse_line(line), SseLine::Error(_)));
+    }
+}
+
+/// Offline wiremock tier: the byte-buffered streaming loop and error routing
+/// against a real HTTP round-trip (`vault/2026-07-13_rust-http-mock-integration-tests.md`).
+/// wiremock delivers bodies whole, so chunk-*boundary* splits aren't forced
+/// here — line splitting, ordering, and termination are what these prove.
+#[cfg(test)]
+mod http_tests {
+    use serde_json::json;
+    use wiremock::matchers::{body_partial_json, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+    use crate::test_support::{anthropic_delta, mock_provider, openai_delta, sse_body, wiki_page};
+
+    /// Common act: stream an answer from the mock provider, collecting deltas.
+    async fn ask(
+        provider: &Provider,
+        image_png: Option<&[u8]>,
+    ) -> (Result<String, AppError>, Vec<String>) {
+        let client = reqwest::Client::new();
+        let pages = [wiki_page("Fishing", "Use a fishing rod at water.")];
+        let mut deltas: Vec<String> = Vec::new();
+        let result = answer_streaming(
+            &client,
+            provider,
+            "mock-model",
+            "test-key",
+            "how do I fish?",
+            &pages,
+            image_png,
+            |d| deltas.push(d.to_string()),
+        )
+        .await;
+        // These tests predate `StreamedAnswer`; they assert on text and errors
+        // only (usage/ttft are covered by the live `--ignored` roundtrips).
+        (result.map(|s| s.text), deltas)
+    }
+
+    #[tokio::test]
+    async fn openai_stream_accumulates_deltas_and_stops_at_done() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        // The matchers double as request-builder assertions: Bearer auth, the
+        // stream flag, and the max_tokens cap must all be on the wire.
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .and(header("Authorization", "Bearer test-key"))
+            .and(body_partial_json(json!({
+                "model": "mock-model", "stream": true, "max_tokens": 1024
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                sse_body(&[
+                    r#"data: {"choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}"#,
+                    &openai_delta("Hel"),
+                    &openai_delta("lo"),
+                    r#"data: {"choices":[],"usage":{"total_tokens":5}}"#,
+                    "data: [DONE]",
+                    // Anything after [DONE] must never be read.
+                    &openai_delta("NEVER"),
+                ]),
+                "text/event-stream",
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let (result, deltas) = ask(&provider, None).await;
+        assert_eq!(result.unwrap(), "Hello");
+        assert_eq!(deltas, vec!["Hel", "lo"]);
+    }
+
+    #[tokio::test]
+    async fn openai_extra_headers_are_sent() {
+        let server = MockServer::start().await;
+        let provider = Provider {
+            extra_headers: &[
+                ("HTTP-Referer", "https://wikilens.app"),
+                ("X-Title", "WikiLens"),
+            ],
+            ..mock_provider(
+                ProviderKind::OpenAiCompatible,
+                &format!("{}/chat", server.uri()),
+                &server.uri(),
+            )
+        };
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .and(header("HTTP-Referer", "https://wikilens.app"))
+            .and(header("X-Title", "WikiLens"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(sse_body(&["data: [DONE]"]), "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let (result, deltas) = ask(&provider, None).await;
+        assert_eq!(result.unwrap(), "");
+        assert!(deltas.is_empty());
+    }
+
+    #[tokio::test]
+    async fn anthropic_stream_close_without_done_returns_accumulated_text() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::Anthropic,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        // Anthropic has no `[DONE]`; the loop must finish on stream close.
+        // "Caffè" keeps a multi-byte char flowing through the byte buffer.
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .and(header("x-api-key", "test-key"))
+            .and(header("anthropic-version", "2023-06-01"))
+            .and(body_partial_json(json!({ "stream": true, "max_tokens": 1024 })))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                sse_body(&[
+                    "event: message_start",
+                    r#"data: {"type":"message_start","message":{"id":"msg_1"}}"#,
+                    "event: content_block_start",
+                    r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+                    "event: content_block_delta",
+                    &anthropic_delta("Caffè "),
+                    "event: content_block_delta",
+                    &anthropic_delta("latte"),
+                    "event: message_stop",
+                    r#"data: {"type":"message_stop"}"#,
+                ]),
+                "text/event-stream",
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let (result, deltas) = ask(&provider, None).await;
+        assert_eq!(result.unwrap(), "Caffè latte");
+        assert_eq!(deltas, vec!["Caffè ", "latte"]);
+    }
+
+    #[tokio::test]
+    async fn openai_midstream_error_aborts_with_status_200() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                sse_body(&[
+                    &openai_delta("Hel"),
+                    r#"data: {"error":{"message":"rate limited","code":429}}"#,
+                    &openai_delta("lo"),
+                ]),
+                "text/event-stream",
+            ))
+            .mount(&server)
+            .await;
+
+        let (result, deltas) = ask(&provider, None).await;
+        match result.unwrap_err() {
+            AppError::Llm {
+                provider,
+                status,
+                body,
+            } => {
+                assert_eq!(provider, "MockProv");
+                // 200 is the honest status: HTTP succeeded, the stream failed.
+                assert_eq!(status, 200);
+                assert!(body.contains("rate limited"), "body: {body}");
+            }
+            other => panic!("expected AppError::Llm, got {other:?}"),
+        }
+        // Text before the failure was already forwarded to the UI.
+        assert_eq!(deltas, vec!["Hel"]);
+    }
+
+    #[tokio::test]
+    async fn non_2xx_maps_to_llm_error_with_verbatim_body() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("Invalid API key"))
+            .mount(&server)
+            .await;
+
+        let (result, deltas) = ask(&provider, None).await;
+        match result.unwrap_err() {
+            AppError::Llm { status, body, .. } => {
+                assert_eq!(status, 401);
+                assert_eq!(body, "Invalid API key");
+            }
+            other => panic!("expected AppError::Llm, got {other:?}"),
+        }
+        assert!(deltas.is_empty());
+    }
+
+    #[tokio::test]
+    async fn image_unknown_variant_rejection_maps_to_vision_unsupported() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        // The live-captured DeepSeek 400 shape.
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(400).set_body_string(
+                "Failed to deserialize the JSON body into the target type: \
+                 messages[0]: unknown variant `image_url`, expected `text`",
+            ))
+            .mount(&server)
+            .await;
+
+        let (result, _) = ask(&provider, Some(b"PNG")).await;
+        match result.unwrap_err() {
+            AppError::VisionUnsupported(msg) => {
+                assert!(msg.contains("MockProv"), "msg: {msg}");
+                assert!(msg.contains("can't read images"), "msg: {msg}");
+            }
+            other => panic!("expected VisionUnsupported, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn image_404_support_image_input_maps_to_vision_unsupported() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        // OpenRouter's routing-time rejection.
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(404).set_body_string(
+                r#"{"error":{"message":"No endpoints found that support image input"}}"#,
+            ))
+            .mount(&server)
+            .await;
+
+        let (result, _) = ask(&provider, Some(b"PNG")).await;
+        match result.unwrap_err() {
+            AppError::VisionUnsupported(msg) => {
+                assert!(msg.contains("mock-model"), "msg: {msg}");
+                assert!(msg.contains("can't read images"), "msg: {msg}");
+            }
+            other => panic!("expected VisionUnsupported, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn image_with_unrelated_error_keeps_llm_backstop() {
+        let server = MockServer::start().await;
+        let provider = mock_provider(
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/chat", server.uri()),
+            &server.uri(),
+        );
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("internal server error"))
+            .mount(&server)
+            .await;
+
+        // An image is attached, but the failure isn't a vision rejection — the
+        // verbatim Llm backstop must survive.
+        let (result, _) = ask(&provider, Some(b"PNG")).await;
+        match result.unwrap_err() {
+            AppError::Llm { status, body, .. } => {
+                assert_eq!(status, 500);
+                assert_eq!(body, "internal server error");
+            }
+            other => panic!("expected AppError::Llm, got {other:?}"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod sse_property_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{arbitrary_text, marker_soup};
+
+    const SSE_MARKERS: &[&str] = &[
+        "data:", "data: ", ": OPENROUTER PROCESSING", ":", "event: ", "[DONE]",
+        r#"{"choices":["#, r#"{"type":"content_block_delta""#, r#""delta":{"#,
+        r#""content":"#, r#""text":"#, r#""error":{"#, r#""finish_reason":"#,
+        "null", "{", "}", "]", "\"", "\\",
+    ];
+
+    proptest! {
+        #[test]
+        fn sse_parsers_never_panic_on_arbitrary_lines(line in arbitrary_text()) {
+            let _ = parse_openai_sse_line(&line);
+            let _ = parse_anthropic_sse_line(&line);
+        }
+
+        #[test]
+        fn sse_parsers_never_panic_on_sse_shaped_soup(line in marker_soup(SSE_MARKERS)) {
+            let _ = parse_openai_sse_line(&line);
+            let _ = parse_anthropic_sse_line(&line);
+        }
+
+        #[test]
+        fn lines_without_a_data_prefix_are_ignored(line in arbitrary_text()) {
+            prop_assume!(!line.starts_with("data:"));
+            prop_assert_eq!(parse_openai_sse_line(&line), SseLine::Ignore);
+            prop_assert_eq!(parse_anthropic_sse_line(&line), SseLine::Ignore);
+        }
     }
 }

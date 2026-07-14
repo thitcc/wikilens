@@ -66,23 +66,30 @@ fn remove_html_comments(input: &str) -> String {
 /// Remove every balanced `open..close` region, honoring nesting. `open`/`close`
 /// must be ASCII (they are: `{{`/`}}`, `{|`/`|}`), so byte scanning is safe even
 /// through multi-byte UTF-8 text.
+///
+/// Unbalanced markers degrade gracefully instead of eating the page: an
+/// unmatched `open` is dropped and everything after it kept (inner balanced
+/// regions still removed), and a stray `close` at depth zero stays literal —
+/// unlike `convert_wiki_links`, which keeps an unmatched `[[` as-is, dropping
+/// the bare marker reads cleaner in prose handed to the LLM.
 fn remove_balanced(input: &str, open: &str, close: &str) -> String {
     let bytes = input.as_bytes();
     let (ob, cb) = (open.as_bytes(), close.as_bytes());
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    // `out.len()` at each still-unmatched `open`: emit everything as we go, and
+    // truncate back to the mark when its `close` arrives. Marks left at the end
+    // are unmatched opens — their content already survived in `out`.
+    let mut marks: Vec<usize> = Vec::new();
     let mut i = 0;
-    let mut depth = 0usize;
     while i < bytes.len() {
         if bytes[i..].starts_with(ob) {
-            depth += 1;
+            marks.push(out.len());
             i += ob.len();
-        } else if depth > 0 && bytes[i..].starts_with(cb) {
-            depth -= 1;
+        } else if !marks.is_empty() && bytes[i..].starts_with(cb) {
+            out.truncate(marks.pop().expect("guarded by !marks.is_empty()"));
             i += cb.len();
         } else {
-            if depth == 0 {
-                out.push(bytes[i]);
-            }
+            out.push(bytes[i]);
             i += 1;
         }
     }
@@ -172,7 +179,7 @@ fn strip_formatting(input: &str) -> String {
             trimmed.trim_matches('=').trim().to_string()
         } else {
             trimmed
-                .trim_start_matches(|c| c == '*' || c == '#' || c == ':' || c == ';')
+                .trim_start_matches(['*', '#', ':', ';'])
                 .trim_start()
                 .to_string()
         };
@@ -263,6 +270,33 @@ mod tests {
     }
 
     #[test]
+    fn unclosed_open_keeps_the_rest_of_the_page() {
+        // The bug this pins: an unclosed {{ or {| used to silently discard
+        // everything after it, so the page cleaned to empty and was dropped.
+        for wikitext in [
+            "intro {{Infobox\n|name=X\n rest of the article",
+            "intro {|\n|-\n| cell\n rest of the article",
+        ] {
+            let text = to_plaintext(wikitext);
+            assert!(text.contains("intro"), "prefix lost: {text:?}");
+            assert!(text.contains("rest of the article"), "tail lost: {text:?}");
+        }
+    }
+
+    #[test]
+    fn unmatched_opens_drop_the_marker_but_keep_content() {
+        // Inner balanced regions are still removed under an unmatched outer.
+        assert_eq!(remove_balanced("x{{a{{b}}c", "{{", "}}"), "xac");
+        assert_eq!(remove_balanced("x{{y{{z", "{{", "}}"), "xyz");
+    }
+
+    #[test]
+    fn stray_close_markers_stay_literal() {
+        assert_eq!(remove_balanced("a}}b", "{{", "}}"), "a}}b");
+        assert_eq!(remove_balanced("a|}b", "{|", "|}"), "a|}b");
+    }
+
+    #[test]
     fn converts_and_drops_links() {
         assert_eq!(convert_wiki_links("[[Root Seed]]s"), "Root Seeds");
         assert_eq!(convert_wiki_links("see [[Page|the page]] now"), "see the page now");
@@ -325,5 +359,97 @@ mod tests {
         // Unknown angle-bracket content is preserved (command syntax, comparisons).
         assert_eq!(remove_html_tags("Type /give <item> <amount>"), "Type /give <item> <amount>");
         assert_eq!(remove_html_tags("if level < 5 and hp > 0"), "if level < 5 and hp > 0");
+    }
+
+    // Freezes the fallback cleaner's exact output over a real captured
+    // wikitext revision (see the matching snapshot suite in html.rs).
+    #[test]
+    fn snapshot_raw_wikitext_fallback_page() {
+        insta::assert_snapshot!(
+            "raw_wikitext_stardew_wood",
+            to_plaintext(include_str!("fixtures/raw_wikitext.txt"))
+        );
+    }
+}
+
+#[cfg(test)]
+mod property_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{arbitrary_text, marker_soup};
+
+    const WIKITEXT_MARKERS: &[&str] = &[
+        "{{", "}}", "{|", "|}", "[[", "]]", "<!--", "-->", "''", "'''", "&#", "&amp;",
+        "__NOTOC__", "[File:", "[[Category:", "== ", "[https://", "]", "<br>", "<item>",
+        "<", ">", "|", "=", "*", ":", "\n",
+    ];
+
+    /// Marker-free prose for building balanced constructs: excludes every byte
+    /// that participates in a marker, so removals can never join fragments
+    /// into a new marker (replace-with-empty passes make a universal
+    /// no-residue claim over arbitrary input provably false — `{''{` cleans
+    /// to `{{`).
+    fn prose() -> impl Strategy<Value = String> {
+        "[A-Za-z0-9 .,\\n-]{0,20}"
+    }
+
+    /// Well-formed wikitext: prose and non-nested links, recursively wrapped
+    /// in balanced templates and tables. Links never nest inside links —
+    /// `convert_wiki_links` is non-nesting-aware by design.
+    fn balanced_wikitext() -> impl Strategy<Value = String> {
+        let link = (prose(), proptest::option::of(prose())).prop_map(|(t, d)| match d {
+            Some(d) => format!("[[{t}|{d}]]"),
+            None => format!("[[{t}]]"),
+        });
+        let leaf = prop_oneof![prose(), link];
+        leaf.prop_recursive(3, 24, 3, |inner| {
+            let seq = proptest::collection::vec(inner, 0..4).prop_map(|v| v.concat());
+            prop_oneof![
+                seq.clone().prop_map(|b| format!("{{{{Tpl|{b}}}}}")),
+                seq.clone().prop_map(|b| format!("{{|\n|-\n| {b}\n|}}")),
+                seq,
+            ]
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn never_panics_and_never_grows_on_arbitrary_text(s in arbitrary_text()) {
+            let out = to_plaintext(&s);
+            prop_assert!(out.len() <= s.len(), "grew: {} -> {}", s.len(), out.len());
+        }
+
+        #[test]
+        fn never_panics_and_never_grows_on_marker_soup(s in marker_soup(WIKITEXT_MARKERS)) {
+            let out = to_plaintext(&s);
+            prop_assert!(out.len() <= s.len(), "grew: {} -> {}", s.len(), out.len());
+        }
+
+        #[test]
+        fn balanced_wikitext_leaves_no_marker_residue(s in balanced_wikitext()) {
+            let out = to_plaintext(&s);
+            for marker in ["{{", "}}", "{|", "|}", "[[", "]]"] {
+                prop_assert!(!out.contains(marker), "{marker} leaked from {s:?}: {out:?}");
+            }
+        }
+
+        #[test]
+        fn unmatched_template_open_keeps_prefix_and_tail(
+            a in "[^{}]{0,30}",
+            b in "[^{}]{0,30}",
+        ) {
+            let cleaned = remove_balanced(&format!("{a}{{{{{b}"), "{{", "}}");
+            prop_assert_eq!(cleaned, format!("{a}{b}"));
+        }
+
+        #[test]
+        fn unmatched_table_open_keeps_prefix_and_tail(
+            a in "[^{|}]{0,30}",
+            b in "[^{|}]{0,30}",
+        ) {
+            let cleaned = remove_balanced(&format!("{a}{{|{b}"), "{|", "|}");
+            prop_assert_eq!(cleaned, format!("{a}{b}"));
+        }
     }
 }

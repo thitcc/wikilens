@@ -519,3 +519,140 @@ mod tests {
         }
     }
 }
+
+/// Offline wiremock tier: `probe_base`'s candidate walk and the
+/// "siteinfo answered → a search failure is a verdict" rule
+/// (`vault/2026-07-13_rust-http-mock-integration-tests.md`). `suggest` stays
+/// live-only — its candidate hosts are hardcoded wiki.gg/Fandom domains —
+/// but it shares `fetch_siteinfo`/`validate_search` with `probe_base`.
+#[cfg(test)]
+mod http_tests {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    /// A siteinfo body whose `server` points back at the mock, so the derived
+    /// canonical endpoints stay on the mock server.
+    fn siteinfo_body(server_uri: &str, scriptpath: &str) -> String {
+        serde_json::json!({
+            "query": { "general": {
+                "sitename": "Mock Wiki",
+                "server": server_uri,
+                "articlepath": "/wiki/$1",
+                "scriptpath": scriptpath,
+            } }
+        })
+        .to_string()
+    }
+
+    async fn mount_siteinfo(server: &MockServer, api_path: &str, scriptpath: &str) {
+        Mock::given(method("GET"))
+            .and(path(api_path))
+            .and(query_param("meta", "siteinfo"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(siteinfo_body(&server.uri(), scriptpath)))
+            .mount(server)
+            .await;
+    }
+
+    async fn mount_search(server: &MockServer, api_path: &str, response: ResponseTemplate) {
+        Mock::given(method("GET"))
+            .and(path(api_path))
+            .and(query_param("list", "search"))
+            .respond_with(response)
+            .mount(server)
+            .await;
+    }
+
+    /// Paths of every recorded siteinfo probe, in arrival order.
+    async fn siteinfo_request_paths(server: &MockServer) -> Vec<String> {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|r| r.url.query_pairs().any(|(k, v)| k == "meta" && v == "siteinfo"))
+            .map(|r| r.url.path().to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn probe_iterates_candidates_in_order_until_siteinfo_answers() {
+        let server = MockServer::start().await;
+        let uri = server.uri();
+        // Only the third well-known path hosts a wiki; the first two 404
+        // (wiremock's default for unmatched requests) → "not a MediaWiki
+        // here", try the next candidate.
+        mount_siteinfo(&server, "/mediawiki/api.php", "/mediawiki").await;
+        mount_search(
+            &server,
+            "/mediawiki/api.php",
+            ResponseTemplate::new(200).set_body_string(r#"{"query":{"search":[]}}"#),
+        )
+        .await;
+
+        let candidate = probe_base(&reqwest::Client::new(), &uri).await.unwrap();
+        assert_eq!(
+            candidate,
+            WikiCandidate {
+                name: "Mock Wiki".to_string(),
+                api_url: format!("{uri}/mediawiki/api.php"),
+                page_url: format!("{uri}/wiki/"),
+            }
+        );
+        assert_eq!(
+            siteinfo_request_paths(&server).await,
+            vec!["/api.php", "/w/api.php", "/mediawiki/api.php"],
+            "candidates probed in the documented order"
+        );
+    }
+
+    #[tokio::test]
+    async fn search_failure_after_siteinfo_is_a_verdict_not_a_retry() {
+        let server = MockServer::start().await;
+        let uri = server.uri();
+        // siteinfo answers at the FIRST candidate — so when its search dies,
+        // the probe must abort rather than move on to /w/api.php.
+        mount_siteinfo(&server, "/api.php", "").await;
+        mount_search(&server, "/api.php", ResponseTemplate::new(500)).await;
+
+        let err = probe_base(&reqwest::Client::new(), &uri).await.unwrap_err();
+        match err {
+            AppError::Probe(msg) => {
+                assert!(msg.contains("search API didn't answer"), "msg: {msg}")
+            }
+            other => panic!("expected AppError::Probe, got {other:?}"),
+        }
+        assert_eq!(
+            siteinfo_request_paths(&server).await,
+            vec!["/api.php"],
+            "no other candidate path may be tried after siteinfo answered"
+        );
+    }
+
+    #[tokio::test]
+    async fn pasted_api_php_url_is_probed_first() {
+        let server = MockServer::start().await;
+        let uri = server.uri();
+        // An api.php under a prefix no well-known candidate covers — reachable
+        // only because a pasted api.php URL heads the candidate list.
+        mount_siteinfo(&server, "/custom/api.php", "/custom").await;
+        mount_search(
+            &server,
+            "/custom/api.php",
+            ResponseTemplate::new(200).set_body_string(r#"{"query":{"search":[]}}"#),
+        )
+        .await;
+
+        let candidate = probe_base(&reqwest::Client::new(), &format!("{uri}/custom/api.php"))
+            .await
+            .unwrap();
+        assert_eq!(candidate.api_url, format!("{uri}/custom/api.php"));
+
+        let requests = server.received_requests().await.unwrap();
+        assert!(
+            requests.iter().all(|r| r.url.path() == "/custom/api.php"),
+            "every request must hit the pasted endpoint, none the well-known paths"
+        );
+    }
+}

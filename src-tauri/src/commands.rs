@@ -306,6 +306,9 @@ pub fn clear_capture(state: State<'_, AppState>) {
 /// `image_id` optionally names an attached screenshot (from `finish_capture`);
 /// a mismatch with the stored attachment fails fast as "capture it again". The
 /// attachment is cleared only after the model actually answers.
+// The arg list is the IPC contract: three managed handles + one arg per
+// frontend payload field. Bundling them into a struct would only move the count.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn ask(
     app: AppHandle,

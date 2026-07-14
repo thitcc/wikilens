@@ -23,6 +23,13 @@ import type {
   Source,
   StoredModelPick,
 } from "./types";
+import {
+  MODEL_STORAGE_PREFIX,
+  PROVIDER_STORAGE_KEY,
+  activeModelVision,
+  sameModelPick,
+  storedModel,
+} from "./modelPick";
 import { AddGameMenu } from "./components/AddGameMenu";
 import { GameChip } from "./components/GameChip";
 import { GameMenu } from "./components/GameMenu";
@@ -35,8 +42,6 @@ import "./styles.css";
 
 const GAME_STORAGE_KEY = "wikilens.selectedGame";
 const RECENT_GAMES_KEY = "wikilens.recentGames";
-const PROVIDER_STORAGE_KEY = "wikilens.selectedProvider";
-const MODEL_STORAGE_PREFIX = "wikilens.selectedModel.";
 
 /** How many recent game ids to remember (the menu shows the top 3). */
 const RECENT_GAMES_STORED = 5;
@@ -55,49 +60,6 @@ function storedRecentGames(): string[] {
     // Corrupted entry — start fresh.
   }
   return [];
-}
-
-/** The user's explicit model pick for a provider, or null when they've never
- * picked one. Stored as JSON `{id, label, vision?}` so the chip can label
- * itself without any list fetch (offline included). `vision` is carried
- * through when present; entries saved before the badges feature lack it, and
- * healing that is the guardrails plan's concern. */
-function storedModel(providerId: string): StoredModelPick | null {
-  if (!providerId) return null;
-  try {
-    const raw = localStorage.getItem(MODEL_STORAGE_PREFIX + providerId);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof (parsed as StoredModelPick).id === "string" &&
-      typeof (parsed as StoredModelPick).label === "string"
-    ) {
-      const pick = parsed as StoredModelPick;
-      return {
-        id: pick.id,
-        label: pick.label,
-        ...(typeof pick.vision === "boolean" ? { vision: pick.vision } : {}),
-      };
-    }
-  } catch {
-    // Corrupted entry — fall through to the provider default.
-  }
-  return null;
-}
-
-/** Whether the active model can read images, resolved with no fetch: DeepSeek
- * is definitively text-only (short-circuit — re-check when it ships a vision
- * model), then the stored pick's own flag, then the provider's default, then
- * false. */
-function activeModelVision(
-  provider: ProviderInfo | undefined,
-  pick: StoredModelPick | null,
-): boolean {
-  if (provider?.id === "deepseek") return false;
-  if (typeof pick?.vision === "boolean") return pick.vision;
-  return provider?.defaultModelVision ?? false;
 }
 
 const STATUS_LABEL: Record<AskStatus, string> = {
@@ -177,9 +139,12 @@ function App() {
   }, []);
 
   // Each provider remembers its own last-picked model; re-read it whenever
-  // the provider changes (including the initial load/validation above).
+  // the provider changes (including the initial load/validation above). Keep
+  // the previous object on a content-equal re-read — a fresh object would
+  // re-arm the self-heal effect below and fire a second list_models.
   useEffect(() => {
-    setModelPick(storedModel(selectedProvider));
+    const next = storedModel(selectedProvider);
+    setModelPick((prev) => (sameModelPick(prev, next) ? prev : next));
   }, [selectedProvider]);
 
   // Self-heal a pre-badges pick (stored without `vision`): one model-list load

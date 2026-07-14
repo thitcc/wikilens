@@ -3,9 +3,9 @@ title: Golden-query live retrieval tests
 type: plan
 status: done
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-07-13
 tags: [wiki, rag, rust]
-related: ["[[2026-07-03_retrieval-integration-test]]", "[[2026-07-04_search-srwhat-text]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]"]
+related: ["[[2026-07-03_retrieval-integration-test]]", "[[2026-07-04_search-srwhat-text]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]", "[[2026-07-13_manual-smoke-checklist-live-cadence]]"]
 commit: [9506cad, 65ace9e]
 ---
 
@@ -74,3 +74,12 @@ fixes ship unmeasured and future regressions go unnoticed.
   error) since a deterministic preprocess-fails/simplify-rescues live case can't
   be constructed reliably. Final: 6 cases — 5 strict OK, 1 known gap; 42 offline +
   3 live tests green.
+- 2026-07-13 — table hoisted to a shared `#[cfg(test)] const GOLDEN_CASES` at
+  the `wiki` module level (with [[2026-07-13_manual-smoke-checklist-live-cadence]],
+  `766be60`): an offline test now enforces the "every built-in game has a golden
+  query" anchor rule, which immediately exposed conanexiles as the one uncovered
+  game — a strict case added ("how do I make steel" → Steel Bar/Steelfire,
+  live-verified, Steel Bar ranks #1). Suite is now 20 cases — 18 strict OK,
+  2 known gaps (Abigail-gift, fusion-core bleed). The run cadence this suite
+  lacked is documented in `docs/smoke-checklist.md`; known-gap flips keep being
+  recorded here.

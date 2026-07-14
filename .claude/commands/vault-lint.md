@@ -2,7 +2,8 @@
 description: Lint the planning vault — validate every vault/*.md against its conventions
 allowed-tools: Bash(node:*), Read, Edit
 ---
-Run the vault linter from the repo root:
+Run the vault linter from the repo root (always before committing or pushing a PR
+that touches `vault/`):
 
 `node .claude/skills/vault-lint/lint.mjs`
 

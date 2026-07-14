@@ -16,6 +16,44 @@ pub mod wikitext;
 /// descriptive, contactable User-Agent — keep it set on the shared client.
 pub const USER_AGENT: &str = "wikilens/0.1 (game overlay; contact: none)";
 
+/// Golden retrieval cases, shared by the live hit@4 suite
+/// (`live::golden_queries_hit_expected_pages`) and the offline coverage
+/// invariant (`tests::every_builtin_game_has_a_golden_query`).
+/// Tuple: (game_id, question, expected: any one of these titles in the top-4,
+/// strict: gate the live suite vs. track as a known gap without failing).
+#[cfg(test)]
+const GOLDEN_CASES: &[(&str, &str, &[&str], bool)] = &[
+    ("stardew", "best crops for winter", &["Winter Seeds", "Powdermelon", "Seasons"], true),
+    ("stardew", "what does Abigail like", &["Abigail"], true),
+    // Known gap: AND semantics + no stemming rank gift-item pages above
+    // the canonical Abigail page for singular "gift". Flip to strict when
+    // query handling or extraction improves (see the retrieval plans).
+    ("stardew", "what does Abigail like as a gift", &["Abigail", "Villagers", "Leek"], false),
+    ("stardew", "wood", &["Wood"], true),
+    ("corekeeper", "best food for early game", &["Cooking", "Foods"], true),
+    ("corekeeper", "how do I get more health", &["Health", "Healing potency"], true),
+    // Coverage invariant (2026-07-13): conanexiles predated the anchor rule.
+    ("conanexiles", "how do I make steel", &["Steel Bar", "Steelfire"], true),
+    // Registry expansion (2026-07-05): one anchor case per new game.
+    ("warframe", "how do I get Excalibur", &["Excalibur"], true),
+    ("gw2", "Mesmer", &["Mesmer"], true),
+    ("poe", "Chaos Orb", &["Chaos Orb"], true),
+    ("poe2", "Waystone", &["Waystone"], true),
+    ("abioticfactor", "Anteverse", &["Anteverse"], true),
+    ("davethediver", "Bancho", &["Bancho"], true),
+    // UESP titles carry the game namespace prefix.
+    ("skyrim", "Whiterun", &["Skyrim:Whiterun"], true),
+    ("fallout4", "power armor", &["Power armor"], true),
+    // Nukapedia covers every Fallout game in one namespace; track the
+    // cross-game bleed on a natural question without gating on it.
+    ("fallout4", "where do I find a fusion core", &["Fusion core (Fallout 4)", "Fusion core"], false),
+    ("grounded", "Aphid", &["Aphid"], true),
+    // Grounded 2 shares Grounded's Fandom wiki; G2 pages are suffixed.
+    ("grounded2", "Aphid", &["Aphid (Grounded 2)"], true),
+    ("terraria", "Zenith", &["Zenith"], true),
+    ("minecraft", "Creeper", &["Creeper"], true),
+];
+
 #[cfg(test)]
 mod live {
     //! End-to-end integration test: a real HTTP round-trip against a live game
@@ -26,7 +64,7 @@ mod live {
     //! `#[ignore]`d so `cargo test` stays offline and fast. Run it deliberately:
     //!   cargo test -p wikilens --lib -- --ignored
     //! (or just `cargo test -- --ignored` from `src-tauri/`).
-    use super::{fetch, games, search};
+    use super::{fetch, games, search, GOLDEN_CASES};
 
     #[tokio::test]
     #[ignore = "hits the live Stardew Valley wiki; run with `cargo test -- --ignored`"]
@@ -77,38 +115,6 @@ mod live {
     #[tokio::test]
     #[ignore = "hits live game wikis; run with `cargo test -- --ignored`"]
     async fn golden_queries_hit_expected_pages() {
-        // (game_id, question, expected: any one of these titles in the top-4,
-        //  strict: gate the suite vs. track as a known gap without failing)
-        let cases: &[(&str, &str, &[&str], bool)] = &[
-            ("stardew", "best crops for winter", &["Winter Seeds", "Powdermelon", "Seasons"], true),
-            ("stardew", "what does Abigail like", &["Abigail"], true),
-            // Known gap: AND semantics + no stemming rank gift-item pages above
-            // the canonical Abigail page for singular "gift". Flip to strict when
-            // query handling or extraction improves (see the retrieval plans).
-            ("stardew", "what does Abigail like as a gift", &["Abigail", "Villagers", "Leek"], false),
-            ("stardew", "wood", &["Wood"], true),
-            ("corekeeper", "best food for early game", &["Cooking", "Foods"], true),
-            ("corekeeper", "how do I get more health", &["Health", "Healing potency"], true),
-            // Registry expansion (2026-07-05): one anchor case per new game.
-            ("warframe", "how do I get Excalibur", &["Excalibur"], true),
-            ("gw2", "Mesmer", &["Mesmer"], true),
-            ("poe", "Chaos Orb", &["Chaos Orb"], true),
-            ("poe2", "Waystone", &["Waystone"], true),
-            ("abioticfactor", "Anteverse", &["Anteverse"], true),
-            ("davethediver", "Bancho", &["Bancho"], true),
-            // UESP titles carry the game namespace prefix.
-            ("skyrim", "Whiterun", &["Skyrim:Whiterun"], true),
-            ("fallout4", "power armor", &["Power armor"], true),
-            // Nukapedia covers every Fallout game in one namespace; track the
-            // cross-game bleed on a natural question without gating on it.
-            ("fallout4", "where do I find a fusion core", &["Fusion core (Fallout 4)", "Fusion core"], false),
-            ("grounded", "Aphid", &["Aphid"], true),
-            // Grounded 2 shares Grounded's Fandom wiki; G2 pages are suffixed.
-            ("grounded2", "Aphid", &["Aphid (Grounded 2)"], true),
-            ("terraria", "Zenith", &["Zenith"], true),
-            ("minecraft", "Creeper", &["Creeper"], true),
-        ];
-
         let client = reqwest::Client::builder()
             .user_agent(super::USER_AGENT)
             .build()
@@ -116,7 +122,7 @@ mod live {
 
         // Sequential on purpose — MediaWiki etiquette, same as production.
         let mut misses = Vec::new();
-        for (game_id, question, expected, strict) in cases {
+        for (game_id, question, expected, strict) in GOLDEN_CASES {
             let wiki = games::find_game(game_id).expect("game is registered");
 
             let query = search::preprocess_query(question);
@@ -271,5 +277,43 @@ mod live {
         .await
         .expect("a no-match search must not be an error");
         assert!(titles.is_empty(), "nonsense query unexpectedly matched: {titles:?}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Offline guards over the golden-query table itself (the live suite that
+    //! executes it is `mod live` above).
+    use super::{games, GOLDEN_CASES};
+
+    /// CLAUDE.md's "anchor each new game with a golden query" rule, enforced:
+    /// adding a `GameWiki` to `wiki/games.rs` without a golden case now fails
+    /// plain offline `cargo test` instead of relying on review memory.
+    #[test]
+    fn every_builtin_game_has_a_golden_query() {
+        assert!(!GOLDEN_CASES.is_empty(), "golden-query table is empty");
+        assert!(!games::GAMES.is_empty(), "built-in game registry is empty");
+        let missing: Vec<&str> = games::GAMES
+            .iter()
+            .map(|g| g.id.as_str())
+            .filter(|id| !GOLDEN_CASES.iter().any(|(gid, ..)| gid == id))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "built-in games with no golden query — add a case to GOLDEN_CASES in \
+             wiki/mod.rs and verify it live (`cargo test golden -- --ignored`): {missing:?}"
+        );
+    }
+
+    /// Reverse direction: a typo'd id in the table would only surface when the
+    /// opt-in live suite panics; catch it offline instead.
+    #[test]
+    fn golden_case_game_ids_are_registered() {
+        for (game_id, question, ..) in GOLDEN_CASES {
+            assert!(
+                games::find_game(game_id).is_some(),
+                "golden case {question:?} references unknown game id {game_id:?}"
+            );
+        }
     }
 }

@@ -5,6 +5,8 @@
 
 mod capture;
 mod commands;
+#[cfg(test)]
+mod config_guardrails;
 mod debug;
 mod error;
 mod hotkey;
@@ -12,6 +14,8 @@ mod llm;
 mod models;
 mod providers;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod tray;
 mod window;
 mod wiki;

@@ -15,12 +15,15 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 wikilens/
 ├── index.html, vite.config.ts, tsconfig*.json   # Vite/TS config
 ├── vault/                        # planning vault: plans, decisions, notes (see §7)
+├── docs/                         # dev guides: manual smoke checklist, AI-workflow explainer
 ├── src/                          # Frontend (React + TS)
 │   ├── main.tsx                  # React entry
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
 │   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
+│   ├── modelPick.ts              # stored model pick + vision resolution (pure helpers, unit-tested)
 │   ├── styles.css                # Transparent body + glass dark panel
+│   ├── test/                     # Vitest harness: setup, fake IPC backend (mockIPC), mount helpers
 │   └── components/
 │       ├── GameChip.tsx          # header chip: current game, opens the game menu
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
@@ -56,10 +59,22 @@ search/fetch → LLM stream → events → UI`.
 Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 - Dev app: `npm run tauri dev`
-- Frontend build: `npm run build` · Type-check: `npx tsc --noEmit`
-- Rust: `cd src-tauri && cargo check` · `cd src-tauri && cargo test`
-- Verify all: `/check` bundles the type-check + `cargo check` + `cargo test`
-- Release: `npm run tauri build`
+- Frontend build: `npm run build` · Type-check: `npx tsc --noEmit` ·
+  Tests: `npm test` (Vitest; `npm run test:watch` while developing)
+- Rust: `cd src-tauri && cargo check` · `cargo test` ·
+  lint: `cargo clippy --all-targets -- -D warnings`
+- Live wiki/API suites: `cargo test -- --ignored` (from `src-tauri/`) — the
+  network-hitting `#[ignore]`d tests. Cadence: before each release, when
+  adding/changing a game or provider, ~monthly otherwise
+  (see `docs/smoke-checklist.md`)
+- Verify all: `/check` bundles the type-check + `npm test` + clippy +
+  `cargo test` — the code gates CI runs (`.github/workflows/ci.yml`, every PR
+  and push to main). CI additionally audits dependencies (`cargo audit`,
+  `npm audit --audit-level=high`) — CI-only, since they depend on the network
+  and advisory databases
+- Release: `npm run tauri build`, then walk the manual smoke checklist
+  (`docs/smoke-checklist.md`) — the runtime-only surface (overlay, hotkey,
+  tray, DPI, packaged keys) has no automated coverage
 
 ## 4. Conventions
 
@@ -96,7 +111,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `/w/`, not `/wiki/`), and set `search_namespace` for shared wikis that keep
   each game in its own namespace (UESP: Skyrim = `"134"`; default search there
   returns zero hits). Prefer official/independent wikis over stale Fandom
-  copies. Anchor each new game with a golden query (`wiki/mod.rs`).
+  copies. Anchor each new game with a golden query (`GOLDEN_CASES` in
+  `wiki/mod.rs` — an offline test fails if a built-in lacks one; verify the
+  new case live via `cargo test golden -- --ignored`).
 - **User-added games** (`add_game`/`suggest_wikis`/`remove_game`): every URL is
   probe-validated in Rust (`wiki/probe.rs` — siteinfo + one test search;
   endpoints derived from the wiki's own `articlepath`/`scriptpath`, never
@@ -114,6 +131,16 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
   exits still report). Independent of `WIKILENS_TRACE_RETRIEVAL`.
+- **Delivery: every change lands via PR** (ADR:
+  `vault/2026-07-13_pr-delivery-workflow.md`). Branch `<type>/<slug>` off `main`
+  (e.g. `ci/github-actions-pipeline`), conventional commit prefixes (`feat:`,
+  `fix:`, `chore:`, `ci:`, `docs(vault):`), push, `gh pr create` — no direct
+  commits to `main`. Run `/check` before pushing (it mirrors CI's code gates;
+  CI adds the dependency audits) and `/vault-lint` when `vault/` changed. A PR
+  merges only when CI is green, and the **human merges — always a merge
+  commit, never squash/rebase** (vault docs pin
+  branch `commit:` hashes; squashing orphans them); Claude never merges. The
+  `docs(vault): close …` commit rides in the same PR as the code it closes.
 
 ## 5. Gotchas
 

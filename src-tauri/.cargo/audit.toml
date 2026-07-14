@@ -1,0 +1,18 @@
+# cargo-audit config (read from CWD — CI runs `cargo audit` from src-tauri/,
+# matching local runs). See vault/2026-07-13_dependency-audit-lint-gates.md.
+# Every ignore needs a dated justification and a recheck trigger.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2026-0194 + RUSTSEC-2026-0195 (quick-xml < 0.41): the two flagged
+    # instances live only in xcap's Linux-only subtrees — 0.30.0 as a build-dep
+    # of xcb (X11) and 0.39.4 inside the wayland-scanner proc-macro. Neither is
+    # ever compiled for the Windows-only shipping target, and both parse trusted
+    # vendored protocol XML at build time, not runtime input. The one instance
+    # that did ship on Windows (plist -> tauri-utils) was cleared by updating
+    # plist to 1.10.0 (quick-xml 0.41). Recheck on the next xcap bump; drop
+    # these once xcb / wayland-scanner move to quick-xml >= 0.41.
+    # Added 2026-07-13.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]

@@ -13,7 +13,7 @@ script reads the registry live so it never drifts.
 ## When to run
 - Right after `/plan-doc` or `/decision-doc` creates a doc.
 - When closing a doc to `status: done`.
-- Before committing any change under `vault/`.
+- Before committing — or pushing a PR with — any change under `vault/`.
 - Whenever asked to check or tidy the vault.
 
 ## How to run
