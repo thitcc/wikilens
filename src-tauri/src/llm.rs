@@ -773,14 +773,7 @@ fn parse_openai_sse_line(line: &str) -> SseLine {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn page(title: &str, text: &str) -> WikiPage {
-        WikiPage {
-            title: title.to_string(),
-            text: text.to_string(),
-            url: format!("https://example.com/{title}"),
-        }
-    }
+    use crate::test_support::wiki_page as page;
 
     #[test]
     fn user_message_fences_excerpts_then_question() {
