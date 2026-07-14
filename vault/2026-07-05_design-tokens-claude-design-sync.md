@@ -1,11 +1,11 @@
 ---
 title: Design tokens and a Claude Design sync loop for the overlay UI
 type: plan
-status: blocked
+status: done
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-14
 tags: [frontend, overlay]
-related: []
+related: ["[[2026-07-05_model-picker-menu]]", "[[2026-07-05_game-picker-owned-menu]]"]
 commit: [65b7f4d, c59fda6, 2ae9c03, fb1fe67]
 ---
 
@@ -172,3 +172,15 @@ constraints are specific to WikiLens and must shape any design work:
   game-picker card is marked SHIPPED. Loop still open for the original
   remaining deliverables (accent directions, high-contrast bright-scene
   variant).
+- 2026-07-14 — **closed.** The loop had been waiting since 2026-07-05 on a
+  browser pass for the two remaining deliverables; the user decided to close
+  instead. Accent directions and the high-contrast bright-scene variant are
+  **dropped** from this plan's scope and recorded as roadmap ideas
+  (CLAUDE.md §6) — revive via a fresh plan doc if picked up. Final mirror
+  true-up pushed to the Claude Design project on close: tokens verified
+  current (zero `:root` drift since `3ffc78d`), and the preview cards caught
+  up with the UI that shipped code-first after the last push — capture
+  cluster + chip hint (`88facae`), vision badges (`096ff29`), attachment row
+  states (`513565e`) — plus the brief marked closed. What the loop shipped
+  overall: the token layer, the 1a floating panel, the model-chip menu, and
+  the 4c game menu — three full browser→code pull-backs and a steady mirror.

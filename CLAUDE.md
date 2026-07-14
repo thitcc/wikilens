@@ -219,6 +219,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - SQLite cache of fetched wiki pages.
 - User-configurable hotkey.
 - Answer history.
+- Overlay design follow-ups: accent-direction exploration and a high-contrast
+  bright-scene variant (dropped from the 2026-07-05 design-sync plan).
 
 ## 7. Planning vault
 
