@@ -1,12 +1,12 @@
 ---
 title: Session circuit breaker for a rewrite that never yields candidates
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-14
 tags: [llm, rust]
 related: ["[[2026-07-10_retrieval-path-timeouts]]", "[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_reasoning-skip-and-capability-tags]]"]
-commit:
+commit: 39ceecd
 ---
 
 # Session circuit breaker for a rewrite that never yields candidates
@@ -65,3 +65,9 @@ confirmed by the verifier pass.
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#2, priority 2); depends on
   [[2026-07-10_retrieval-path-timeouts]] (bounds each strike at ≤4s).
+- 2026-07-14 — implemented as planned (39ceecd): `rewrite_failures: AtomicU32` +
+  `REWRITE_BREAKER_LIMIT`/`rewrite_breaker_tripped`/`record_rewrite_outcome` in
+  `state.rs` (loud one-time eprintln at the crossing, 4 unit tests), breaker-skip
+  branch + outcome recording in `commands.rs`'s `rewrite_fut`, and the debug table
+  shows `skipped (circuit breaker)` with `-/-` tokens (skip reason derived from
+  `rewrite_on`, no counter re-read). Done.
