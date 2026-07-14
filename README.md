@@ -98,7 +98,7 @@ All changes land through a pull request — no direct commits to `main`:
 3. Verify locally before pushing — the same gates CI runs: `npx tsc --noEmit`,
    `cargo clippy --all-targets -- -D warnings`, `cargo test`.
 4. Open a PR — description per `.github/PULL_REQUEST_TEMPLATE.md` (plain-language
-   summary, behavior-level bullets, technical details folded); CI
+   summary, behavior-level bullets, technical details quoted); CI
    (`.github/workflows/ci.yml`) must be green before merging.
 5. Merge with a **merge commit** (never squash) — the planning vault pins commit
    hashes from PR branches, and squashing would orphan them.

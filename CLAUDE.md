@@ -150,9 +150,11 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `gh pr create --body` bypasses template auto-fill, write the body to that
   skeleton yourself: plain-language 2–3-sentence summary linking the vault plan
   doc; change bullets at behavior level (what works differently — never
-  file/function jargon), each with a nested `<details>` technical fold;
-  "⚠️ Behavior changes" (or "None"); a Verification table (check | result).
-  ~20 rendered lines above the fold; war stories go in `<details>` folds.
+  file/function jargon), technical detail in a `>` quote under the bullet only
+  when it adds something; "⚠️ Behavior changes" (or "None"); a Verification
+  table (check | result). Each paragraph/bullet is **one source line** —
+  GitHub renders newlines in PR bodies as line breaks, so hard-wrapped text
+  comes out ragged. ~20 rendered lines; war stories go in `<details>` folds.
 
 ## 5. Gotchas
 

@@ -1,7 +1,9 @@
 <!-- WikiLens PR anatomy. Target: ~20 rendered lines above the fold.
-     Note: gh pr create with a body flag BYPASSES this template. When
-     authoring via gh, write the body to this skeleton yourself
-     (convention: CLAUDE.md §4, "PR descriptions"). -->
+     Write each paragraph or bullet as ONE source line: GitHub renders
+     newlines in PR bodies as line breaks, so hard-wrapped text comes
+     out ragged. Note: gh pr create with a body flag BYPASSES this
+     template. When authoring via gh, write the body to this skeleton
+     yourself (convention: CLAUDE.md §4, "PR descriptions"). -->
 
 ## Summary
 
@@ -15,19 +17,13 @@ Plan: `vault/YYYY-MM-DD_slug.md`
 <!-- One bullet per change, written at workflow/behavior level:
        GOOD: "Wiki page downloads now stop at a size cap instead of reading forever."
        BAD:  "`fetch.rs` now calls read_body_capped() instead of .text()."
-     Every bullet nests its file/function detail in a details fold.
-     Copy this exact shape. The blank lines are load-bearing: the one after
-     </summary> is what makes GitHub render markdown inside the fold, and the
-     2-space indent keeps the fold inside the bullet.
+     When (and only when) the file/function detail adds something, quote it
+     under the bullet. Copy this exact shape: blank line, then a 2-space
+     indent so the quote stays inside the bullet.
 
 - Human-readable statement of the change.
 
-  <details>
-  <summary>Technical details</summary>
-
-  File/function-level detail. Markdown works here: `code`, lists, links.
-
-  </details>
+  > File/function-level detail. Markdown works here: `code`, lists, links.
 -->
 
 ## ⚠️ Behavior changes
