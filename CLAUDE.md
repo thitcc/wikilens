@@ -132,6 +132,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   OpenAI-compatible, shared by DeepSeek/OpenRouter). `llm.rs` and `models.rs`
   branch request-build + parsing on it.
 - Concurrency: `ask` rejects if one is already running (`AppState::ask_in_progress`).
+- **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
+  phase timings, models, token counts, queries, page titles + char counts;
+  never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
+  exits still report). Independent of `WIKILENS_TRACE_RETRIEVAL`.
 - **Delivery: every change lands via PR** (ADR:
   `vault/2026-07-13_pr-delivery-workflow.md`). Branch `<type>/<slug>` off `main`
   (e.g. `ci/github-actions-pipeline`), conventional commit prefixes (`feat:`,
@@ -220,6 +224,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - SQLite cache of fetched wiki pages.
 - User-configurable hotkey.
 - Answer history.
+- Overlay design follow-ups: accent-direction exploration and a high-contrast
+  bright-scene variant (dropped from the 2026-07-05 design-sync plan).
 
 ## 7. Planning vault
 

@@ -7,6 +7,7 @@ mod capture;
 mod commands;
 #[cfg(test)]
 mod config_guardrails;
+mod debug;
 mod error;
 mod hotkey;
 mod http;

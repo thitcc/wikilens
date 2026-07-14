@@ -40,6 +40,46 @@ const SYSTEM_PROMPT: &str = "You are a game-wiki assistant embedded in an in-gam
 /// identifying *what* the question is about, not a new source of facts.
 const SCREENSHOT_ADDENDUM: &str = "The player has attached a screenshot of their game. Use it only to identify what the question is about — the item, enemy, location, or situation shown — and then answer from the wiki excerpts as usual. The excerpts remain your only source of facts. If the screenshot shows something the excerpts do not cover, say plainly that the wiki text provided doesn't cover what's on screen, and suggest what to search instead. Do not describe the screenshot back to the player unless they ask.";
 
+/// Token counts a provider reported for one model call. Both fields optional:
+/// providers stream them piecemeal (or not at all), and usage is debug data —
+/// never worth failing an ask over. Consumed by the `WIKILENS_DEBUG` table.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TokenUsage {
+    pub input: Option<u64>,
+    pub output: Option<u64>,
+}
+
+impl TokenUsage {
+    /// Field-wise merge, later readings winning: Anthropic streams input tokens
+    /// in `message_start` and cumulative output tokens in `message_delta`, so
+    /// each event carries only part of the picture.
+    pub fn merge(&mut self, other: TokenUsage) {
+        self.input = other.input.or(self.input);
+        self.output = other.output.or(self.output);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.input.is_none() && self.output.is_none()
+    }
+}
+
+/// Read a provider's `usage` JSON object into a [`TokenUsage`] (Anthropic:
+/// `input_tokens`/`output_tokens`; OpenAI-compatible: `prompt_tokens`/
+/// `completion_tokens`). Missing/non-numeric fields stay `None`.
+fn usage_from_value(kind: ProviderKind, usage: &serde_json::Value) -> TokenUsage {
+    let field = |name: &str| usage.get(name).and_then(|v| v.as_u64());
+    match kind {
+        ProviderKind::Anthropic => TokenUsage {
+            input: field("input_tokens"),
+            output: field("output_tokens"),
+        },
+        ProviderKind::OpenAiCompatible => TokenUsage {
+            input: field("prompt_tokens"),
+            output: field("completion_tokens"),
+        },
+    }
+}
+
 /// Outcome of parsing one SSE line, independent of provider. Richer than a bare
 /// `Option<String>` so the OpenAI path can signal explicit termination (`[DONE]`)
 /// and mid-stream errors (which arrive on an already-200 response).
@@ -52,12 +92,26 @@ enum SseLine {
     /// A line with no answer text (comments, keep-alives, non-text events,
     /// role-only/finish chunks, null content, blanks).
     Ignore,
+    /// Token counts reported mid-stream (Anthropic `message_start`/
+    /// `message_delta`; OpenAI-compatible usage chunks). Merged, not emitted.
+    Usage(TokenUsage),
     /// Provider signalled a failure mid-stream; abort with the error body.
     Error(String),
 }
 
+/// A finished streamed answer plus the debug metadata gathered along the way.
+pub struct StreamedAnswer {
+    pub text: String,
+    /// Token counts the provider reported; empty when it never sent usage.
+    pub usage: TokenUsage,
+    /// Request send → first text delta (connect + queue + prefill). `None` if
+    /// no delta ever arrived.
+    pub ttft: Option<std::time::Duration>,
+}
+
 /// Stream an answer from the given provider/model. Each text delta is handed to
-/// `on_delta` as it arrives; the full accumulated answer is returned at the end.
+/// `on_delta` as it arrives; the full accumulated answer is returned at the end,
+/// along with reported token usage and time-to-first-token for the debug table.
 #[allow(clippy::too_many_arguments)] // one arg per request ingredient; callers pass them all anyway
 pub async fn answer_streaming<F>(
     client: &reqwest::Client,
@@ -68,7 +122,7 @@ pub async fn answer_streaming<F>(
     pages: &[WikiPage],
     image_png: Option<&[u8]>,
     mut on_delta: F,
-) -> Result<String, AppError>
+) -> Result<StreamedAnswer, AppError>
 where
     F: FnMut(&str),
 {
@@ -81,6 +135,7 @@ where
         }
     };
 
+    let sent = std::time::Instant::now();
     let resp = request.send().await?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -104,6 +159,8 @@ where
     // whole lines (everything up to a `\n`, which is ASCII) — decoding a chunk
     // directly would split a multi-byte char and produce replacement chars.
     let mut answer = String::new();
+    let mut usage = TokenUsage::default();
+    let mut ttft: Option<std::time::Duration> = None;
     let mut buffer: Vec<u8> = Vec::new();
     let mut received: usize = 0;
     let mut stream = resp.bytes_stream();
@@ -125,10 +182,20 @@ where
             let line = String::from_utf8_lossy(&line_bytes);
             match parse_line(provider.kind, line.trim_end()) {
                 SseLine::Delta(delta) => {
+                    if ttft.is_none() {
+                        ttft = Some(sent.elapsed());
+                    }
                     on_delta(&delta);
                     answer.push_str(&delta);
                 }
-                SseLine::Done => return Ok(answer),
+                SseLine::Done => {
+                    return Ok(StreamedAnswer {
+                        text: answer,
+                        usage,
+                        ttft,
+                    })
+                }
+                SseLine::Usage(u) => usage.merge(u),
                 SseLine::Error(message) => {
                     // The stream returned HTTP 200 then failed mid-flight; 200 is
                     // the honest status to report alongside the error body.
@@ -145,7 +212,11 @@ where
 
     // Anthropic ends by closing the stream (no `[DONE]`); OpenAI-compatible
     // providers return early via `SseLine::Done`.
-    Ok(answer)
+    Ok(StreamedAnswer {
+        text: answer,
+        usage,
+        ttft,
+    })
 }
 
 /// Anthropic Messages API request: `x-api-key` auth and a top-level `system`.
@@ -190,6 +261,10 @@ fn build_openai_request(
         "model": model,
         "max_tokens": MAX_TOKENS,
         "stream": true,
+        // Ask for a usage chunk (DeepSeek and OpenRouter both support this) so
+        // the WIKILENS_DEBUG table can report token counts. Sent unconditionally
+        // — one canonical request shape, no debug-only behavior differences.
+        "stream_options": { "include_usage": true },
         "messages": [
             { "role": "system", "content": system_prompt(image_png.is_some()) },
             { "role": "user", "content": build_user_content(provider.kind, question, pages, image_png) }
@@ -322,6 +397,14 @@ const REWRITE_TIMEOUT: Duration = Duration::from_secs(15);
 /// tolerates fences/prose defensively.
 const REWRITE_SYSTEM_PROMPT: &str = "You convert a player's question into search queries for a specific game's wiki. Their own search returned nothing — usually a typo, a paraphrase, or an item/character the wiki names differently. Reply with ONLY a compact JSON object of the form {\"queries\":[\"...\"]}: 1 to 3 short keyword queries, best guess first, exact proper nouns / item / enemy names preferred. No prose, no markdown, no code fences.";
 
+/// A parsed query rewrite plus the token usage the provider reported for it.
+pub struct RewriteOutcome {
+    /// Candidate wiki search queries; empty means "no usable rewrite" and the
+    /// caller falls back to the raw query.
+    pub queries: Vec<String>,
+    pub usage: TokenUsage,
+}
+
 /// Rewrite a failed question into candidate wiki search queries via a cheap,
 /// non-streaming model call (the reply is tiny). Returns the parsed queries; an
 /// empty vec means "no usable rewrite" and the caller falls back to the raw query.
@@ -334,7 +417,7 @@ pub async fn rewrite_query(
     api_key: &str,
     game: &str,
     question: &str,
-) -> Result<Vec<String>, AppError> {
+) -> Result<RewriteOutcome, AppError> {
     let user = format!("Game: {game}\nPlayer question: {question}");
     let request = match provider.kind {
         ProviderKind::Anthropic => {
@@ -362,7 +445,10 @@ pub async fn rewrite_query(
         eprintln!("wikilens.rewrite.raw {preview}");
     }
     let text = extract_completion_text(provider.kind, &body)?;
-    Ok(parse_rewrite_queries(&text))
+    Ok(RewriteOutcome {
+        queries: parse_rewrite_queries(&text),
+        usage: extract_completion_usage(provider.kind, &body),
+    })
 }
 
 /// Non-streaming Anthropic Messages request (no wiki pages, no image) for the
@@ -412,6 +498,16 @@ fn build_completion_openai(
         request = request.header(*name, *value);
     }
     request.json(&body)
+}
+
+/// Best-effort `usage` from a non-streaming completion body; default (both
+/// fields `None`) when absent or unreadable — usage is debug data, never worth
+/// failing an ask over.
+fn extract_completion_usage(kind: ProviderKind, body: &str) -> TokenUsage {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| json.get("usage").map(|u| usage_from_value(kind, u)))
+        .unwrap_or_default()
 }
 
 /// Pull the assistant's text out of a non-streaming completion body, branching on
@@ -524,10 +620,35 @@ mod rewrite_tests {
         // Missing text is a parse error, not a panic.
         assert!(extract_completion_text(ProviderKind::Anthropic, r#"{"content":[]}"#).is_err());
     }
+
+    #[test]
+    fn extracts_completion_usage_per_provider() {
+        let anthropic = r#"{"content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":184,"output_tokens":22}}"#;
+        assert_eq!(
+            extract_completion_usage(ProviderKind::Anthropic, anthropic),
+            TokenUsage {
+                input: Some(184),
+                output: Some(22)
+            }
+        );
+        let openai = r#"{"choices":[{"message":{"content":"hey"}}],"usage":{"prompt_tokens":90,"completion_tokens":14}}"#;
+        assert_eq!(
+            extract_completion_usage(ProviderKind::OpenAiCompatible, openai),
+            TokenUsage {
+                input: Some(90),
+                output: Some(14)
+            }
+        );
+        // Absent usage or unparseable body degrade to default, never an error.
+        assert!(extract_completion_usage(ProviderKind::Anthropic, r#"{"content":[]}"#).is_empty());
+        assert!(extract_completion_usage(ProviderKind::OpenAiCompatible, "not json").is_empty());
+    }
 }
 
 /// Parse one Anthropic SSE line, yielding the text of a `content_block_delta`
-/// `text_delta` and ignoring every other event (pings, non-text deltas, blanks).
+/// `text_delta`, token usage from `message_start` (input) and `message_delta`
+/// (cumulative output), and ignoring every other event (pings, non-text
+/// deltas, blanks).
 fn parse_anthropic_sse_line(line: &str) -> SseLine {
     let Some(data) = line.strip_prefix("data:").map(str::trim) else {
         return SseLine::Ignore;
@@ -538,18 +659,48 @@ fn parse_anthropic_sse_line(line: &str) -> SseLine {
     let Ok(json) = serde_json::from_str::<serde_json::Value>(data) else {
         return SseLine::Ignore;
     };
-    if json.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
-        return SseLine::Ignore;
-    }
-    let Some(delta) = json.get("delta") else {
-        return SseLine::Ignore;
-    };
-    if delta.get("type").and_then(|t| t.as_str()) != Some("text_delta") {
-        return SseLine::Ignore;
-    }
-    match delta.get("text").and_then(|t| t.as_str()) {
-        Some(text) => SseLine::Delta(text.to_string()),
-        None => SseLine::Ignore,
+    match json.get("type").and_then(|t| t.as_str()) {
+        Some("content_block_delta") => {
+            let Some(delta) = json.get("delta") else {
+                return SseLine::Ignore;
+            };
+            if delta.get("type").and_then(|t| t.as_str()) != Some("text_delta") {
+                return SseLine::Ignore;
+            }
+            match delta.get("text").and_then(|t| t.as_str()) {
+                Some(text) => SseLine::Delta(text.to_string()),
+                None => SseLine::Ignore,
+            }
+        }
+        // `message_start` carries the real input count but only a placeholder
+        // output count (a token or two of preamble) — take input alone; the
+        // final cumulative output arrives in `message_delta`.
+        Some("message_start") => {
+            let input = json
+                .get("message")
+                .and_then(|m| m.get("usage"))
+                .and_then(|u| u.get("input_tokens"))
+                .and_then(|v| v.as_u64());
+            match input {
+                Some(_) => SseLine::Usage(TokenUsage {
+                    input,
+                    output: None,
+                }),
+                None => SseLine::Ignore,
+            }
+        }
+        Some("message_delta") => match json.get("usage") {
+            Some(usage) => {
+                let usage = usage_from_value(ProviderKind::Anthropic, usage);
+                if usage.is_empty() {
+                    SseLine::Ignore
+                } else {
+                    SseLine::Usage(usage)
+                }
+            }
+            None => SseLine::Ignore,
+        },
+        _ => SseLine::Ignore,
     }
 }
 
@@ -557,8 +708,9 @@ fn parse_anthropic_sse_line(line: &str) -> SseLine {
 ///
 /// Handles every shape these gateways emit: `:`-prefixed comment/keep-alive lines
 /// (`: OPENROUTER PROCESSING`), the `[DONE]` terminator, a top-level `error`
-/// object or a `finish_reason: "error"` chunk on an HTTP-200 stream, usage-only
-/// chunks (`choices: []`), and the role-only first / finish chunks where
+/// object or a `finish_reason: "error"` chunk on an HTTP-200 stream, token-usage
+/// chunks (the spec's final `choices: []` chunk and DeepSeek's usage-on-the-finish-
+/// chunk shape both), and the role-only first / finish chunks where
 /// `delta.content` is null or absent.
 fn parse_openai_sse_line(line: &str) -> SseLine {
     // Only `data:` lines carry payload. Rejecting everything else here is what
@@ -581,30 +733,41 @@ fn parse_openai_sse_line(line: &str) -> SseLine {
         return SseLine::Error(error.to_string());
     }
 
-    // Usage-only / metadata chunks carry an empty `choices` array.
-    let Some(choice) = json
+    // Usage-only / metadata chunks carry an empty `choices` array — those fall
+    // through to the usage check below.
+    if let Some(choice) = json
         .get("choices")
         .and_then(|c| c.as_array())
         .and_then(|choices| choices.first())
-    else {
-        return SseLine::Ignore;
-    };
-
-    // OpenRouter signals a mid-stream failure with finish_reason "error".
-    if choice.get("finish_reason").and_then(|f| f.as_str()) == Some("error") {
-        return SseLine::Error(json.to_string());
-    }
-
-    // `delta.content` is null/absent on the role-only first chunk and the finish
-    // chunk; treat those (and empty strings) as nothing to emit.
-    match choice
-        .get("delta")
-        .and_then(|d| d.get("content"))
-        .and_then(|c| c.as_str())
     {
-        Some(text) if !text.is_empty() => SseLine::Delta(text.to_string()),
-        _ => SseLine::Ignore,
+        // OpenRouter signals a mid-stream failure with finish_reason "error".
+        if choice.get("finish_reason").and_then(|f| f.as_str()) == Some("error") {
+            return SseLine::Error(json.to_string());
+        }
+
+        // `delta.content` is null/absent on the role-only first chunk and the
+        // finish chunk; those fall through too (DeepSeek reports usage on the
+        // finish chunk itself, not on a separate `choices: []` one).
+        if let Some(text) = choice
+            .get("delta")
+            .and_then(|d| d.get("content"))
+            .and_then(|c| c.as_str())
+        {
+            if !text.is_empty() {
+                return SseLine::Delta(text.to_string());
+            }
+        }
     }
+
+    // Intermediate chunks carry `usage: null`; only a populated object counts.
+    if let Some(usage) = json.get("usage") {
+        let usage = usage_from_value(ProviderKind::OpenAiCompatible, usage);
+        if !usage.is_empty() {
+            return SseLine::Usage(usage);
+        }
+    }
+
+    SseLine::Ignore
 }
 
 #[cfg(test)]
@@ -751,6 +914,8 @@ mod tests {
     #[test]
     fn anthropic_ignores_non_text_events() {
         assert_eq!(parse_anthropic_sse_line("event: content_block_delta"), SseLine::Ignore);
+        // A message_start with no usage inside stays Ignore — only one that
+        // actually carries input_tokens becomes SseLine::Usage (next test).
         assert_eq!(
             parse_anthropic_sse_line(r#"data: {"type":"message_start","message":{}}"#),
             SseLine::Ignore
@@ -761,6 +926,59 @@ mod tests {
         );
         assert_eq!(parse_anthropic_sse_line(""), SseLine::Ignore);
         assert_eq!(parse_anthropic_sse_line("data: [DONE]"), SseLine::Ignore);
+    }
+
+    #[test]
+    fn anthropic_message_start_yields_input_usage_only() {
+        // The output count in message_start is a placeholder — only input is taken.
+        let line = r#"data: {"type":"message_start","message":{"usage":{"input_tokens":1523,"output_tokens":2}}}"#;
+        assert_eq!(
+            parse_anthropic_sse_line(line),
+            SseLine::Usage(TokenUsage {
+                input: Some(1523),
+                output: None
+            })
+        );
+    }
+
+    #[test]
+    fn anthropic_message_delta_yields_output_usage() {
+        let line = r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":312}}"#;
+        assert_eq!(
+            parse_anthropic_sse_line(line),
+            SseLine::Usage(TokenUsage {
+                input: None,
+                output: Some(312)
+            })
+        );
+        // A message_delta without usage stays Ignore.
+        assert_eq!(
+            parse_anthropic_sse_line(r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#),
+            SseLine::Ignore
+        );
+    }
+
+    #[test]
+    fn token_usage_merge_keeps_latest_per_field() {
+        let mut usage = TokenUsage {
+            input: Some(100),
+            output: None,
+        };
+        // Later reading fills the gap without clobbering the existing field...
+        usage.merge(TokenUsage {
+            input: None,
+            output: Some(5),
+        });
+        assert_eq!(usage.input, Some(100));
+        assert_eq!(usage.output, Some(5));
+        // ...and a newer value for a field wins (Anthropic's output is cumulative).
+        usage.merge(TokenUsage {
+            input: None,
+            output: Some(312),
+        });
+        assert_eq!(usage.output, Some(312));
+        assert!(!usage.is_empty());
+        assert!(TokenUsage::default().is_empty());
     }
 
     // ---- OpenAI-compatible SSE (DeepSeek / OpenRouter) ----
@@ -796,10 +1014,46 @@ mod tests {
     }
 
     #[test]
-    fn openai_ignores_usage_only_chunk() {
+    fn openai_ignores_tokenless_usage_chunk() {
+        // A usage object with neither prompt_ nor completion_tokens carries
+        // nothing the debug table can use — still Ignore.
         assert_eq!(
             parse_openai_sse_line(r#"data: {"choices":[],"usage":{"total_tokens":5}}"#),
             SseLine::Ignore
+        );
+        // Intermediate DeepSeek chunks carry `usage: null`.
+        assert_eq!(
+            parse_openai_sse_line(r#"data: {"choices":[{"delta":{"role":"assistant"}}],"usage":null}"#),
+            SseLine::Ignore
+        );
+    }
+
+    #[test]
+    fn openai_usage_chunk_yields_usage() {
+        // The spec shape: a final chunk with an empty choices array (OpenRouter,
+        // via stream_options.include_usage).
+        let line = r#"data: {"choices":[],"usage":{"prompt_tokens":15890,"completion_tokens":312,"total_tokens":16202}}"#;
+        assert_eq!(
+            parse_openai_sse_line(line),
+            SseLine::Usage(TokenUsage {
+                input: Some(15890),
+                output: Some(312)
+            })
+        );
+    }
+
+    #[test]
+    fn openai_usage_on_finish_chunk_yields_usage() {
+        // DeepSeek reports usage on the finish chunk itself (delta empty,
+        // finish_reason "stop") rather than a separate choices:[] chunk — the
+        // delta branch must fall through to the usage check.
+        let line = r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":812,"completion_tokens":97}}"#;
+        assert_eq!(
+            parse_openai_sse_line(line),
+            SseLine::Usage(TokenUsage {
+                input: Some(812),
+                output: Some(97)
+            })
         );
     }
 
@@ -807,6 +1061,51 @@ mod tests {
     fn openai_finish_reason_error_aborts() {
         let line = r#"data: {"choices":[{"delta":{},"finish_reason":"error"}]}"#;
         assert!(matches!(parse_openai_sse_line(line), SseLine::Error(_)));
+    }
+
+    // ---- Live streaming usage (the WIKILENS_DEBUG table's data source) ----
+
+    /// Stream a tiny answer and assert the provider reported token usage and a
+    /// first-token time — proves `stream_options` acceptance and usage parsing
+    /// end-to-end on the real gateway. Skips (passes) when the provider's key
+    /// isn't configured, so keyless `--ignored` runs stay green.
+    async fn live_usage_roundtrip(provider_id: &str) {
+        dotenvy::dotenv().ok();
+        let provider = crate::providers::find_provider(provider_id).unwrap();
+        let Some(key) = provider.api_key() else {
+            eprintln!("skipped: no API key configured for {provider_id}");
+            return;
+        };
+        let client = reqwest::Client::new();
+        let pages = vec![page("Sky", "The sky is blue.")];
+        let streamed = answer_streaming(
+            &client,
+            provider,
+            &provider.model(),
+            &key,
+            "What color is the sky? Answer in one word.",
+            &pages,
+            None,
+            |_| {},
+        )
+        .await
+        .expect("live stream failed");
+        assert!(!streamed.text.is_empty(), "no answer text");
+        assert!(streamed.ttft.is_some(), "no first-token time recorded");
+        assert!(streamed.usage.input.is_some(), "no input tokens reported");
+        assert!(streamed.usage.output.is_some(), "no output tokens reported");
+    }
+
+    #[tokio::test]
+    #[ignore = "hits the live Anthropic API; needs ANTHROPIC_API_KEY"]
+    async fn anthropic_live_streaming_reports_usage() {
+        live_usage_roundtrip("anthropic").await;
+    }
+
+    #[tokio::test]
+    #[ignore = "hits the live DeepSeek API; needs DEEPSEEK_API_KEY"]
+    async fn deepseek_live_streaming_reports_usage() {
+        live_usage_roundtrip("deepseek").await;
     }
 
     #[test]
@@ -848,7 +1147,9 @@ mod http_tests {
             |d| deltas.push(d.to_string()),
         )
         .await;
-        (result, deltas)
+        // These tests predate `StreamedAnswer`; they assert on text and errors
+        // only (usage/ttft are covered by the live `--ignored` roundtrips).
+        (result.map(|s| s.text), deltas)
     }
 
     /// A runaway/hostile stream (no `[DONE]`, endless deltas) must abort at
