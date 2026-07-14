@@ -139,14 +139,20 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Delivery: every change lands via PR** (ADR:
   `vault/2026-07-13_pr-delivery-workflow.md`). Branch `<type>/<slug>` off `main`
   (e.g. `ci/github-actions-pipeline`), conventional commit prefixes (`feat:`,
-  `fix:`, `chore:`, `ci:`, `docs(vault):`), push, `gh pr create` — no direct
-  commits to `main`. Run `/check` before pushing (it mirrors CI's code gates;
+  `fix:`, `chore:`, `ci:`, `docs(vault):`), push, `gh pr create --assignee @me`
+  (always assign the owner) — no direct commits to `main`. Run `/check` before pushing (it mirrors CI's code gates;
   CI adds the dependency audits) and `/vault-lint` when `vault/` changed. A PR
   merges only when CI is green, and the **human merges — always a merge
   commit, never squash/rebase** (vault docs pin
   branch `commit:` hashes; squashing orphans them); Claude never merges. The
   `docs(vault): close …` commit rides in the same PR as the code it closes.
-- **PR descriptions** follow `.github/PULL_REQUEST_TEMPLATE.md` — and since
+- **PR titles & descriptions.** The title is a plain-language headline of the
+  outcome: imperative verb first, sentence case, no `type:` prefix or other
+  decorations, ≤ ~70 chars — "Make PR descriptions readable at a glance",
+  not "docs: adopt the human-readable PR description anatomy". Commits keep
+  the conventional prefixes; merge-commit-only history means the title never
+  doubles as a commit message. Descriptions follow
+  `.github/PULL_REQUEST_TEMPLATE.md` — and since
   `gh pr create --body` bypasses template auto-fill, write the body to that
   skeleton yourself: plain-language 2–3-sentence summary linking the vault plan
   doc; change bullets at behavior level (what works differently — never

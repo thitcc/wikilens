@@ -1,4 +1,6 @@
 <!-- WikiLens PR anatomy. Target: ~20 rendered lines above the fold.
+     Title: an imperative, sentence-case headline of the outcome. No type:
+     prefix (commits carry it), no tags or emoji, roughly 70 chars max.
      Write each paragraph or bullet as ONE source line: GitHub renders
      newlines in PR bodies as line breaks, so hard-wrapped text comes
      out ragged. Note: gh pr create with a body flag BYPASSES this
