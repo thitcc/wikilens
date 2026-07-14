@@ -16,6 +16,7 @@ use std::time::Duration;
 use serde::Serialize;
 
 use crate::error::AppError;
+use crate::http;
 use crate::wiki::search;
 
 /// Per-request cap, matching the model-list fetch precedent (`models.rs`).
@@ -196,7 +197,7 @@ pub async fn suggest(client: &reqwest::Client, name: &str) -> Vec<WikiCandidate>
 /// One siteinfo round-trip; any network/HTTP/parse failure is a `None`
 /// ("not a MediaWiki here" — the caller tries the next candidate).
 async fn fetch_siteinfo(client: &reqwest::Client, api_url: &str) -> Option<SiteInfo> {
-    let body = client
+    let resp = client
         .get(api_url)
         .query(&[
             ("action", "query"),
@@ -209,8 +210,8 @@ async fn fetch_siteinfo(client: &reqwest::Client, api_url: &str) -> Option<SiteI
         .await
         .ok()?
         .error_for_status()
-        .ok()?
-        .text()
+        .ok()?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES)
         .await
         .ok()?;
     parse_siteinfo(&body).ok()
@@ -225,7 +226,7 @@ async fn validate_search(client: &reqwest::Client, api_url: &str) -> Result<(), 
             "Found a MediaWiki at {api_url}, but its search API didn't answer — WikiLens can't use it."
         ))
     };
-    let body = client
+    let resp = client
         .get(api_url)
         .query(&[
             ("action", "query"),
@@ -239,8 +240,8 @@ async fn validate_search(client: &reqwest::Client, api_url: &str) -> Result<(), 
         .await
         .map_err(|_| broken())?
         .error_for_status()
-        .map_err(|_| broken())?
-        .text()
+        .map_err(|_| broken())?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES)
         .await
         .map_err(|_| broken())?;
     search::parse_search_response(&body).map_err(|_| broken())?;
@@ -477,10 +478,7 @@ mod tests {
         use super::super::*;
 
         fn client() -> reqwest::Client {
-            reqwest::Client::builder()
-                .user_agent(crate::wiki::USER_AGENT)
-                .build()
-                .expect("build reqwest client")
+            crate::http::build_client()
         }
 
         #[tokio::test]
@@ -591,7 +589,7 @@ mod http_tests {
         )
         .await;
 
-        let candidate = probe_base(&reqwest::Client::new(), &uri).await.unwrap();
+        let candidate = probe_base(&crate::http::build_client(), &uri).await.unwrap();
         assert_eq!(
             candidate,
             WikiCandidate {
@@ -616,7 +614,7 @@ mod http_tests {
         mount_siteinfo(&server, "/api.php", "").await;
         mount_search(&server, "/api.php", ResponseTemplate::new(500)).await;
 
-        let err = probe_base(&reqwest::Client::new(), &uri).await.unwrap_err();
+        let err = probe_base(&crate::http::build_client(), &uri).await.unwrap_err();
         match err {
             AppError::Probe(msg) => {
                 assert!(msg.contains("search API didn't answer"), "msg: {msg}")
@@ -644,7 +642,7 @@ mod http_tests {
         )
         .await;
 
-        let candidate = probe_base(&reqwest::Client::new(), &format!("{uri}/custom/api.php"))
+        let candidate = probe_base(&crate::http::build_client(), &format!("{uri}/custom/api.php"))
             .await
             .unwrap();
         assert_eq!(candidate.api_url, format!("{uri}/custom/api.php"));

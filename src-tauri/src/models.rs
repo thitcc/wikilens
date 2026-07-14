@@ -12,6 +12,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
+use crate::http;
 use crate::providers::{CuratedModel, Provider, ProviderKind};
 
 /// One selectable model, as sent to the frontend menu.
@@ -64,10 +65,10 @@ pub async fn fetch_models(
         return Err(AppError::Llm {
             provider: provider.name,
             status: status.as_u16(),
-            body: resp.text().await.unwrap_or_default(),
+            body: http::read_error_body(resp).await,
         });
     }
-    let body = resp.text().await?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
 
     match provider.kind {
         ProviderKind::Anthropic => parse_anthropic_models(&body),
@@ -365,7 +366,7 @@ mod tests {
     #[ignore = "hits the live OpenRouter API"]
     async fn openrouter_live_catalog_parses() {
         let provider = crate::providers::find_provider("openrouter").unwrap();
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let models = fetch_models(&client, provider, None).await.unwrap();
         assert!(models.len() > 100, "got {} models", models.len());
         assert!(models.iter().all(|m| !m.id.is_empty() && !m.label.is_empty()));
@@ -402,7 +403,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let models = fetch_models(&client, &provider, None).await.unwrap();
         assert_eq!(
             models,
@@ -441,7 +442,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let models = fetch_models(&client, &provider, Some("k")).await.unwrap();
         assert_eq!(models[0].label, "Claude Haiku 4.5");
         assert!(models[0].vision, "absent capabilities → default true");
@@ -461,7 +462,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let err = fetch_models(&client, &provider, None).await.unwrap_err();
         match err {
             AppError::Llm {

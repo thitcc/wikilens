@@ -15,14 +15,17 @@ use std::time::Duration;
 use serde::Serialize;
 
 use crate::error::AppError;
+use crate::http;
 use crate::wiki::games::GameWiki;
 
 /// Per-page character cap. Bounds LLM token cost; overflow is marked truncated.
 pub const MAX_PAGE_CHARS: usize = 8_000;
 
-/// Per-request cap for `action=parse` calls. Fandom occasionally stalls for
-/// tens of seconds on a cold render; past this we use the wikitext fallback
-/// rather than hanging the ask (the shared client has no global timeout).
+/// Per-request cap for page-content calls: the per-page `action=parse`
+/// requests and the batched `prop=revisions` fallback. Fandom occasionally
+/// stalls for tens of seconds on a cold render; past this we use the wikitext
+/// fallback rather than hanging the ask (the shared client bounds connects
+/// and read gaps, not total request time — see `crate::http`).
 const PARSE_TIMEOUT: Duration = Duration::from_secs(12);
 
 /// A single wiki page reduced to plaintext, with a human-readable URL.
@@ -77,7 +80,7 @@ async fn fetch_rendered_page(
     wiki: &GameWiki,
     title: &str,
 ) -> Result<Option<WikiPage>, AppError> {
-    let body = client
+    let resp = client
         .get(&wiki.api_url)
         .query(&[
             ("action", "parse"),
@@ -92,9 +95,8 @@ async fn fetch_rendered_page(
         .timeout(PARSE_TIMEOUT)
         .send()
         .await?
-        .error_for_status()?
-        .text()
-        .await?;
+        .error_for_status()?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
 
     let (final_title, html) = parse_parse_response(&body)?;
     let text = crate::wiki::html::to_plaintext(&html);
@@ -137,7 +139,7 @@ async fn fetch_pages_wikitext(
     titles: &[String],
 ) -> Result<Vec<WikiPage>, AppError> {
     let joined = titles.join("|");
-    let body = client
+    let resp = client
         .get(&wiki.api_url)
         .query(&[
             ("action", "query"),
@@ -148,11 +150,11 @@ async fn fetch_pages_wikitext(
             ("titles", joined.as_str()),
             ("format", "json"),
         ])
+        .timeout(PARSE_TIMEOUT)
         .send()
         .await?
-        .error_for_status()?
-        .text()
-        .await?;
+        .error_for_status()?;
+    let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
 
     parse_revisions_response(&body, wiki, titles)
 }
@@ -480,7 +482,7 @@ mod http_tests {
         .await;
         mount_revisions(&server, ResponseTemplate::new(200).set_body_string("{}"), 0).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
 
         let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
@@ -520,7 +522,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
 
         let got: Vec<&str> = pages.iter().map(|p| p.title.as_str()).collect();
@@ -542,7 +544,7 @@ mod http_tests {
         mount_parse(&server, "Iron", ResponseTemplate::new(500)).await;
         mount_revisions(&server, ResponseTemplate::new(500), 1).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap();
 
         // The dead fallback costs Iron, never the whole answer.
@@ -558,10 +560,39 @@ mod http_tests {
         mount_parse(&server, "Iron", ResponseTemplate::new(500)).await;
         mount_revisions(&server, ResponseTemplate::new(500), 1).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let err = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap_err();
         // Everything failed — the revisions transport error must surface.
         assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+    }
+
+    /// Pins the (new) `PARSE_TIMEOUT` on the batched revisions fallback,
+    /// previously untimed; `--ignored` tier because it takes the full 12s.
+    #[tokio::test]
+    #[ignore = "slow (~12s): pins the revisions-fallback timeout"]
+    async fn revisions_hang_times_out() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        // The parse 500s, so the delayed fallback is the only source and its
+        // timeout error must surface (nothing else fetched to swallow it).
+        mount_parse(&server, "Wood", ResponseTemplate::new(500)).await;
+        mount_revisions(
+            &server,
+            ResponseTemplate::new(200)
+                .set_body_string("{}")
+                .set_delay(Duration::from_secs(15)),
+            1,
+        )
+        .await;
+
+        let client = crate::http::build_client();
+        let start = std::time::Instant::now();
+        let err = fetch_pages(&client, &wiki, &titles(&["Wood"])).await.unwrap_err();
+        assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+        assert!(
+            start.elapsed() < Duration::from_secs(14),
+            "must fail via PARSE_TIMEOUT, not the mock's longer delay"
+        );
     }
 
     #[tokio::test]
@@ -577,7 +608,7 @@ mod http_tests {
         .await;
         mount_revisions(&server, ResponseTemplate::new(200).set_body_string("{}"), 0).await;
 
-        let client = reqwest::Client::new();
+        let client = crate::http::build_client();
         let pages = fetch_pages(&client, &wiki, &titles(&["Stub"])).await.unwrap();
         assert!(pages.is_empty());
     }

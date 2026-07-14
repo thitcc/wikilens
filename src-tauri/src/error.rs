@@ -7,7 +7,7 @@
 /// frontend can render `AppError`-derived strings verbatim.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("Network request failed: {0}")]
+    #[error("Network request failed: {}", error_chain(.0))]
     Http(#[from] reqwest::Error),
 
     #[error("Failed to parse API response: {0}")]
@@ -59,6 +59,26 @@ pub enum AppError {
 
     #[error("Couldn't save your games: {0}")]
     Storage(String),
+
+    /// A response body or stream exceeded its byte cap and was abandoned
+    /// (see `crate::http`). The message is already complete user-facing text.
+    #[error("{0}")]
+    BodyTooLarge(String),
+}
+
+/// reqwest 0.12 (hyper 1.x) stopped inlining error sources in `Display`, so a
+/// bare `{0}` renders a redirect-policy refusal as just "error following
+/// redirect for url (…)" and a timeout without its cause — the actual reason
+/// lives in `.source()`. Walk the chain so the user sees why.
+fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut msg = err.to_string();
+    let mut source = err.source();
+    while let Some(s) = source {
+        msg.push_str(": ");
+        msg.push_str(&s.to_string());
+        source = s.source();
+    }
+    msg
 }
 
 /// Lets `#[tauri::command] -> Result<T, String>` use `?` on `AppError` values.

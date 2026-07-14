@@ -37,15 +37,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        // A build failure here is extremely unlikely (only if the platform TLS
-        // backend is missing); fall back to a default client rather than panic.
-        let http = reqwest::Client::builder()
-            .user_agent(crate::wiki::USER_AGENT)
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
-
         Self {
-            http,
+            // All client policy (User-Agent, redirect rules, timeouts) lives
+            // in `crate::http` — every request in the app flows through it.
+            http: crate::http::build_client(),
             ask_in_progress: AtomicBool::new(false),
             models_cache: Mutex::new(HashMap::new()),
             pending_shot: Mutex::new(None),

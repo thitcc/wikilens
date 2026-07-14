@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::error::AppError;
+use crate::http;
 use crate::wiki::games::GameWiki;
 
 /// Cap on titles pulled per game — bounds the one-off fetch and memory. Large
@@ -159,15 +160,14 @@ async fn fetch_all_titles(
         if let Some(cont) = &apcontinue {
             params.push(("apcontinue", cont.clone()));
         }
-        let body = client
+        let resp = client
             .get(&wiki.api_url)
             .query(&params)
             .timeout(ALLPAGES_TIMEOUT)
             .send()
             .await?
-            .error_for_status()?
-            .text()
-            .await?;
+            .error_for_status()?;
+        let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
         let (mut page, next) = parse_allpages(&body)?;
         titles.append(&mut page);
         match next {
