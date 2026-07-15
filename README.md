@@ -37,7 +37,7 @@ frontend or logged. You only need a key for the provider you actually use.
 | Provider | Env var | Default model | Model override var |
 |---|---|---|---|
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | `WIKILENS_ANTHROPIC_MODEL` |
-| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-chat` | `WIKILENS_DEEPSEEK_MODEL` |
+| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-v4-flash` | `WIKILENS_DEEPSEEK_MODEL` |
 | OpenRouter | `OPENROUTER_API_KEY` | `openai/gpt-4o-mini` | `WIKILENS_OPENROUTER_MODEL` |
 
 **Option A — `.env` file (easiest for development):** copy the template and fill
@@ -72,8 +72,31 @@ message instead of answering.
 
 **Changing the model:** each provider ships a sensible default; override it without
 touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matters
-because model ids drift over time (e.g. DeepSeek may move `deepseek-chat` →
-`deepseek-v4-flash`).
+because model ids drift over time (e.g. DeepSeek retired its `deepseek-chat` alias
+in favor of `deepseek-v4-flash`).
+
+## Retrieval tuning (advanced)
+
+Before answering, WikiLens runs a small retrieval pipeline: a raw keyword search
+and an LLM **query rewrite** run concurrently, their hits are merged, and a local
+fuzzy **title index** catches typos as a last resort. It works out of the box;
+these variables are escape hatches for when you want to change or trace it.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `WIKILENS_QUERY_REWRITE` | on | Set to `0`/`false`/`off`/`no` to disable the LLM query rewrite entirely. |
+| `WIKILENS_REWRITE_MODEL` | the answer model | Pin the rewrite to a different model id — pick a fast, non-reasoning one. |
+| `WIKILENS_REWRITE_PROVIDER` | the answer provider | Pin the rewrite to another configured provider (its API key must be set; an unknown or keyless id silently falls back). **Note: your question text is then sent to that second vendor as well.** |
+| `WIKILENS_TITLE_INDEX` | on | Set to `0`/`false`/`off`/`no` to disable the last-resort fuzzy match of short queries against the game's page titles (it only fires when every search returned nothing). |
+| `WIKILENS_TRACE_RETRIEVAL` | off | Set (to anything) to log each retrieval round as a JSON line on stderr for offline evaluation — public wiki data only, never keys or answer text. |
+
+Two behaviors are automatic, with no variable to set: if the effective rewrite
+model is known to be a *reasoning* model (those think out loud and return unusable
+rewrites), the rewrite is skipped at zero cost — pinning `WIKILENS_REWRITE_MODEL` /
+`WIKILENS_REWRITE_PROVIDER` at a fast model is how you keep it. And after two
+consecutive failed rewrites, a per-session circuit breaker stops further attempts
+and prints a one-time notice to the terminal naming the fix; restarting WikiLens
+resets it.
 
 ## Commands
 
