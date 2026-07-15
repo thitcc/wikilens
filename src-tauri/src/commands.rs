@@ -548,11 +548,27 @@ async fn run_ask(
 
     // Search the top rewrite candidates (sequential, bounded) and merge with the raw
     // hits: consensus (in both) first, then entity hits, then keyword hits.
+    // Candidates that merely echo the raw query would return the exact same hits —
+    // drop them *before* the take() so a surviving second candidate still gets
+    // searched. Dropped duplicates already counted as rewrite success for the
+    // circuit breaker (the model parsed fine), and the debug table still shows
+    // the full candidate list.
     let mut retries: Vec<(&str, String)> = Vec::new();
     let mut rewrite_hits: Vec<String> = Vec::new();
     let cand_timer = std::time::Instant::now();
-    let cand_count = rewrite_candidates.len().min(REWRITE_SEARCH_LIMIT);
-    for rq in rewrite_candidates.iter().take(REWRITE_SEARCH_LIMIT) {
+    let mut cand_count = 0usize;
+    for rq in rewrite_candidates
+        .iter()
+        .filter(|rq| {
+            let dup = rq.eq_ignore_ascii_case(&query);
+            if dup && tracing {
+                eprintln!("wikilens.rewrite dropped duplicate-of-raw candidate={rq:?}");
+            }
+            !dup
+        })
+        .take(REWRITE_SEARCH_LIMIT)
+    {
+        cand_count += 1;
         let hits = search::search(&state.http, &wiki, rq, search::DEFAULT_SEARCH_LIMIT)
             .await
             .unwrap_or_default();
@@ -757,6 +773,11 @@ const TITLE_INDEX_MAX_WORDS: usize = 4;
 /// ranked: consensus (a title in *both* lists — the strongest signal) first, then
 /// rewrite-only hits (the targeted entity), then raw-only hits (keyword match).
 /// Case-insensitive dedup, order-preserving; consensus keeps the raw/canonical casing.
+///
+/// Guarantee: raw's top hit is always *included* (a slot is reserved for it, so a
+/// confident-but-wrong rewrite can't flood the cap and silently evict the correct
+/// page). Inclusion, not rank — every merged page is fetched and handed to the
+/// model, and pinning raw[0] to #1 would undo the entity-injection win.
 fn merge_hits(raw: &[String], rewrite: &[String], limit: usize) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     // 1) consensus — titles in both lists, using the raw (canonical) casing.
@@ -765,10 +786,17 @@ fn merge_hits(raw: &[String], rewrite: &[String], limit: usize) -> Vec<String> {
             push_unique(&mut out, canonical, limit);
         }
     }
-    // 2) remaining rewrite hits, then 3) remaining raw hits.
+    // 2) remaining rewrite hits — capped one short of `limit` while raw[0] still
+    //    needs its reserved slot (consensus already admitted it iff any rewrite
+    //    hit case-matches it).
+    let reserve = raw
+        .first()
+        .is_some_and(|r0| !out.iter().any(|e| e.eq_ignore_ascii_case(r0)));
+    let rewrite_cap = if reserve { limit.saturating_sub(1) } else { limit };
     for t in rewrite {
-        push_unique(&mut out, t, limit);
+        push_unique(&mut out, t, rewrite_cap);
     }
+    // 3) remaining raw hits — raw[0] first, filling its reserved slot.
     for t in raw {
         push_unique(&mut out, t, limit);
     }
@@ -833,6 +861,59 @@ mod merge_tests {
         assert_eq!(merge_hits(&raw, &[], 4), vec!["A".to_string()]);
         assert_eq!(merge_hits(&[], &raw, 4), vec!["A".to_string()]);
         assert!(merge_hits(&[], &[], 4).is_empty());
+    }
+
+    #[test]
+    fn raw_first_survives_a_rewrite_flood() {
+        // A confident-but-wrong rewrite floods the cap; raw's top hit must
+        // still be included (last is fine — inclusion matters, not rank).
+        let raw = vec!["R1".to_string(), "R2".to_string()];
+        let rewrite = vec![
+            "A".to_string(),
+            "B".to_string(),
+            "C".to_string(),
+            "D".to_string(),
+            "E".to_string(),
+        ];
+        assert_eq!(
+            merge_hits(&raw, &rewrite, 4),
+            vec![
+                "A".to_string(),
+                "B".to_string(),
+                "C".to_string(),
+                "R1".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn consensus_on_raw_first_frees_the_reserved_slot() {
+        // raw[0] already entered via consensus — rewrite-only hits may fill
+        // every remaining slot, no slot held back.
+        let raw = vec!["R1".to_string(), "R2".to_string()];
+        let rewrite = vec![
+            "R1".to_string(),
+            "A".to_string(),
+            "B".to_string(),
+            "C".to_string(),
+        ];
+        assert_eq!(
+            merge_hits(&raw, &rewrite, 4),
+            vec![
+                "R1".to_string(),
+                "A".to_string(),
+                "B".to_string(),
+                "C".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn limit_one_still_keeps_raw_first() {
+        // The saturating_sub edge: limit 1 leaves zero rewrite-only slots.
+        let raw = vec!["R1".to_string()];
+        let rewrite = vec!["A".to_string()];
+        assert_eq!(merge_hits(&raw, &rewrite, 1), vec!["R1".to_string()]);
     }
 }
 
