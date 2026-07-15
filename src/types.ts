@@ -82,5 +82,11 @@ export interface AskResult {
 }
 
 /** Progress phases emitted on the `ask://status` event, in order.
+ * `understanding` only appears while the rewrite's candidate searches run;
  * `retrying` only appears when the first search found nothing. */
-export type AskStatus = "searching" | "retrying" | "reading" | "answering";
+export type AskStatus =
+  | "searching"
+  | "understanding"
+  | "retrying"
+  | "reading"
+  | "answering";

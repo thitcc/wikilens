@@ -26,6 +26,9 @@ test("ask flow: status transitions, delta accumulation, args, busy reset", async
   expect(screen.getByText("Searching the wiki…")).toBeTruthy();
   expect(questionBox().disabled).toBe(true);
 
+  await fireBackendEvent("ask://status", "understanding");
+  expect(screen.getByText("Understanding your question…")).toBeTruthy();
+
   await fireBackendEvent("ask://status", "reading");
   expect(screen.getByText("Reading pages…")).toBeTruthy();
 
