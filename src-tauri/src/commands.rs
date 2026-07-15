@@ -399,7 +399,11 @@ async fn run_ask(
     // flash and pro both reason), so allow pinning the rewrite to a model on any
     // configured provider: `WIKILENS_REWRITE_PROVIDER` (+ its key) and
     // `WIKILENS_REWRITE_MODEL`. Both optional; each falls back to the answer
-    // provider/model. Not validated here — the provider is the authoritative validator.
+    // provider/model — a deliberate default: the player's question already goes
+    // to that provider for the answer, so the rewrite adds no new destination
+    // for player text; pinning a different provider is an explicit choice to
+    // send the question there too. Not validated here — the provider is the
+    // authoritative validator.
     let rewrite_model = env_nonempty("WIKILENS_REWRITE_MODEL").unwrap_or_else(|| model.clone());
     let (rewrite_provider, rewrite_key) = env_nonempty("WIKILENS_REWRITE_PROVIDER")
         .and_then(|pid| providers::find_provider(&pid))
@@ -861,9 +865,9 @@ fn env_nonempty(name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// A zero-hit recovery stage (the title index, the LLM rewrite) is on unless its
-/// env var is explicitly falsey (`0`/`false`/`off`) — an off-switch for the two
-/// unvalidated stages that needs no rebuild.
+/// An optional retrieval stage (the zero-hit title index, the eager LLM rewrite)
+/// is on unless its env var is explicitly falsey (`0`/`false`/`off`) — an
+/// off-switch for the two unvalidated stages that needs no rebuild.
 fn stage_enabled(var: &str) -> bool {
     match std::env::var(var) {
         Ok(v) => !matches!(

@@ -1,7 +1,8 @@
 //! Local per-game title index for deterministic typo → page resolution.
 //!
-//! On a zero-hit search the LLM rewrite (`llm::rewrite_query`) is the probabilistic
-//! option; this is the deterministic one. Fetch the wiki's real page titles once
+//! The LLM rewrite (`llm::rewrite_query`, eager on every ask) is the probabilistic
+//! option; this is the deterministic net for the zero-hit dead-end (raw search and
+//! rewrite candidates all empty). Fetch the wiki's real page titles once
 //! (`list=allpages`), then fuzzy-match the query against them locally with
 //! Jaro-Winkler. A strong match means the page exists under a name the search
 //! engine's own spelling logic missed ("arcanr persitance" → "Arcane Persistence")
