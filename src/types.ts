@@ -36,6 +36,10 @@ export interface ModelInfo {
   label: string;
   /** Whether the model accepts image input (drives the "Image" badge). */
   vision: boolean;
+  /** Whether the model thinks before answering: `true` → "Reasoning" badge
+   * (and Rust skips the pre-search rewrite for it), `false` → "Fast" badge,
+   * absent → unknown (no badge; the backend omits the field). */
+  reasoning?: boolean;
 }
 
 /** The user's persisted model pick (localStorage `wikilens.selectedModel.<id>`).

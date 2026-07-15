@@ -363,6 +363,11 @@ body {
   font-size: var(--text-status);
 }
 
+/* The ⓘ recommendation above the model list; the tooltip carries the detail. */
+.menu-note--info {
+  cursor: help;
+}
+
 .model-row {
   display: flex;
   align-items: center;

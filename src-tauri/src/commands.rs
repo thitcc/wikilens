@@ -405,6 +405,16 @@ async fn run_ask(
         .and_then(|pid| providers::find_provider(&pid))
         .and_then(|p| p.api_key().map(|k| (p, k)))
         .unwrap_or_else(|| (provider, api_key.clone()));
+    // A known-Reasoning rewrite model is a call we *know* fails: its reply
+    // lands in `reasoning_content`, the parser reads `content` → zero
+    // candidates after a multi-second think. Skip it outright (zero latency,
+    // zero cost). Judged on the *effective* pair, after the env overrides;
+    // unknown models stay eligible — the circuit breaker bounds their worst
+    // case (`vault/2026-07-10_reasoning-skip-and-capability-tags.md`).
+    let rewrite_skip_reasoning = rewrite_provider
+        .model_reasoning(&rewrite_model)
+        .or_else(|| models::reasoning_from_id(&rewrite_model))
+        == Some(true);
 
     let _ = app.emit("ask://status", "searching");
     // The wiki search gets a keyword-stripped query; the LLM still receives the
@@ -445,6 +455,11 @@ async fn run_ask(
     };
     let rewrite_fut = async {
         if !rewrite_on {
+            return (Vec::new(), None, None, None);
+        }
+        // Known-Reasoning model: the call is doomed (see above). Same all-None
+        // tuple as the off-switch — never made, never a breaker strike.
+        if rewrite_skip_reasoning {
             return (Vec::new(), None, None, None);
         }
         // Session circuit breaker: a rewrite model that never yields candidates
@@ -504,12 +519,16 @@ async fn run_ask(
             };
             report.phase("rewrite", elapsed, detail);
         }
-        // `rewrite_elapsed` is `None` only when an early return fired; with the
-        // stage on, the only early return left is the breaker. Derived from
-        // `rewrite_on` rather than re-reading the counter — race-free even
-        // though this ask's own failure may have just tripped it.
-        None if rewrite_on => report.phase_skipped("rewrite", "skipped (circuit breaker)"),
-        None => report.phase_skipped("rewrite", "disabled (WIKILENS_QUERY_REWRITE)"),
+        // `rewrite_elapsed` is `None` only when an early return fired; the
+        // guards mirror the closure's order (off-switch → reasoning-skip →
+        // breaker), so what's left in the last arm is the breaker. Derived
+        // from the local flags rather than re-reading the counter — race-free
+        // even though this ask's own failure may have just tripped it.
+        None if !rewrite_on => report.phase_skipped("rewrite", "disabled (WIKILENS_QUERY_REWRITE)"),
+        None if rewrite_skip_reasoning => {
+            report.phase_skipped("rewrite", "skipped (reasoning model)")
+        }
+        None => report.phase_skipped("rewrite", "skipped (circuit breaker)"),
     }
     if let Some(usage) = rewrite_usage {
         report.set_rewrite_usage(usage);
