@@ -1,12 +1,12 @@
 ---
 title: Run candidate searches concurrently and add an "understanding" ask status
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-15
 tags: [wiki, rag, frontend]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_merge-raw-hit-guarantee]]"]
-commit:
+commit: "4952495"
 ---
 
 # Run candidate searches concurrently and add an "understanding" ask status
@@ -61,3 +61,8 @@ rewrite stretches the "Searching…" phase; without a status change the added wo
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#9 + #10, priority 8), with the
   608ms live baseline from the first debug table.
+- 2026-07-15 — done. Landed as planned: `join_all` over the filtered candidates (zip
+  keeps candidate order for the merge), `"understanding"` emitted only when the
+  to-search list is non-empty, `AskStatus`/`STATUS_LABEL` pair enforced by tsc, ask-flow
+  test covers the new label, CLAUDE.md events + etiquette bullets updated. Debug table
+  untouched — the `cand search` row format survives, its golden test unchanged.
