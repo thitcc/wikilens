@@ -1,14 +1,14 @@
 ---
 title: Show a hint when the wiki, not WikiLens, is slow
 type: plan
-status: todo
+status: done
 created: 2026-07-15
 updated: 2026-07-15
 tags: [wiki, frontend]
 related:
   - "[[2026-07-10_concurrent-candidate-searches-and-status]]"
   - "[[2026-07-10_retrieval-path-timeouts]]"
-commit:
+commit: e70a420
 ---
 
 # Show a hint when the wiki, not WikiLens, is slow
@@ -95,3 +95,12 @@ the code on 2026-07-15:
 
 - 2026-07-15 — created; design captured from the slow-ask investigation, work
   deliberately deferred (`status: todo`).
+- 2026-07-15 — implemented and closed (same day: the user re-prioritized).
+  Landed as designed, two deviations: `shouldAdvanceTime: true` proved
+  load-bearing, not an escape hatch — with the clock fully frozen the
+  harness's waitFor-based mount never settles and every test times out
+  (assertions therefore keep ≥1s margin from the threshold); and an
+  adversarial review caught that the resolve/error clearing tests were
+  render-gate tautologies, so a sixth test drives a second ask and pins the
+  effect's `setSlowHint(false)` reset (mutation-verified: deleting the reset
+  fails only that test).
