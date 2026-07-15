@@ -1,12 +1,12 @@
 ---
 title: Reword the rewrite system prompt — drop the false zero-hit premise, feed the consensus signal
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-14
 tags: [llm, rag]
-related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_merge-raw-hit-guarantee]]", "[[2026-07-10_ask-debug-instrumentation]]"]
-commit:
+related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_merge-raw-hit-guarantee]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_reasoning-skip-and-capability-tags]]"]
+commit: e4f88c9638c6244daeeaeff94f62e582d3da673c
 ---
 
 # Reword the rewrite system prompt — drop the false zero-hit premise, feed the consensus signal
@@ -64,3 +64,11 @@ Several doc comments carry the same stale premise.
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#7, MEDIUM), with live
   candidate-quality evidence from the first debug table.
+- 2026-07-14 — executed. New prompt states the parallel raw search, keeps correct
+  proper nouns, asks for 1 or 2 queries; stale comments swept (`rewrite_query`,
+  `REWRITE_MAX_TOKENS` — the reasoning-skip landed in the meantime, `wiki/titles.rs`,
+  `stage_enabled`, rewrite-model default + privacy rationale in commands.rs).
+  Live check (Haiku, direct API call with the exact new prompt): the Abigail case
+  now yields exactly 2 candidates, both keeping "Abigail"; a typo case ("arcane
+  persitance") yields the corrected title first. Old prompt as baseline still
+  produced 3 candidates (third dropped by the limit).
