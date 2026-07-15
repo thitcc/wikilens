@@ -1,12 +1,12 @@
 ---
 title: Document the retrieval env vars and fix the stale DeepSeek default in README/.env.example
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-14
 tags: [llm]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_reasoning-skip-and-capability-tags]]", "[[2026-07-10_rewrite-circuit-breaker]]"]
-commit:
+commit: 2620a36
 ---
 
 # Document the retrieval env vars and fix the stale DeepSeek default in README/.env.example
@@ -59,3 +59,10 @@ the rest.)
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#6, MEDIUM); deliberately last in
   the execution order so it documents shipped behavior.
+- 2026-07-14 — done. README gained the "Retrieval tuning (advanced)" five-var table (with
+  the second-vendor warning on the `WIKILENS_REWRITE_PROVIDER` row) plus one sentence each
+  on the shipped reasoning-skip and session circuit breaker; `.env.example` mirrors the
+  table as a commented block and both stale `deepseek-chat` defaults now read
+  `deepseek-v4-flash`; CLAUDE.md §4 points at the README table. The conditional
+  *(Understanding)* smoke-test edit was skipped —
+  [[2026-07-10_concurrent-candidate-searches-and-status]] hasn't shipped.
