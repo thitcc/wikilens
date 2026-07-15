@@ -1,12 +1,12 @@
 ---
 title: Skip the rewrite for known-Reasoning models, and tag models Fast/Reasoning in the menu
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-14
 tags: [llm, frontend, rust]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-06_model-vision-badges]]", "[[2026-07-10_rewrite-circuit-breaker]]", "[[2026-07-10_ask-debug-instrumentation]]"]
-commit:
+commit: f1e2616
 ---
 
 # Skip the rewrite for known-Reasoning models, and tag models Fast/Reasoning in the menu
@@ -93,3 +93,9 @@ alone (hybrid models list `reasoning` but answer directly by default).
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#3 + #4 + #5, priority 3); the
   user's transformed idea replacing the rejected auto-Haiku pick.
+- 2026-07-14 — done (`f1e2616`). Landed exactly as approached: `CuratedModel.reasoning` +
+  `Provider::model_reasoning`; `ModelInfo.reasoning: Option<bool>` (serde-skipped when
+  `None`) fed by both parsers, `reasoning_from_id`, the curated overlay on live lists, and
+  the fallback mapping; `ask` skips the rewrite on the effective pair (off-switch →
+  reasoning-skip → breaker-skip, no breaker strike, debug row "skipped (reasoning
+  model)"); menu badges + ⓘ note. 8 new Rust tests; `/check` green.
