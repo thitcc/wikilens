@@ -70,6 +70,17 @@ const STATUS_LABEL: Record<AskStatus, string> = {
   answering: "Answering…",
 };
 
+/** How long one ask phase may run before the slow-wiki hint shows. Above the
+ * healthy worst cases (search ≲3s, 4-page fetch ≲8s), below the backend's 12s
+ * per-request fetch timeout. Exported for the fake-timer tests. */
+export const SLOW_WIKI_HINT_MS = 10_000;
+
+/** Every phase except the LLM stream waits on the wiki. ("searching" also
+ * joins the LLM rewrite, but only the wiki search there can run this long.) */
+function isWikiBoundStatus(s: AskStatus): boolean {
+  return s !== "answering";
+}
+
 function App() {
   const [games, setGames] = useState<GameInfo[]>([]);
   const [selectedGame, setSelectedGame] = useState<string>(
@@ -92,6 +103,7 @@ function App() {
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
   const [status, setStatus] = useState<AskStatus | null>(null);
+  const [slowHint, setSlowHint] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
@@ -220,6 +232,16 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Arm a per-phase slow-wiki timer; any status/busy change resets it. A
+  // backend re-emit of the current status is a state bail-out (no effect
+  // re-run), so it can't stretch the clock the optimistic submit started.
+  useEffect(() => {
+    setSlowHint(false);
+    if (!busy || !status || !isWikiBoundStatus(status)) return;
+    const id = window.setTimeout(() => setSlowHint(true), SLOW_WIKI_HINT_MS);
+    return () => window.clearTimeout(id);
+  }, [status, busy]);
 
   function handleGameChange(gameId: string) {
     setSelectedGame(gameId);
@@ -409,7 +431,14 @@ function App() {
       <div className="content">
         {error && <div className="error">{error}</div>}
         {!error && busy && status && (
-          <div className="status">{STATUS_LABEL[status]}</div>
+          <div className="status">
+            {STATUS_LABEL[status]}
+            {slowHint && isWikiBoundStatus(status) && (
+              <div className="status-hint">
+                The wiki is responding slowly — this isn't WikiLens.
+              </div>
+            )}
+          </div>
         )}
         {!error && answer && <AnswerView markdown={answer} />}
         {!error && <SourceList sources={sources} />}
