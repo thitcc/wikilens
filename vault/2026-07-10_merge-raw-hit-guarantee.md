@@ -1,12 +1,12 @@
 ---
 title: Guarantee the raw top hit survives the merge, and skip duplicate rewrite candidates
 type: plan
-status: todo
+status: done
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-07-15
 tags: [rag, wiki, rust]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_rewrite-prompt-reword]]"]
-commit:
+commit: 2990aef
 ---
 
 # Guarantee the raw top hit survives the merge, and skip duplicate rewrite candidates
@@ -64,3 +64,19 @@ a whole search round-trip and a merge slot on duplicate hits.
 ## Status log
 - 2026-07-10 — created from the rewrite-review findings (#8, MEDIUM+LOW) — promoted in
   priority by the first live debug-table evidence (Abigail page evicted).
+- 2026-07-15 — confirmation experiment run (rewrite-off raw search replicated via a
+  direct API call — the exact request `run_ask` sends: query `gifts Abigail likes`,
+  `srwhat=text`, `srlimit=4`): raw top-4 = `Villagers | List of All Gifts | Friendship |
+  Minerals` — **Abigail's page is absent from the raw results too**, so the 2026-07-10
+  table did *not* show an eviction; that ask is a raw-ranking gap for the "gifts …
+  likes" wording (same class as the non-strict "what does Abigail like as a gift"
+  golden case). The structural eviction hole is real regardless; proceeded. The
+  in-app `WIKILENS_QUERY_REWRITE=0` debug-table rerun needs interactive overlay use —
+  the API replication stands in as the raw-side record.
+- 2026-07-15 — done. `merge_hits` reserves a slot for raw[0] (cap phase 2 at
+  `limit − 1` unless consensus already admitted it); candidate loop drops
+  duplicates of the raw query before the take() with a trace line under
+  `WIKILENS_TRACE_RETRIEVAL`; breaker and debug-table candidate list see the
+  unfiltered outcome. 4 existing merge tests pass unchanged + 3 new ones from
+  the plan (`raw_first_survives_a_rewrite_flood`,
+  `consensus_on_raw_first_frees_the_reserved_slot`, `limit_one_still_keeps_raw_first`).
