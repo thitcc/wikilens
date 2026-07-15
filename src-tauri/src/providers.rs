@@ -39,8 +39,8 @@ pub struct Provider {
     /// DeepSeek 401 without a key; OpenRouter's catalog is public).
     pub models_need_key: bool,
     /// Tiny curated fallback used when a live fetch isn't possible — a degraded
-    /// mode, not a catalog. Carries a `vision` flag so offline/keyless sessions
-    /// still badge correctly. Ids verified against the live endpoints on
+    /// mode, not a catalog. Carries `vision`/`reasoning` flags so offline/keyless
+    /// sessions still badge correctly. Ids verified against the live endpoints on
     /// 2026-07-05.
     pub curated_models: &'static [CuratedModel],
     /// Extra static request headers (e.g. OpenRouter attribution); usually empty.
@@ -57,6 +57,10 @@ pub struct CuratedModel {
     /// Whether this model accepts image input (seeds the "Image" badge; see
     /// `vault/2026-07-06_model-vision-badges.md`).
     pub vision: bool,
+    /// Whether this model thinks before answering (seeds the "Reasoning" badge
+    /// and the pre-search rewrite auto-skip; see
+    /// `vault/2026-07-10_reasoning-skip-and-capability-tags.md`).
+    pub reasoning: bool,
 }
 
 /// The supported providers. Anthropic is first, so it is the default selection.
@@ -71,11 +75,13 @@ pub static PROVIDERS: &[Provider] = &[
         default_model: "claude-haiku-4-5-20251001",
         models_endpoint: "https://api.anthropic.com/v1/models?limit=1000",
         models_need_key: true,
-        // Every active Claude model is vision-capable.
+        // Every active Claude model is vision-capable. None are Reasoning for
+        // WikiLens's purposes: we never send a thinking param, so content
+        // always arrives directly.
         curated_models: &[
-            CuratedModel { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", vision: true },
-            CuratedModel { id: "claude-sonnet-5", label: "Claude Sonnet 5", vision: true },
-            CuratedModel { id: "claude-opus-4-8", label: "Claude Opus 4.8", vision: true },
+            CuratedModel { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", vision: true, reasoning: false },
+            CuratedModel { id: "claude-sonnet-5", label: "Claude Sonnet 5", vision: true, reasoning: false },
+            CuratedModel { id: "claude-opus-4-8", label: "Claude Opus 4.8", vision: true, reasoning: false },
         ],
         extra_headers: &[],
     },
@@ -90,10 +96,13 @@ pub static PROVIDERS: &[Provider] = &[
         default_model: "deepseek-v4-flash",
         models_endpoint: "https://api.deepseek.com/models",
         models_need_key: true,
-        // DeepSeek's API is text-only (no model accepts images).
+        // DeepSeek's API is text-only (no model accepts images). Both v4
+        // models think before answering — their reply lands in
+        // `reasoning_content` (live-verified 2026-07-10, see
+        // `vault/2026-07-07_llm-query-rewrite-in-retrieval.md` Updates 3–4).
         curated_models: &[
-            CuratedModel { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", vision: false },
-            CuratedModel { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", vision: false },
+            CuratedModel { id: "deepseek-v4-flash", label: "DeepSeek V4 Flash", vision: false, reasoning: true },
+            CuratedModel { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro", vision: false, reasoning: true },
         ],
         extra_headers: &[],
     },
@@ -107,11 +116,12 @@ pub static PROVIDERS: &[Provider] = &[
         default_model: "openai/gpt-4o-mini",
         models_endpoint: "https://openrouter.ai/api/v1/models",
         models_need_key: false,
-        // These three curated picks are all vision-capable on OpenRouter.
+        // These three curated picks are all vision-capable on OpenRouter and
+        // answer directly (no default reasoning pass).
         curated_models: &[
-            CuratedModel { id: "openai/gpt-4o-mini", label: "GPT-4o mini", vision: true },
-            CuratedModel { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5", vision: true },
-            CuratedModel { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", vision: true },
+            CuratedModel { id: "openai/gpt-4o-mini", label: "GPT-4o mini", vision: true, reasoning: false },
+            CuratedModel { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5", vision: true, reasoning: false },
+            CuratedModel { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", vision: true, reasoning: false },
         ],
         // Optional attribution headers OpenRouter uses for its app leaderboard.
         // Harmless to send; ignored by other providers.
@@ -172,6 +182,17 @@ impl Provider {
             .iter()
             .find(|m| m.id == id)
             .map(|m| m.vision)
+    }
+
+    /// Whether a curated model id reasons before answering, or `None` for an
+    /// id not in the curated list. `Some(true)` makes `ask` skip the doomed
+    /// pre-search rewrite call; `None` deliberately stays unknown — a false
+    /// Reasoning label would silently disable a working feature.
+    pub fn model_reasoning(&self, id: &str) -> Option<bool> {
+        self.curated_models
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.reasoning)
     }
 }
 
@@ -277,5 +298,15 @@ mod tests {
         assert_eq!(deepseek.model_vision("deepseek-v4-flash"), Some(false));
         // An id outside the curated list (env override / live-only).
         assert_eq!(deepseek.model_vision("some-unknown-model"), None);
+    }
+
+    #[test]
+    fn model_reasoning_known_and_unknown() {
+        let anthropic = find_provider("anthropic").unwrap();
+        assert_eq!(anthropic.model_reasoning("claude-sonnet-5"), Some(false));
+        let deepseek = find_provider("deepseek").unwrap();
+        assert_eq!(deepseek.model_reasoning("deepseek-v4-flash"), Some(true));
+        // An id outside the curated list (env override / live-only).
+        assert_eq!(deepseek.model_reasoning("some-unknown-model"), None);
     }
 }

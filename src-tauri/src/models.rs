@@ -24,6 +24,13 @@ pub struct ModelInfo {
     /// the asymmetric parser defaults below and
     /// `vault/2026-07-06_model-vision-badges.md`.
     pub vision: bool,
+    /// Three-state reasoning classification: `Some(true)` = thinks before
+    /// answering (drives the "Reasoning" badge; `ask` skips the pre-search
+    /// rewrite for such models), `Some(false)` = answers directly ("Fast"
+    /// badge), `None` = unknown (no badge, no skip — omitted from the IPC
+    /// payload). See `vault/2026-07-10_reasoning-skip-and-capability-tags.md`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<bool>,
 }
 
 /// Where a model list came from. `Fallback` lets the UI show a muted
@@ -39,6 +46,14 @@ pub enum ModelSource {
 /// Shorter than the wiki's 12s: a slow catalog fetch only delays a menu whose
 /// curated fallback is a fine experience, not a failed answer.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Reasoning classification from the id alone. Only OpenRouter's `:thinking`
+/// suffix is conclusive — it selects the reasoning variant by contract.
+/// Deliberately no fuzzy o1/o3/r1 matching: a wrong `Some(true)` would
+/// silently disable a working rewrite for that model.
+pub fn reasoning_from_id(id: &str) -> Option<bool> {
+    id.ends_with(":thinking").then_some(true)
+}
 
 /// Fetch a provider's live model list. `api_key` is `None` for endpoints that
 /// don't need auth (OpenRouter) — never send a key where it isn't needed.
@@ -121,6 +136,9 @@ fn parse_anthropic_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
                 id: entry.id,
                 label,
                 vision,
+                // Provider-level fact, not per-model: WikiLens never sends a
+                // thinking param, so every Claude model answers directly here.
+                reasoning: Some(false),
             }
         })
         .collect())
@@ -134,6 +152,7 @@ fn parse_openai_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
         id: String,
         name: Option<String>,
         architecture: Option<Architecture>,
+        supported_parameters: Option<Vec<String>>,
     }
     #[derive(Deserialize)]
     struct Architecture {
@@ -163,13 +182,38 @@ fn parse_openai_models(body: &str) -> Result<Vec<ModelInfo>, AppError> {
                 .and_then(|a| a.input_modalities)
                 .map(|mods| mods.iter().any(|m| m == "image"))
                 .unwrap_or(false);
+            // Conservative three-state: a `:thinking` id is Reasoning by
+            // contract; `supported_parameters` (OpenRouter only) proves
+            // fastness by *absence* of "reasoning", never reasoning-ness by
+            // presence (hybrid models list it but answer directly by
+            // default). DeepSeek's bare entries have neither → unknown, and
+            // the curated overlay fills them in (`overlay_curated_reasoning`).
+            let reasoning =
+                reasoning_from_id(&entry.id).or_else(|| match &entry.supported_parameters {
+                    Some(params) if !params.iter().any(|p| p == "reasoning") => Some(false),
+                    _ => None,
+                });
             ModelInfo {
                 id: entry.id,
                 label,
                 vision,
+                reasoning,
             }
         })
         .collect())
+}
+
+/// Fill `reasoning: None` gaps in a live list from the curated registry.
+/// Only gaps: a live `Some` is the provider's own declaration and wins.
+/// This is what badges DeepSeek's live list — its `/models` payload carries
+/// no capability fields, but both v4 models are curated.
+fn overlay_curated_reasoning(models: &mut [ModelInfo], curated: &[CuratedModel]) {
+    for model in models.iter_mut().filter(|m| m.reasoning.is_none()) {
+        model.reasoning = curated
+            .iter()
+            .find(|c| c.id == model.id)
+            .map(|c| c.reasoning);
+    }
 }
 
 /// Pick the list to serve: a live one when the fetch produced anything,
@@ -180,7 +224,10 @@ pub fn resolve_model_list(
     curated: &[CuratedModel],
 ) -> (Vec<ModelInfo>, ModelSource) {
     match live {
-        Ok(models) if !models.is_empty() => (models, ModelSource::Live),
+        Ok(mut models) if !models.is_empty() => {
+            overlay_curated_reasoning(&mut models, curated);
+            (models, ModelSource::Live)
+        }
         _ => (
             curated
                 .iter()
@@ -188,6 +235,7 @@ pub fn resolve_model_list(
                     id: m.id.to_string(),
                     label: m.label.to_string(),
                     vision: m.vision,
+                    reasoning: Some(m.reasoning),
                 })
                 .collect(),
             ModelSource::Fallback,
@@ -215,11 +263,13 @@ mod tests {
                     id: "claude-sonnet-5".into(),
                     label: "Claude Sonnet 5".into(),
                     vision: true,
+                    reasoning: Some(false),
                 },
                 ModelInfo {
                     id: "claude-haiku-4-5-20251001".into(),
                     label: "Claude Haiku 4.5".into(),
                     vision: true,
+                    reasoning: Some(false),
                 },
             ]
         );
@@ -252,6 +302,15 @@ mod tests {
         assert!(parse_anthropic_models(r#"{"models":[]}"#).is_err());
     }
 
+    /// Provider-level fact: WikiLens never sends a thinking param, so every
+    /// Anthropic model is Fast regardless of payload shape.
+    #[test]
+    fn anthropic_models_are_always_fast() {
+        let body = r#"{"data":[{"id":"claude-sonnet-5"},{"id":"claude-opus-4-8"}]}"#;
+        let models = parse_anthropic_models(body).unwrap();
+        assert!(models.iter().all(|m| m.reasoning == Some(false)));
+    }
+
     // ---- OpenAI-style parser (DeepSeek / OpenRouter) ----
 
     #[test]
@@ -281,6 +340,41 @@ mod tests {
         assert!(!models[2].vision, "no architecture → default false");
     }
 
+    /// The conservative three-state read of OpenRouter's
+    /// `supported_parameters`: absence of "reasoning" proves fastness, its
+    /// presence proves nothing (hybrids answer directly by default), and a
+    /// missing field (DeepSeek's bare entries) stays unknown.
+    #[test]
+    fn openai_reasoning_three_state_from_supported_parameters() {
+        let body = r#"{"data":[
+            {"id":"fast","supported_parameters":["temperature","top_p"]},
+            {"id":"hybrid","supported_parameters":["temperature","reasoning"]},
+            {"id":"bare"}
+        ]}"#;
+        let models = parse_openai_models(body).unwrap();
+        assert_eq!(models[0].reasoning, Some(false), "no reasoning param → Fast");
+        assert_eq!(models[1].reasoning, None, "hybrid → unknown, never Some(true)");
+        assert_eq!(models[2].reasoning, None, "field absent → unknown");
+    }
+
+    #[test]
+    fn openai_thinking_id_wins_over_supported_parameters() {
+        let body = r#"{"data":[
+            {"id":"anthropic/claude-sonnet-5:thinking","supported_parameters":["reasoning"]}
+        ]}"#;
+        let models = parse_openai_models(body).unwrap();
+        assert_eq!(models[0].reasoning, Some(true));
+    }
+
+    #[test]
+    fn reasoning_from_id_only_trusts_the_thinking_suffix() {
+        assert_eq!(reasoning_from_id("anthropic/claude-sonnet-5:thinking"), Some(true));
+        // Deliberately no fuzzy matching — these stay unknown.
+        assert_eq!(reasoning_from_id("deepseek-v4-pro"), None);
+        assert_eq!(reasoning_from_id("openai/o1-preview"), None);
+        assert_eq!(reasoning_from_id("thinking"), None);
+    }
+
     #[test]
     fn openai_prefers_openrouter_name_as_label() {
         let body = r#"{"data":[
@@ -292,7 +386,8 @@ mod tests {
             vec![ModelInfo {
                 id: "openai/gpt-4o-mini".into(),
                 label: "OpenAI: GPT-4o-mini".into(),
-                vision: false, // no `architecture` in this fixture
+                vision: false,   // no `architecture` in this fixture
+                reasoning: None, // no `supported_parameters` either
             }]
         );
     }
@@ -310,6 +405,7 @@ mod tests {
             id: "fallback-model",
             label: "Fallback Model",
             vision: true,
+            reasoning: false,
         }]
     }
 
@@ -319,6 +415,7 @@ mod tests {
             id: "live-model".into(),
             label: "Live Model".into(),
             vision: false,
+            reasoning: None,
         }]);
         let (models, source) = resolve_model_list(live, &curated());
         assert_eq!(source, ModelSource::Live);
@@ -336,6 +433,7 @@ mod tests {
                 id: "fallback-model".into(),
                 label: "Fallback Model".into(),
                 vision: true,
+                reasoning: Some(false),
             }]
         );
     }
@@ -350,14 +448,65 @@ mod tests {
     #[test]
     fn fallback_list_carries_curated_vision() {
         let curated = [
-            CuratedModel { id: "v", label: "V", vision: true },
-            CuratedModel { id: "t", label: "T", vision: false },
+            CuratedModel { id: "v", label: "V", vision: true, reasoning: false },
+            CuratedModel { id: "t", label: "T", vision: false, reasoning: false },
         ];
         let (models, source) =
             resolve_model_list(Err(AppError::Parse("x".into())), &curated);
         assert_eq!(source, ModelSource::Fallback);
         assert!(models[0].vision);
         assert!(!models[1].vision);
+    }
+
+    #[test]
+    fn fallback_list_carries_curated_reasoning() {
+        let curated = [
+            CuratedModel { id: "r", label: "R", vision: false, reasoning: true },
+            CuratedModel { id: "f", label: "F", vision: false, reasoning: false },
+        ];
+        let (models, source) =
+            resolve_model_list(Err(AppError::Parse("x".into())), &curated);
+        assert_eq!(source, ModelSource::Fallback);
+        // Curated entries are always classified — the fallback never shows an
+        // unbadged row.
+        assert_eq!(models[0].reasoning, Some(true));
+        assert_eq!(models[1].reasoning, Some(false));
+    }
+
+    /// The overlay fills only `None` gaps: a live `Some` (the provider's own
+    /// declaration) is never clobbered, and ids outside the curated list stay
+    /// unknown.
+    #[test]
+    fn live_list_overlay_fills_only_none_gaps() {
+        let curated = [
+            CuratedModel { id: "gap", label: "Gap", vision: false, reasoning: true },
+            CuratedModel { id: "declared", label: "Declared", vision: false, reasoning: true },
+        ];
+        let live = Ok(vec![
+            ModelInfo {
+                id: "gap".into(),
+                label: "Gap".into(),
+                vision: false,
+                reasoning: None,
+            },
+            ModelInfo {
+                id: "declared".into(),
+                label: "Declared".into(),
+                vision: false,
+                reasoning: Some(false),
+            },
+            ModelInfo {
+                id: "stranger".into(),
+                label: "Stranger".into(),
+                vision: false,
+                reasoning: None,
+            },
+        ]);
+        let (models, source) = resolve_model_list(live, &curated);
+        assert_eq!(source, ModelSource::Live);
+        assert_eq!(models[0].reasoning, Some(true), "gap filled from curated");
+        assert_eq!(models[1].reasoning, Some(false), "live Some wins over curated");
+        assert_eq!(models[2].reasoning, None, "uncurated id stays unknown");
     }
 
     /// Live smoke test against the keyless public OpenRouter catalog; run with
@@ -411,6 +560,7 @@ mod http_tests {
                 id: "openai/gpt-4o-mini".into(),
                 label: "GPT-4o mini".into(),
                 vision: true,
+                reasoning: None,
             }]
         );
 

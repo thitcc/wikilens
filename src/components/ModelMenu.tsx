@@ -152,6 +152,12 @@ export function ModelMenu({
           }}
         />
       </div>
+      <div
+        className="menu-note menu-note--info"
+        title="Any model can answer — Fast models also power the quick pre-search query rewrite."
+      >
+        ⓘ Fast models are recommended
+      </div>
       <div className="menu-list">
         {providers.map((provider) => {
           const isCollapsed = collapsed.has(provider.id);
@@ -194,6 +200,17 @@ export function ModelMenu({
                       <span className="row-side">
                         {model.vision && (
                           <Badge title="Can read screenshots">Image</Badge>
+                        )}
+                        {/* Strict checks: absent = unknown = no badge. */}
+                        {model.reasoning === false && (
+                          <Badge title="Answers directly — best for WikiLens's pre-search query rewrite">
+                            Fast
+                          </Badge>
+                        )}
+                        {model.reasoning === true && (
+                          <Badge title="Thinks before answering — slower, and WikiLens skips its pre-search query rewrite">
+                            Reasoning
+                          </Badge>
                         )}
                         <span className="check" aria-hidden="true">
                           ✓
