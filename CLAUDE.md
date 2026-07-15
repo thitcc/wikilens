@@ -108,7 +108,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   fallible code uses `AppError` (`error.rs`), converted to `String` at the boundary.
 - **Namespaced events** (payloads):
   - `overlay://shown` — `()`; frontend focuses the prompt input.
-  - `ask://status` — `"searching" | "reading" | "answering"`.
+  - `ask://status` —
+    `"searching" | "understanding" | "retrying" | "reading" | "answering"`
+    (`understanding` only while the rewrite's candidate searches run;
+    `retrying` only when the first search found nothing).
   - `ask://delta` — `string` chunk of the streamed answer.
 - **Adding a built-in game** = one `GameWiki` entry in `wiki/games.rs`. Nothing
   else — but verify the endpoint live first, derive `page_url` from the wiki's
@@ -182,7 +185,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
   fetches are **sequential** (one `action=parse` request per page, 12s timeout) —
   don't parallelize them. Failures fall back to a single batched `prop=revisions`
-  request.
+  request. The sequential rule covers those heavy page fetches only: the ≤2
+  rewrite-candidate **search** GETs are deliberately concurrent (cheap, capped
+  by `REWRITE_SEARCH_LIMIT`).
 - Multi-word searches must send `srwhat=text`: default-engine wikis
   (stardewvalleywiki.com has no search extension) otherwise title-match them and
   return 0 hits — "best crops for winter" finds nothing while "wood" works. But

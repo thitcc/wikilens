@@ -64,6 +64,7 @@ function storedRecentGames(): string[] {
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
+  understanding: "Understanding your question…",
   retrying: "Broadening the search…",
   reading: "Reading pages…",
   answering: "Answering…",

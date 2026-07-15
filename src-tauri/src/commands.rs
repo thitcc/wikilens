@@ -298,7 +298,9 @@ pub fn clear_capture(state: State<'_, AppState>) {
 /// Answer a question about a game using its wiki as the source of truth.
 ///
 /// Emits progress events the UI listens for:
-/// - `ask://status` — `"searching"` → optional `"retrying"` → `"reading"` → `"answering"`
+/// - `ask://status` — `"searching"` → optional `"understanding"` (only while the
+///   rewrite's candidate searches run) → optional `"retrying"` → `"reading"` →
+///   `"answering"`
 /// - `ask://delta` — streamed answer text chunks
 ///
 /// Only one `ask` runs at a time; a concurrent call is rejected.
@@ -546,18 +548,14 @@ async fn run_ask(
     report.phase("raw search", raw_elapsed, raw_detail);
     let (raw_titles, suggestion) = raw_result?;
 
-    // Search the top rewrite candidates (sequential, bounded) and merge with the raw
+    // Search the top rewrite candidates (concurrent, bounded) and merge with the raw
     // hits: consensus (in both) first, then entity hits, then keyword hits.
     // Candidates that merely echo the raw query would return the exact same hits —
     // drop them *before* the take() so a surviving second candidate still gets
     // searched. Dropped duplicates already counted as rewrite success for the
     // circuit breaker (the model parsed fine), and the debug table still shows
     // the full candidate list.
-    let mut retries: Vec<(&str, String)> = Vec::new();
-    let mut rewrite_hits: Vec<String> = Vec::new();
-    let cand_timer = std::time::Instant::now();
-    let mut cand_count = 0usize;
-    for rq in rewrite_candidates
+    let to_search: Vec<&String> = rewrite_candidates
         .iter()
         .filter(|rq| {
             let dup = rq.eq_ignore_ascii_case(&query);
@@ -567,21 +565,34 @@ async fn run_ask(
             !dup
         })
         .take(REWRITE_SEARCH_LIMIT)
-    {
-        cand_count += 1;
-        let hits = search::search(&state.http, &wiki, rq, search::DEFAULT_SEARCH_LIMIT)
-            .await
-            .unwrap_or_default();
-        if !hits.is_empty() {
-            retries.push(("rewrite", rq.clone()));
+        .collect();
+    let mut retries: Vec<(&str, String)> = Vec::new();
+    let mut rewrite_hits: Vec<String> = Vec::new();
+    if !to_search.is_empty() {
+        // Emitted only when candidate searches actually run — the skip/empty
+        // paths (rewrite off, reasoning skip, breaker, all-duplicate) must
+        // never flash this status.
+        let _ = app.emit("ask://status", "understanding");
+        let cand_timer = std::time::Instant::now();
+        // join_all preserves input order, so zipping back keeps `rewrite_hits`
+        // in candidate order — the merge below ranks by list order.
+        let results = futures_util::future::join_all(
+            to_search
+                .iter()
+                .map(|rq| search::search(&state.http, &wiki, rq, search::DEFAULT_SEARCH_LIMIT)),
+        )
+        .await;
+        for (rq, hits) in to_search.iter().zip(results) {
+            let hits = hits.unwrap_or_default();
+            if !hits.is_empty() {
+                retries.push(("rewrite", (*rq).clone()));
+            }
+            rewrite_hits.extend(hits);
         }
-        rewrite_hits.extend(hits);
-    }
-    if cand_count > 0 {
         report.phase(
             "cand search",
             cand_timer.elapsed(),
-            format!("{cand_count} queries -> {} hits", rewrite_hits.len()),
+            format!("{} queries -> {} hits", to_search.len(), rewrite_hits.len()),
         );
     }
     let mut titles = merge_hits(&raw_titles, &rewrite_hits, search::DEFAULT_SEARCH_LIMIT as usize);
@@ -761,7 +772,8 @@ fn effective_model(requested: &str, fallback: String) -> String {
 }
 
 /// How many of the rewrite's candidate queries to actually search per ask. Bounds
-/// the extra wiki round-trips the eager rewrite adds (each ~0.5s, sequential).
+/// the extra wiki round-trips the eager rewrite adds (searched concurrently, so
+/// the phase costs the slowest query, not the sum).
 const REWRITE_SEARCH_LIMIT: usize = 2;
 
 /// Max preprocessed-query word count for the title-index fallback to bother
