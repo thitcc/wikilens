@@ -377,9 +377,10 @@ fn build_user_message(question: &str, pages: &[WikiPage]) -> String {
 
 /// Max output tokens for the query-rewrite completion — the JSON object is tiny,
 /// so keep the cap tight. The rewrite is meant to run on a fast *non-reasoning*
-/// model (`WIKILENS_REWRITE_MODEL`); a tight cap also makes a mis-configured
-/// reasoning model fail fast (empty `content`, seen in the trace) rather than
-/// reasoning for many seconds.
+/// model (`WIKILENS_REWRITE_MODEL`); known-Reasoning models never reach this
+/// call (`run_ask` skips them outright), so the tight cap is the fail-fast for
+/// *untagged* reasoning models — they burn the budget in seconds (empty
+/// `content`, seen in the trace) rather than reasoning at length.
 const REWRITE_MAX_TOKENS: u32 = 256;
 
 /// Total-request cap for the rewrite completion. `run_ask` joins the rewrite
@@ -392,12 +393,14 @@ const REWRITE_MAX_TOKENS: u32 = 256;
 /// swallowed into "no candidates", so timing out degrades gracefully.
 const REWRITE_TIMEOUT: Duration = Duration::from_secs(4);
 
-/// System prompt for the lazy query-rewrite (Phase 3 of the retrieval-quality
-/// plan). The player's own wiki search found nothing — usually a typo, a
-/// paraphrase, or an item/character the wiki names differently. Turn the question
-/// into a few concrete wiki queries. Strict JSON out; `parse_rewrite_queries`
-/// tolerates fences/prose defensively.
-const REWRITE_SYSTEM_PROMPT: &str = "You convert a player's question into search queries for a specific game's wiki. Their own search returned nothing — usually a typo, a paraphrase, or an item/character the wiki names differently. Reply with ONLY a compact JSON object of the form {\"queries\":[\"...\"]}: 1 to 3 short keyword queries, best guess first, exact proper nouns / item / enemy names preferred. No prose, no markdown, no code fences.";
+/// System prompt for the eager query rewrite: it runs on every ask, concurrent
+/// with the raw keyword search, so the candidates should *complement* that
+/// search — fix typos, recover the wiki's own name for a paraphrased thing —
+/// while keeping the question's correct proper nouns (a candidate repeating a
+/// right name makes its page an in-both hit, `merge_hits`' strongest signal).
+/// Asks for at most 2 queries because only `REWRITE_SEARCH_LIMIT` are searched.
+/// Strict JSON out; `parse_rewrite_queries` tolerates fences/prose defensively.
+const REWRITE_SYSTEM_PROMPT: &str = "You convert a player's question into search queries for a specific game's wiki. A raw keyword search of the question runs in parallel — add what it would miss: fix typos, and name the described thing the way the wiki titles it. Keep proper nouns that are already correct; repeating a right name helps confirm its page. Reply with ONLY a compact JSON object of the form {\"queries\":[\"...\"]}: 1 or 2 short keyword queries, best guess first, exact proper nouns / item / enemy names preferred. No prose, no markdown, no code fences.";
 
 /// A parsed query rewrite plus the token usage the provider reported for it.
 #[derive(Debug)]
@@ -408,11 +411,12 @@ pub struct RewriteOutcome {
     pub usage: TokenUsage,
 }
 
-/// Rewrite a failed question into candidate wiki search queries via a cheap,
+/// Rewrite the question into candidate wiki search queries via a cheap,
 /// non-streaming model call (the reply is tiny). Returns the parsed queries; an
 /// empty vec means "no usable rewrite" and the caller falls back to the raw query.
-/// Only invoked on the zero-hit dead-end, so its cost lands only when a search has
-/// already failed. See `vault/2026-07-07_llm-query-rewrite-in-retrieval.md`.
+/// Runs eagerly on every ask, concurrent with the raw wiki search — it overlaps
+/// the search instead of adding latency ("Eager query understanding" in
+/// `run_ask`). See `vault/2026-07-07_llm-query-rewrite-in-retrieval.md`.
 pub async fn rewrite_query(
     client: &reqwest::Client,
     provider: &Provider,
