@@ -4,3 +4,11 @@
 # (vault/2026-07-13_parser-snapshot-property-tests.md).
 *.snap text eol=lf
 src-tauri/src/wiki/fixtures/** text eol=lf
+
+# The Tauri CLI rewrites these with LF on every `tauri dev` (feature sync
+# against tauri.conf.json), and cargo writes the lockfile with LF — pin LF
+# so autocrlf doesn't flag phantom modifications on Windows
+# (vault/2026-07-15_cargo-manifest-eol-churn.md).
+src-tauri/Cargo.toml text eol=lf
+src-tauri/Cargo.lock text eol=lf
+src-tauri/tauri.conf.json text eol=lf
