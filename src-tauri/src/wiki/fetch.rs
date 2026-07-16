@@ -562,6 +562,28 @@ mod http_tests {
         let err = fetch_pages(&client, &wiki, &titles(&["Wood", "Iron"])).await.unwrap_err();
         // Everything failed — the revisions transport error must surface.
         assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+        assert!(
+            err.to_string().starts_with("Network request failed"),
+            "non-403 statuses must keep the generic message: {err}"
+        );
+    }
+
+    /// A WAF-blocked wiki 403s both rungs of the fetch ladder (parse, then the
+    /// revisions fallback) — the friendly refusal copy must surface end-to-end.
+    #[tokio::test]
+    async fn forbidden_wiki_surfaces_friendly_message() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        mount_parse(&server, "Wood", ResponseTemplate::new(403)).await;
+        mount_revisions(&server, ResponseTemplate::new(403), 1).await;
+
+        let client = crate::http::build_client();
+        let err = fetch_pages(&client, &wiki, &titles(&["Wood"])).await.unwrap_err();
+        assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+        assert!(
+            err.to_string().contains("blocks automated access"),
+            "fetch must surface the friendly 403 copy: {err}"
+        );
     }
 
     /// Pins the (new) `PARSE_TIMEOUT` on the batched revisions fallback,

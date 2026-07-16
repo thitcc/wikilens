@@ -7,7 +7,7 @@
 /// frontend can render `AppError`-derived strings verbatim.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("Network request failed: {}", error_chain(.0))]
+    #[error("{}", http_message(.0))]
     Http(#[from] reqwest::Error),
 
     #[error("Failed to parse API response: {0}")]
@@ -79,6 +79,21 @@ fn error_chain(err: &dyn std::error::Error) -> String {
         source = s.source();
     }
     msg
+}
+
+/// User-facing copy for `AppError::Http`. A 403 is a deliberate refusal —
+/// WAF-guarded wikis (e.g. wiki.guildwars2.com) block all non-browser clients,
+/// and no header or retry fixes it — so say what's happening instead of echoing
+/// reqwest's raw chain. Status-bearing errors only come from
+/// `error_for_status()` on the wiki paths (search/fetch/titles); the
+/// LLM/model/probe paths never build one, so "This wiki" is accurate.
+fn http_message(err: &reqwest::Error) -> String {
+    if err.status() == Some(reqwest::StatusCode::FORBIDDEN) {
+        return "This wiki refused WikiLens's request (403 Forbidden) — it looks like it \
+                blocks automated access. Its pages still open normally in a browser."
+            .to_string();
+    }
+    format!("Network request failed: {}", error_chain(err))
 }
 
 /// Lets `#[tauri::command] -> Result<T, String>` use `?` on `AppError` values.
