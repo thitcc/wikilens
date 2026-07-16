@@ -354,6 +354,36 @@ mod http_tests {
         );
     }
 
+    /// A 403 is a WAF/anti-bot refusal (e.g. wiki.guildwars2.com blocks all
+    /// non-browser clients) — the user must see plain language, not reqwest's
+    /// raw status chain (see `error.rs::http_message`).
+    #[tokio::test]
+    async fn forbidden_status_becomes_friendly_copy() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+
+        let err = build_client()
+            .get(format!("{}/api.php", server.uri()))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap_err();
+        let msg = AppError::Http(err).to_string();
+        assert!(
+            msg.contains("blocks automated access") && msg.contains("(403 Forbidden)"),
+            "403 must map to the friendly copy: {msg}"
+        );
+        assert!(
+            !msg.contains("Network request failed"),
+            "403 must not fall through to the generic message: {msg}"
+        );
+    }
+
     #[tokio::test]
     async fn read_body_capped_returns_small_bodies_intact() {
         let server = MockServer::start().await;

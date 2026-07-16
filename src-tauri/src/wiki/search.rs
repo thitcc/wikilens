@@ -363,6 +363,27 @@ mod http_tests {
         assert!(matches!(err, AppError::BodyTooLarge(_)), "got {err:?}");
     }
 
+    /// A WAF-blocked wiki (403 on api.php, like wiki.guildwars2.com) must
+    /// surface the friendly refusal copy through the search path.
+    #[tokio::test]
+    async fn search_full_403_surfaces_friendly_forbidden_message() {
+        let server = MockServer::start().await;
+        let wiki = mock_wiki(&server.uri());
+        Mock::given(method("GET"))
+            .and(path("/api.php"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let err = search_full(&client, &wiki, "wood", 4).await.unwrap_err();
+        assert!(matches!(err, AppError::Http(_)), "got {err:?}");
+        assert!(
+            err.to_string().contains("blocks automated access"),
+            "search must surface the friendly 403 copy: {err}"
+        );
+    }
+
     #[tokio::test]
     #[ignore = "slow (~8s): pins the SEARCH_TIMEOUT behavior"]
     async fn search_hang_times_out() {
