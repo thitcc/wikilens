@@ -37,3 +37,9 @@ vault/.obsidian/workspace.json
 vault/.obsidian/workspace-mobile.json
 vault/.obsidian/cache
 vault/.obsidian/plugins/
+
+# Codex skill adapters are generated locally from .claude/ by the sync-agents
+# skill (node .claude/skills/sync-agents/generate.mjs) — never committed.
+# Deliberately narrow: a stray root AGENTS.md (it would silently shadow
+# CLAUDE.md) and anything else under .agents/ must stay visible in git status.
+/.agents/skills/

@@ -1,0 +1,4 @@
+# Codex instruction discovery: this repo keeps no AGENTS.md — Codex reads the
+# canonical CLAUDE.md directly (see CLAUDE.md §4, "Codex reads this file too").
+# Loaded only for a trusted checkout; changes here need a fresh Codex session.
+project_doc_fallback_filenames = ["CLAUDE.md"]
