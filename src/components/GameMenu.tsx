@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { centerRowInList } from "../menuScroll";
 import type { GameInfo } from "../types";
 
 interface GameMenuProps {
@@ -84,19 +85,7 @@ export function GameMenu({
   // Center the selected row on open, like the native popup did. Runs once —
   // the menu remounts on every open, and the filter always starts empty.
   useEffect(() => {
-    const list = listRef.current;
-    const row = selectedRowRef.current;
-    if (list && row && list.scrollHeight > list.clientHeight) {
-      // Both offsetTops are .menu-relative (.menu-list is unpositioned, so
-      // the rows' offsetParent is the absolutely-positioned .menu); the
-      // difference converts the row into list coordinates — without it the
-      // scroll overshoots by the search-bar height.
-      const rowTopInList = row.offsetTop - list.offsetTop;
-      list.scrollTop = Math.max(
-        0,
-        rowTopInList - list.clientHeight / 2 + row.offsetHeight / 2,
-      );
-    }
+    centerRowInList(listRef.current, selectedRowRef.current);
   }, []);
 
   const query = filter.trim().toLowerCase();

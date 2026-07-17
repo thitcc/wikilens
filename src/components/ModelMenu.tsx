@@ -1,6 +1,12 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { listModels } from "../api";
+import {
+  MENU_FIXED_HEIGHT,
+  modelMenuPlacement,
+  type MenuPlacement,
+} from "../menuPlacement";
+import { centerRowInList } from "../menuScroll";
 import type { ModelInfo, ModelList, ProviderInfo } from "../types";
 import { Badge } from "./Badge";
 
@@ -22,6 +28,12 @@ const INITIALLY_COLLAPSED = new Set(["openrouter"]);
  * one collapsible group per provider, accent check on the selected row.
  * Mounted fresh on every open, so collapse/filter state intentionally resets.
  *
+ * Opens as a fixed-height dropdown below the panel's bottom edge (into the
+ * free window space under the content-hugging panel), flipping to the upward
+ * `--menu-clearance` anchoring when a tall panel leaves more room above —
+ * measured once per open via `modelMenuPlacement`. The fixed frame is a
+ * feature: filtering, group collapse, and list loading never resize the card.
+ *
  * Rendered as a direct child of `.panel` — never inside `.content`, whose
  * `overflow-y: auto` would clip the absolutely-positioned menu.
  */
@@ -39,7 +51,39 @@ export function ModelMenu({
   const [lists, setLists] = useState<Record<string, ModelList>>({});
   const [loading, setLoading] = useState<Set<string>>(() => new Set());
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const selectedRowRef = useRef<HTMLButtonElement | null>(null);
+  const didCenterRef = useRef(false);
   const requestedRef = useRef<Set<string>>(new Set());
+  const [placement, setPlacement] = useState<MenuPlacement>({
+    direction: "down",
+    height: MENU_FIXED_HEIGHT,
+  });
+
+  // Measure once per open (the menu remounts every open, and overlay://shown
+  // closes menus, so geometry is never stale across shows). useLayoutEffect:
+  // a corrected placement lands before first paint. The panel growing under
+  // an open menu while an answer streams is accepted — the next open
+  // corrects. In jsdom the rect is zeros and innerHeight is 768, which
+  // resolves to exactly the initial state.
+  useLayoutEffect(() => {
+    const panel = menuRef.current?.parentElement; // .panel — the positioning context
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    const next = modelMenuPlacement({
+      panelTop: rect.top,
+      panelHeight: rect.height,
+      viewportHeight: window.innerHeight,
+    });
+    // Keep the previous object when nothing changed: the common open
+    // resolves to exactly the initial down/460, and React's Object.is
+    // bail-out then skips the second render-commit.
+    setPlacement((prev) =>
+      prev.direction === next.direction && prev.height === next.height
+        ? prev
+        : next,
+    );
+  }, []);
 
   function ensureList(providerId: string) {
     if (requestedRef.current.has(providerId)) return;
@@ -105,6 +149,18 @@ export function ModelMenu({
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [onClose, chipRef]);
 
+  // Center the selected row once it exists, like GameMenu — but the lists
+  // arrive async (listModels), so this keys on `lists` with a one-shot guard
+  // instead of running once on mount. A selected model inside a collapsed
+  // group (OpenRouter) keeps the shot until its first expand renders the row.
+  useLayoutEffect(() => {
+    if (didCenterRef.current) return;
+    const row = selectedRowRef.current;
+    if (!listRef.current || !row) return;
+    didCenterRef.current = true;
+    centerRowInList(listRef.current, row);
+  }, [lists]);
+
   function toggleGroup(providerId: string) {
     // Side effect outside the updater (updaters must stay pure): expanding a
     // group is what triggers its lazy fetch.
@@ -134,7 +190,13 @@ export function ModelMenu({
   }
 
   return (
-    <div className="menu" ref={menuRef} role="dialog" aria-label="Choose a model">
+    <div
+      className={"menu" + (placement.direction === "down" ? " menu--down" : "")}
+      style={{ height: placement.height }}
+      ref={menuRef}
+      role="dialog"
+      aria-label="Choose a model"
+    >
       <div className="menu-search">
         <input
           type="text"
@@ -158,7 +220,7 @@ export function ModelMenu({
       >
         ⓘ Fast models are recommended
       </div>
-      <div className="menu-list">
+      <div className="menu-list" ref={listRef}>
         {providers.map((provider) => {
           const isCollapsed = collapsed.has(provider.id);
           const list = lists[provider.id];
@@ -194,6 +256,7 @@ export function ModelMenu({
                       key={model.id}
                       type="button"
                       className={"model-row" + (isSelected ? " selected" : "")}
+                      ref={isSelected ? selectedRowRef : undefined}
                       onClick={() => onSelect(provider.id, model)}
                     >
                       <span className="row-name">{model.label}</span>

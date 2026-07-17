@@ -241,12 +241,18 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `--menu-clearance-top` are paired constants (like the window.rs float
   geometry): panel padding + footer/header height + gap (top is 42px for the
   chip-height header — retuned from 52 when the bordered select left).
-  Top-anchored menus cap their height against the **window viewport**
-  (`100vh` minus gap/clearance/apron), not the panel — the panel hugs its
-  content, and a panel-relative cap strangles the menu to one row on an idle
-  panel (the window always holds the 70% cap, and `.panel` doesn't clip its
-  absolute children). Retune the clearances when the footer's or header's
-  metrics change.
+  Top-anchored menus (game, add-game) cap their height against the **window
+  viewport** (`100vh` minus gap/clearance/apron), not the panel — the panel
+  hugs its content, and a panel-relative cap strangles the menu to one row on
+  an idle panel (the window always holds the 70% cap, and `.panel` doesn't
+  clip its absolute children). The **model menu measures per open**
+  (`src/menuPlacement.ts`, constants paired with their CSS/window.rs twins by
+  comment): it drops below the panel at a fixed ~460px (`.menu--down`), and
+  flips to the upward `--menu-clearance` anchoring with
+  `height = min(460, room above)` when a tall panel leaves more room above
+  than below. Geometry is **not** re-measured while a menu is open (a panel
+  growing under a streaming answer is accepted — the next open corrects).
+  Retune the clearances when the footer's or header's metrics change.
 - OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
   and its menu group starts collapsed, which also defers the fetch until first
