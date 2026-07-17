@@ -12,3 +12,4 @@ src-tauri/src/wiki/fixtures/** text eol=lf
 src-tauri/Cargo.toml text eol=lf
 src-tauri/Cargo.lock text eol=lf
 src-tauri/tauri.conf.json text eol=lf
+graphify-out/graph.json merge=graphify
