@@ -6,6 +6,7 @@ import {
   modelMenuPlacement,
   type MenuPlacement,
 } from "../menuPlacement";
+import { centerRowInList } from "../menuScroll";
 import type { ModelInfo, ModelList, ProviderInfo } from "../types";
 import { Badge } from "./Badge";
 
@@ -69,12 +70,18 @@ export function ModelMenu({
     const panel = menuRef.current?.parentElement; // .panel — the positioning context
     if (!panel) return;
     const rect = panel.getBoundingClientRect();
-    setPlacement(
-      modelMenuPlacement({
-        panelTop: rect.top,
-        panelHeight: rect.height,
-        viewportHeight: window.innerHeight,
-      }),
+    const next = modelMenuPlacement({
+      panelTop: rect.top,
+      panelHeight: rect.height,
+      viewportHeight: window.innerHeight,
+    });
+    // Keep the previous object when nothing changed: the common open
+    // resolves to exactly the initial down/460, and React's Object.is
+    // bail-out then skips the second render-commit.
+    setPlacement((prev) =>
+      prev.direction === next.direction && prev.height === next.height
+        ? prev
+        : next,
     );
   }, []);
 
@@ -148,20 +155,10 @@ export function ModelMenu({
   // group (OpenRouter) keeps the shot until its first expand renders the row.
   useLayoutEffect(() => {
     if (didCenterRef.current) return;
-    const list = listRef.current;
     const row = selectedRowRef.current;
-    if (!list || !row) return;
+    if (!listRef.current || !row) return;
     didCenterRef.current = true;
-    if (list.scrollHeight > list.clientHeight) {
-      // Both offsetTops are .menu-relative (.menu-list is unpositioned, so
-      // the rows' offsetParent is the absolutely-positioned .menu); the
-      // difference converts the row into list coordinates.
-      const rowTopInList = row.offsetTop - list.offsetTop;
-      list.scrollTop = Math.max(
-        0,
-        rowTopInList - list.clientHeight / 2 + row.offsetHeight / 2,
-      );
-    }
+    centerRowInList(listRef.current, row);
   }, [lists]);
 
   function toggleGroup(providerId: string) {

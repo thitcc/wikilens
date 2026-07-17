@@ -32,7 +32,11 @@ export interface MenuPlacement {
  * streamed answer — leaves more room above than below, it flips to the
  * upward `--menu-clearance` anchoring instead. Picking the larger side is
  * monotonic in panel height (the two rooms sum to a per-monitor constant),
- * so there is exactly one flip point. */
+ * so there is exactly one flip point — plus a safety flip: `.menu--down`
+ * has no CSS cap (`max-height: none`), so a floored height must never go
+ * below; when even the floor can't fit under the panel (sub-~370px logical
+ * windows), up wins regardless, where the base `.menu` panel-relative
+ * `max-height` clamps the inline height inside the viewport. */
 export function modelMenuPlacement(input: {
   /** `.panel` rect top — the 12px `--panel-gap` in practice. */
   panelTop: number;
@@ -44,7 +48,8 @@ export function modelMenuPlacement(input: {
   const panelBottom = input.panelTop + input.panelHeight;
   const roomBelow = input.viewportHeight - SHADOW_APRON - panelBottom - DROP_GAP;
   const roomAbove = input.panelHeight - MENU_CLEARANCE - PANEL_PAD;
-  const direction = roomBelow >= roomAbove ? "down" : "up";
+  const direction =
+    roomBelow >= roomAbove && roomBelow >= MENU_MIN_HEIGHT ? "down" : "up";
   const room = direction === "down" ? roomBelow : roomAbove;
   return {
     direction,

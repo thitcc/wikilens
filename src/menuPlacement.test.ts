@@ -41,6 +41,16 @@ describe("modelMenuPlacement", () => {
     ).toEqual({ direction: "down", height: 372 });
   });
 
+  test("floor never overflows downward: a tiny window falls back to up", () => {
+    // roomBelow 68 ≥ roomAbove 54, but the 120px floor wouldn't fit below —
+    // and .menu--down has no CSS cap, so a floored drop would spill past the
+    // window bottom. Up is safe: base .menu's max-height clamps the inline
+    // height inside the panel.
+    expect(
+      modelMenuPlacement({ viewportHeight: 250, panelTop: 12, panelHeight: 120 }),
+    ).toEqual({ direction: "up", height: MENU_MIN_HEIGHT });
+  });
+
   test("degenerate room engages the minimum-height floor", () => {
     expect(
       modelMenuPlacement({ viewportHeight: 100, panelTop: 12, panelHeight: 90 }),
