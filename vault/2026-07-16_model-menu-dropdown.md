@@ -6,7 +6,7 @@ created: 2026-07-16
 updated: 2026-07-16
 tags: [frontend, overlay]
 related: ["[[2026-07-05_model-picker-menu]]", "[[2026-07-05_game-picker-owned-menu]]"]
-commit: 1e8eab2
+commit: [1e8eab2, 37d01bf]
 ---
 
 # Model menu as a measured dropdown below the chip
@@ -75,3 +75,8 @@ drop / measured upward fallback).
   scroll-to-selected, `.menu--down` variant, CLAUDE.md §5 updated. `/check`
   green (tsc, 30 Vitest, clippy, 224 cargo tests). Visual pass (idle drop /
   tall-panel flip / small-monitor cap) is the owner's manual walk on the PR.
+- 2026-07-16 — post-review hardening (8-angle branch review): the 120px
+  floor could overflow a sub-~370px window downward (`.menu--down` has no
+  CSS cap) — placement now falls back to the CSS-clamped upward anchoring;
+  row-centering math deduped into `menuScroll.ts` (shared with GameMenu);
+  no-op placement update no longer costs a second render per open.
