@@ -1,12 +1,12 @@
 ---
 title: Guarantee a bare-entity rewrite candidate — intent words poison AND-semantics retrieval
 type: plan
-status: active
+status: done
 created: 2026-07-15
-updated: 2026-07-15
+updated: 2026-07-16
 tags: [llm, rag, wiki]
 related: ["[[2026-07-10_rewrite-prompt-reword]]", "[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-04_query-preprocessing-zero-hit-retry]]", "[[2026-07-04_golden-query-retrieval-tests]]", "[[2026-07-10_merge-raw-hit-guarantee]]"]
-commit:
+commit: 597c8e73432b347a76503d4e243f00e9dd2c1f43
 ---
 
 # Guarantee a bare-entity rewrite candidate — intent words poison AND-semantics retrieval
@@ -101,3 +101,18 @@ an abstract term excludes the canonical entity page), but starker: the raw query
 
 - 2026-07-15 — created from the archon-shards live-failure diagnosis (debug
   table + live reproduction against wiki.warframe.com).
+- 2026-07-16 — executed. Stopword vet: "strategy"/"strategies"/"obtain" are
+  page titles on none of the 15 built-in wikis (GW2's api.php WAF-blocks this
+  network; vetted via page URLs instead) — **"acquire" excluded**: it's a live
+  GW2 redirect (`Acquire` → "Equipment acquisition by stats"). New prompt
+  live-checked twice (Haiku, direct API, exact source prompt): candidate #1 was
+  the bare entity in all runs — "Archon Shards" / "Abigail" / typo-corrected
+  "Arcane Persistence" (intent-word queries now only ever appear as #2). Golden
+  suite live: archon-shards case hits Archon Shard **#1**; all other games OK
+  (gw2 skipped — WAF 403 from this network, request unchanged by this plan).
+  Full-pipeline live replication (raw search + rewrite + candidate searches +
+  merge + fetch + answer): the bare-entity candidate deduped against the
+  now-identical raw query, Archon Shard reached the fetched pages via the raw
+  slot, and the model produced a real Archon Hunts answer where it previously
+  refused. In-app `WIKILENS_DEBUG=1` ask left as a manual smoke check (an app
+  instance was already running during execution).

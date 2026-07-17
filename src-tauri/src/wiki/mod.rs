@@ -36,6 +36,11 @@ const GOLDEN_CASES: &[(&str, &str, &[&str], bool)] = &[
     ("conanexiles", "how do I make steel", &["Steel Bar", "Steelfire"], true),
     // Registry expansion (2026-07-05): one anchor case per new game.
     ("warframe", "how do I get Excalibur", &["Excalibur"], true),
+    // The 2026-07-15 live failure: "strategy" survived preprocessing and,
+    // under AND semantics, excluded the Archon Shard page (which never says
+    // "strategy"). Carried by the intent-word stopwords — the golden runner
+    // never calls the LLM rewrite (see the bare-entity-candidate plan doc).
+    ("warframe", "best strategy to get archon shards", &["Archon Shard"], true),
     ("gw2", "Mesmer", &["Mesmer"], true),
     ("poe", "Chaos Orb", &["Chaos Orb"], true),
     ("poe2", "Waystone", &["Waystone"], true),

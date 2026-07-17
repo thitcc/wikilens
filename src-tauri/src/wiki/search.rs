@@ -17,13 +17,19 @@ const SEARCH_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Conversational filler dropped before searching. Default-engine (MySQL
 /// fulltext) wikis require every remaining term to literally appear on a page,
-/// so filler words directly cost recall.
+/// so filler words directly cost recall — and AND-semantics generally means an
+/// intent word the page never uses ("strategy") excludes the canonical entity
+/// page outright. Every entry is global across all wikis: vet each addition
+/// against covered wikis' page titles first ("farming" and "guide" are real
+/// pages — Stardew's Farming skill, Terraria's Guide NPC — and "acquire"
+/// redirects on the GW2 wiki, so they must stay searchable).
 const STOPWORDS: &[&str] = &[
     "a", "an", "and", "any", "are", "as", "at", "be", "best", "can", "could",
     "did", "do", "does", "for", "from", "get", "has", "have", "how", "i", "in",
-    "is", "it", "its", "like", "make", "me", "my", "of", "on", "or", "should",
-    "some", "that", "the", "this", "to", "was", "way", "what", "when", "where",
-    "which", "who", "why", "will", "with", "would", "you", "your",
+    "is", "it", "its", "like", "make", "me", "my", "obtain", "of", "on", "or",
+    "should", "some", "strategies", "strategy", "that", "the", "this", "to",
+    "was", "way", "what", "when", "where", "which", "who", "why", "will",
+    "with", "would", "you", "your",
 ];
 
 /// Reduce a natural-language question to search keywords: trim punctuation off
@@ -275,6 +281,25 @@ mod tests {
         assert_eq!(
             preprocess_query("what does Abigail like as a gift?"),
             "Abigail gift"
+        );
+    }
+
+    /// The archon-shards live failure: intent words ("strategy") survive on
+    /// AND-semantics wikis and exclude the canonical page — the bare entity
+    /// must be what's left (`vault/2026-07-15_rewrite-bare-entity-candidate.md`).
+    #[test]
+    fn preprocess_drops_intent_words() {
+        assert_eq!(
+            preprocess_query("best strategy to get archon shards"),
+            "archon shards"
+        );
+        assert_eq!(
+            preprocess_query("how do I obtain a fusion core?"),
+            "fusion core"
+        );
+        assert_eq!(
+            preprocess_query("strategies for the Eidolon fight"),
+            "Eidolon fight"
         );
     }
 
