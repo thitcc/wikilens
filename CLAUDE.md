@@ -150,7 +150,7 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   CI adds the dependency audits) and `/vault-lint` when `vault/` changed. A PR
   merges only when CI is green, and the **human merges — always a merge
   commit, never squash/rebase** (vault docs pin
-  branch `commit:` hashes; squashing orphans them); Claude never merges. The
+  branch `commit:` hashes; squashing orphans them); the agent never merges. The
   `docs(vault): close …` commit rides in the same PR as the code it closes.
 - **PR titles & descriptions.** The title is a plain-language headline of the
   outcome: imperative verb first, sentence case, no `type:` prefix or other
@@ -167,6 +167,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   table (check | result). Each paragraph/bullet is **one source line** —
   GitHub renders newlines in PR bodies as line breaks, so hard-wrapped text
   comes out ragged. ~20 rendered lines; war stories go in `<details>` folds.
+- **Codex reads this file too.** `CLAUDE.md` is the canonical guidance for both
+  agents: the tracked `.codex/config.toml` sets
+  `project_doc_fallback_filenames = ["CLAUDE.md"]`, so Codex loads it directly.
+  Never create a root `AGENTS.md` — it outranks the fallback and would shadow
+  this file with a stale copy. Claude's `/name` workflows map to Codex `$name`
+  skills, generated locally into the gitignored `.agents/skills/` — after
+  changing `CLAUDE.md` or anything under `.claude/`, and on a fresh clone
+  before using Codex skills, run
+  `node .claude/skills/sync-agents/generate.mjs`. Codex loads project config
+  only for a trusted checkout, and `.codex/config.toml` / instruction-discovery
+  changes take effect in a fresh Codex session.
 
 ## 5. Gotchas
 

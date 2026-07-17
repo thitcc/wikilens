@@ -1,12 +1,12 @@
 ---
 title: Use CLAUDE.md directly in Codex and mirror Claude workflows via a sync skill
 type: plan
-status: todo
+status: done
 created: 2026-07-16
 updated: 2026-07-16
 tags: []
-related: ["[[2026-07-13_pr-delivery-workflow]]"]
-commit:
+related: ["[[2026-07-13_pr-delivery-workflow]]", "[[2026-07-16_codex-direct-claude-md-fallback]]"]
+commit: e1be9d2
 ---
 
 # Use CLAUDE.md directly in Codex and mirror Claude workflows via a sync skill
@@ -160,3 +160,13 @@ instruction-discovery changes require a fresh Codex session.
   replaced the `AGENTS.md` mirror with tracked direct `CLAUDE.md` fallback,
   narrowed generation to skill adapters, and specified Codex invocation,
   argument conversion, bootstrap, ownership, and trust behavior.
+- 2026-07-16 — executed in full: tracked `.codex/config.toml`, narrow
+  `/.agents/skills/` ignore, `sync-agents` skill (generator + 23 `node:test`
+  cases), CLAUDE.md convention bullet + agent-neutral role wording, stale
+  import leftovers removed. Double run verified (5 adapters, then `up to
+  date`, zero mtime churn); `/check` + vault lint green. A multi-agent
+  adversarial review confirmed one defect — manifest entries weren't
+  shape-validated before stale deletion — fixed with tests. The fork is
+  captured in [[2026-07-16_codex-direct-claude-md-fallback]]. Remaining
+  manual check for the human: a fresh trusted Codex session loads CLAUDE.md
+  (doc-only question), lists the five `$name` skills, and runs `$vault-lint`.

@@ -6,9 +6,10 @@ allowed-tools: Bash(node:*), Read, Edit
 
 # vault-lint
 
-Deterministic checker for the planning vault. The engine is `lint.mjs` in this skill
-folder; the tag registry and vocab live in `vault/index.md` and `CLAUDE.md` §7 — the
-script reads the registry live so it never drifts.
+Deterministic checker for the planning vault. The engine is
+`.claude/skills/vault-lint/lint.mjs`; the tag registry and vocab live in
+`vault/index.md` and `CLAUDE.md` §7 — the script reads the registry live so it
+never drifts.
 
 ## When to run
 - Right after `/plan-doc` or `/decision-doc` creates a doc.
