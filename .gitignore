@@ -43,3 +43,11 @@ vault/.obsidian/plugins/
 # Deliberately narrow: a stray root AGENTS.md (it would silently shadow
 # CLAUDE.md) and anything else under .agents/ must stay visible in git status.
 /.agents/skills/
+
+# graphify knowledge-graph output — fully regenerable (git hooks rebuild it on
+# commit/checkout), and cache/ + cost.json are machine-specific. The durable
+# record of a run's findings goes in vault/ instead.
+graphify-out/
+
+# Per-machine Claude Code config (graphify hook-guard uses an absolute path).
+.claude/settings.local.json
