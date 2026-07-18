@@ -90,3 +90,69 @@ export type AskStatus =
   | "retrying"
   | "reading"
   | "answering";
+
+// ---- debug:// events (src-tauri/src/debug.rs payloads; debug window only) ----
+
+/** Header rows at ask start, from `debug://ask-started`. Emitted the moment
+ * the ask's models are resolved; every later debug event carries the same
+ * `askId`. */
+export interface DebugAskStarted {
+  askId: number;
+  /** "Game Name (game-id)" — the table's game row, preformatted. */
+  game: string;
+  question: string;
+  /** The keyword-stripped wiki search query. */
+  query: string;
+  /** "provider / model" pair answering the question. */
+  answerModel: string;
+  /** Present only when the rewrite pair differs from the answer pair. */
+  rewriteModel: string | null;
+}
+
+/** One completed pipeline phase, from `debug://phase`, in execution order.
+ * `elapsedMs: null` means the phase was skipped (e.g. rewrite disabled). */
+export interface DebugPhase {
+  askId: number;
+  name: string;
+  elapsedMs: number | null;
+  detail: string;
+}
+
+/** The rewrite's candidate queries, from `debug://candidates`. */
+export interface DebugCandidates {
+  askId: number;
+  candidates: string[];
+}
+
+/** Token usage for one LLM call, from `debug://usage`. A `null` field means
+ * the call happened but the provider reported nothing (the table's `?`); a
+ * call that never happened simply never emits this event (`-`). */
+export interface DebugUsage {
+  askId: number;
+  kind: "rewrite" | "answer";
+  input: number | null;
+  output: number | null;
+}
+
+/** A fetched wiki page: title + extracted-plaintext char count only — the
+ * text itself never crosses IPC. */
+export interface DebugPageEntry {
+  title: string;
+  chars: number;
+}
+
+/** The fetched pages, from `debug://pages`. */
+export interface DebugPages {
+  askId: number;
+  pages: DebugPageEntry[];
+}
+
+/** End of an ask, from `debug://finished` — emitted on every exit path.
+ * `aborted` is `true` when no deliberate exit was recorded (an error
+ * propagated or the future was cancelled). */
+export interface DebugFinished {
+  askId: number;
+  totalMs: number;
+  outcome: string;
+  aborted: boolean;
+}

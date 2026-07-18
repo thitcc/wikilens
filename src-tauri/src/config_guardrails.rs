@@ -130,6 +130,32 @@ fn opener_permission_keeps_its_url_scope() {
     assert!(urls.contains("http://*"), "missing http://* scope: {urls:?}");
 }
 
+/// The debug window is a listen-only surface: it renders the `debug://…`
+/// event stream and invokes no commands, so its capability must stay exactly
+/// the event-loop minimum — strictly smaller than capture's.
+#[test]
+fn debug_capability_stays_listen_only() {
+    let cap = read_json(&manifest_dir().join("capabilities").join("debug.json"));
+    let windows: Vec<&str> = cap["windows"]
+        .as_array()
+        .expect("windows array")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(windows, ["debug"], "debug capability must scope only the debug window");
+    let perms: BTreeSet<&str> = cap["permissions"]
+        .as_array()
+        .expect("permissions array")
+        .iter()
+        .map(permission_identifier)
+        .collect();
+    assert_eq!(
+        perms,
+        BTreeSet::from(["core:default", "core:event:default"]),
+        "the debug window invokes no commands — keep its capability listen-only"
+    );
+}
+
 /// `default-src` is the fallback for every unlisted directive (media, frames,
 /// workers, …) — it must stay exactly `'self'`.
 #[test]

@@ -98,6 +98,17 @@ consecutive failed rewrites, a per-session circuit breaker stops further attempt
 and prints a one-time notice to the terminal naming the fix; restarting WikiLens
 resets it.
 
+## Debugging
+
+Set `WIKILENS_DEBUG=1` to watch what each ask costs. You get two views of the
+same data: a per-ask table on stderr (phase timings, models, token counts,
+queries, page titles + char counts — printed even when an ask fails), and a
+small **always-on-top debug window** that opens at the top-left with live
+progress bars per phase, expandable details, and a history of the session's
+asks. The window never takes keyboard focus from your game; closing it just
+hides it (the tray's "Show debug panel" brings it back). Neither view ever
+shows wiki text or API keys.
+
 ## Commands
 
 Run frontend/Tauri commands from the repo root; run `cargo` commands in `src-tauri/`.

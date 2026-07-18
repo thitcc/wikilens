@@ -15,7 +15,7 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
 ```
 wikilens/
-├── index.html, capture.html, vite.config.ts, tsconfig*.json   # Vite/TS config; two rollup inputs (overlay + region-select pages)
+├── index.html, capture.html, debug.html, vite.config.ts, tsconfig*.json   # Vite/TS config; three rollup inputs (overlay + region-select + debug pages)
 ├── vault/                        # planning vault: plans, decisions, notes (see §7)
 ├── docs/                         # dev guides: manual smoke checklist, AI-workflow explainer
 ├── src/                          # Frontend (React + TS; *.test.* files are colocated Vitest suites)
@@ -29,6 +29,7 @@ wikilens/
 │   ├── styles.css                # Transparent body + glass dark panel
 │   ├── test/                     # Vitest harness: setup, fake IPC backend (mockIPC), mount helpers
 │   ├── capture/main.ts           # region-select page (vanilla TS, own bundle): drag → finish/cancel_capture
+│   ├── debug/                    # debug-window page (React, own bundle): events.ts IPC boundary, askState reducer, DebugApp/AskCard, own styles.css
 │   └── components/
 │       ├── GameChip.tsx          # header chip: current game, opens the game menu
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
@@ -41,7 +42,7 @@ wikilens/
 │       └── SourceList.tsx        # wiki source links (open in system browser)
 └── src-tauri/                    # Backend (Rust) — run cargo commands here
     ├── tauri.conf.json           # windows "overlay" (right-dock) + "capture" (region-select), both transparent; CSP
-    ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only)
+    ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only) + debug.json (debug — listen-only)
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
@@ -56,7 +57,8 @@ wikilens/
         ├── providers.rs          # LLM provider registry + curated model fallbacks
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
-        ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4)
+        ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
+        ├── debug_window.rs       # visual debug window (flag-gated): create/show + the emit_to sink; top-left, never activates
         ├── config_guardrails.rs  # test-only: parses the shipped config/capability files, pins the security invariants
         ├── test_support.rs       # test-only: shared wiremock fixtures + proptest strategies
         └── wiki/{mod,games,user,probe,search,fetch,html,wikitext,titles}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext; titles = per-game typo-recovery index
@@ -134,6 +136,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
     by id.
   - `capture://error` — `string`; user-readable capture failure (e.g. the
     selection was too small).
+  - `debug://…` — the debug-window family (`ask-started`, `phase`,
+    `candidates`, `usage`, `pages`, `finished`), emitted by `debug.rs` through
+    the sink `debug_window.rs` injects, targeted at the debug webview only
+    (`emit_to`). Every payload carries an `askId`; `finished` fires from
+    `Drop` on every exit path (the partial-table analogue). Same contract as
+    the stderr table: titles/counts/timings only — never wiki text, never
+    keys (payload key sets are pin-tested).
 - **Adding a built-in game** = one `GameWiki` entry in `wiki/games.rs`. Nothing
   else — but verify the endpoint live first, derive `page_url` from the wiki's
   real `articlepath` (minecraft.wiki and wiki.warframe.com serve pages under
@@ -159,7 +168,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
-  exits still report). Independent of `WIKILENS_TRACE_RETRIEVAL`. The five
+  exits still report). The same flag also opens the **visual debug window**
+  at startup (`debug_window.rs` → `src/debug/`): live per-ask cards fed by the
+  `debug://…` events, with progress bars, collapsible details, and a ~25-ask
+  session history; closing hides it, the tray's "Show debug panel" re-shows
+  it. The table stays byte-identical — the window is additive. Independent of
+  `WIKILENS_TRACE_RETRIEVAL`. The five
   retrieval-tuning env vars (rewrite toggle/model/provider, title index, trace)
   are documented in README's "Retrieval tuning (advanced)" table — that table is
   the single source; don't re-list them here.
@@ -278,6 +292,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
   and its menu group starts collapsed, which also defers the fetch until first
   expand.
+- The debug window's `focusable(false)` is **load-bearing**, not cosmetic:
+  tao's `show()` issues an activating `SW_SHOW`, so `focused(false)` alone
+  only covers creation — a tray re-show would steal keyboard focus from the
+  game. `WS_EX_NOACTIVATE` (via `focusable(false)`) covers creation, clicks,
+  and re-shows. If WebView2 wheel-scroll/text-selection ever misbehaves under
+  it, the documented fallback is `focusable(true)` + `focus(false)`.
+- The debug window exists **only when `WIKILENS_DEBUG` was truthy at startup**
+  (dynamic creation in `.setup()`; env can't change mid-process). `emit_to`
+  to a nonexistent label is a **silent no-op** — `debug_window::sink` returns
+  `None` when the window is absent, so don't bypass it with a raw
+  `emit_to("debug", …)` and expect an error.
 
 ## 6. Roadmap (do not implement unless asked)
 

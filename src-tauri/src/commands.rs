@@ -439,6 +439,11 @@ async fn run_ask(
         rewrite_provider.id,
         &rewrite_model,
     );
+    // Mirror the report into the debug window when it exists (flag on at
+    // startup); every setter below then also emits its debug:// event.
+    if let Some(sink) = crate::debug_window::sink(app) {
+        report.attach_sink(sink);
+    }
     let search_start = std::time::Instant::now();
     let tracing = std::env::var_os("WIKILENS_TRACE_RETRIEVAL").is_some();
     let rewrite_on = stage_enabled("WIKILENS_QUERY_REWRITE");
