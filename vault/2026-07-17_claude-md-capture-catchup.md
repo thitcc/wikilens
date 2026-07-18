@@ -1,14 +1,14 @@
 ---
 title: Catch CLAUDE.md up with the shipped screenshot-capture feature
 type: plan
-status: todo
+status: done
 created: 2026-07-17
 updated: 2026-07-17
 tags: [capture]
 related:
   - "[[2026-07-06_screenshot-capture-to-prompt]]"
   - "[[2026-07-17_graphify-findings-review]]"
-commit:
+commit: d2057c8
 ---
 
 # Catch CLAUDE.md up with the shipped screenshot-capture feature
@@ -81,3 +81,15 @@ omits `capture://hotkey` (`lib.rs:54`), `capture://armed` (`capture.rs:183`),
 
 - 2026-07-17 — created from the graphify findings review (the `conn-capture`
   verdict, the review's only **fix**); work deliberately not started.
+- 2026-07-17 — **executed and closed.** CLAUDE.md caught up per the approach:
+  §1 gained the Ctrl+Shift+C capture sentence; the §2 map gained entries for
+  every missing file (capture flow, test-only Rust modules, menu helpers,
+  `wiki/titles.rs`, `Badge.tsx`, both capability files, `capture.html` +
+  `src/capture/main.ts`) plus refreshed one-liners for `tauri.conf.json`,
+  `state.rs`, `hotkey.rs`, and the four capture commands on `commands.rs`;
+  §4 gained the four `capture://` events with payloads (including the
+  thumbnail-only-over-IPC property). Colocated `*.test.*` suites noted once
+  on the `src/` line. Re-diffed against a fresh glob at execution time — the
+  2026-07-17 snapshot list was still accurate, plus two adversarial
+  doc-vs-code agents verified the new text. Codex adapters regenerated via
+  sync-agents; landed via PR.
