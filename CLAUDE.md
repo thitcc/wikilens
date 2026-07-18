@@ -302,6 +302,8 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 
 Rules:
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Treat an **absent edge as inconclusive**, never as evidence two things are unrelated — the AST extractor cannot see path-qualified Rust calls (`crate::http::build_client()` has 28 cross-file call sites but zero cross-file edges), emits no nodes for `const` items (`GOLDEN_CASES`), and splits cross-language IPC types into unlinked nodes (`GameInfo` exists once per language). When a query comes up empty, fall back to grep before concluding anything.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- In GRAPH_REPORT.md, only the **Surprising Connections** and **Graph Freshness** sections carry actionable signal. Do not re-investigate the god-node, cohesion, or weakly-connected-node sections: they are structural extraction artifacts, already triaged with verdicts and mechanisms in `vault/2026-07-17_graphify-findings-review.md`.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
