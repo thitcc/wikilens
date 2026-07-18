@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-18",
+  "title": "Design System: WikiLens",
+  "extensions": {
+    "colorMeta": {
+      "moonlight-blue": {
+        "role": "primary",
+        "displayName": "Moonlight Blue",
+        "canonical": "#8ab4ff",
+        "tonalRamp": ["#0b1322", "#142647", "#1e3a6d", "#2c5194", "#456fbd", "#6691e0", "#8ab4ff", "#c9dcff"]
+      },
+      "moon-ink": {
+        "role": "neutral",
+        "displayName": "Moon Ink",
+        "canonical": "#e8e8ee",
+        "tonalRamp": ["#141419", "#26262d", "#3a3a42", "#4f4f58", "#67676f", "#84848d", "#b5b5bf", "#e8e8ee"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#9a9aa8",
+        "tonalRamp": ["#131317", "#232329", "#35353d", "#484851", "#5c5c66", "#71717c", "#9a9aa8", "#c9c9d4"]
+      },
+      "smoked-glass": {
+        "role": "neutral",
+        "displayName": "Smoked Glass",
+        "canonical": "rgba(18, 18, 24, 0.92)",
+        "tonalRamp": ["#08080b", "#121218", "#1b1b23", "#26262f", "#34343f", "#4a4a57", "#6b6b7a", "#9c9cab"]
+      },
+      "menu-glass": {
+        "role": "neutral",
+        "displayName": "Menu Glass",
+        "canonical": "rgba(24, 24, 32, 0.97)",
+        "tonalRamp": ["#0a0a0e", "#181820", "#22222c", "#2e2e3a", "#3d3d4b", "#545464", "#757587", "#a5a5b5"]
+      },
+      "veil": {
+        "role": "neutral",
+        "displayName": "Veil",
+        "canonical": "rgba(255, 255, 255, 0.06)",
+        "tonalRamp": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)", "rgba(255,255,255,0.18)", "rgba(255,255,255,0.28)", "rgba(255,255,255,0.45)", "rgba(255,255,255,0.7)"]
+      },
+      "rose-signal": {
+        "role": "error",
+        "displayName": "Rose Signal",
+        "canonical": "#ffb3bd",
+        "tonalRamp": ["#2b0d12", "#4d1620", "#701f2d", "#93303f", "#b64c5a", "#d97785", "#ffb3bd", "#ffd9de"]
+      }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Title", "purpose": "The brand wordmark and strongest text; same 14px as body — weight (600) is the promotion." },
+      "body": { "displayName": "Body", "purpose": "Questions and streamed answers; 1.5 leading, relaxing to 1.55 in the answer." },
+      "status": { "displayName": "Status", "purpose": "Chips, statuses, menu rows, hints — the working size of most controls." },
+      "label": { "displayName": "Label", "purpose": "Uppercase tracked section headings inside menus, badges, metadata." },
+      "code": { "displayName": "Code", "purpose": "The instrument voice: model ids, timings, monograms, inline code." }
+    },
+    "shadows": [
+      { "name": "panel-float", "value": "0 12px 32px rgba(0, 0, 0, 0.32)", "purpose": "Lifts the glass sheet off the game frame; with the 12px backdrop blur and 1px hairline it forms the glass material." },
+      { "name": "menu-float", "value": "0 16px 40px rgba(0, 0, 0, 0.45)", "purpose": "The second altitude: menus standing on the panel. No third shadow exists." }
+    ],
+    "motion": [
+      { "name": "instant-state", "value": "none", "purpose": "State changes (hover, focus, open) apply instantly — the player is mid-game; no transitions, no entrance choreography." },
+      { "name": "debug-shimmer", "value": "debug-shimmer 1.2s ease-in-out infinite (translateX -100% → 250%)", "purpose": "The product's only animation: an indeterminate progress shimmer in the debug window, gated behind prefers-reduced-motion with a static accent-strip fallback." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Glass Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "The single smoked-glass sheet everything lives on — blur, hairline border, panel-float shadow.",
+      "html": "<div class=\"ds-panel\"><div class=\"ds-panel-head\"><span class=\"ds-panel-brand\">WikiLens</span><button class=\"ds-quiet-chip\"><span class=\"ds-tile\">SV</span>Stardew Valley<span class=\"ds-caret\">▾</span></button></div><p class=\"ds-panel-body\">The <strong>Iridium Sprinkler</strong> waters the 24 adjacent tiles every morning.</p></div>",
+      "css": ".ds-panel { background: var(--surface-panel, rgba(18,18,24,0.92)); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: var(--radius-panel, 12px); box-shadow: var(--shadow-panel, 0 12px 32px rgba(0,0,0,0.32)); padding: 14px; display: flex; flex-direction: column; gap: 12px; color: var(--fg, #e8e8ee); font: 400 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 360px; } .ds-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .ds-panel-brand { font-weight: 600; letter-spacing: 0.02em; } .ds-panel-body { margin: 0; line-height: 1.55; } .ds-panel-body strong { color: var(--fg-strong, #fff); } .ds-panel .ds-quiet-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; background: transparent; border: none; border-radius: var(--radius-chip, 5px); color: var(--fg-muted, #9a9aa8); font: inherit; font-size: 13px; cursor: pointer; } .ds-panel .ds-quiet-chip:hover, .ds-panel .ds-quiet-chip:focus-visible { background: var(--surface-control, rgba(255,255,255,0.06)); color: var(--fg, #e8e8ee); outline: none; } .ds-panel .ds-tile { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-raised, rgba(255,255,255,0.08)); border-radius: var(--radius-chip, 5px); font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 10px; letter-spacing: 0.02em; } .ds-panel .ds-caret { font-size: 9px; opacity: 0.7; }"
+    },
+    {
+      "name": "Quiet Chip",
+      "kind": "button",
+      "refersTo": "quiet-chip",
+      "description": "The system's button: bare muted ink at rest, veil fill + ink promotion on hover/focus/open.",
+      "html": "<div class=\"ds-bed\"><button class=\"ds-chip\">anthropic · claude-haiku-4-5 <span class=\"ds-chip-caret\">▾</span></button><button class=\"ds-chip ds-chip--open\">open state</button><button class=\"ds-chip\" disabled>disabled</button></div>",
+      "css": ".ds-bed { display: inline-flex; gap: 8px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; background: transparent; border: none; border-radius: 5px; color: #9a9aa8; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; } .ds-chip:hover:not(:disabled), .ds-chip:focus-visible, .ds-chip--open { background: rgba(255,255,255,0.06); color: #e8e8ee; outline: none; } .ds-chip:disabled { opacity: 0.6; cursor: default; } .ds-chip-caret { font-size: 9px; opacity: 0.7; }"
+    },
+    {
+      "name": "Prompt Input",
+      "kind": "input",
+      "refersTo": "prompt-input",
+      "description": "The ask field: veil fill, hairline border, Moonlight Blue border on focus — no outline, no glow.",
+      "html": "<div class=\"ds-bed-block\"><textarea class=\"ds-prompt\" rows=\"2\" placeholder=\"Ask about Stardew Valley…\"></textarea></div>",
+      "css": ".ds-bed-block { padding: 12px; background: #16161d; border-radius: 8px; } .ds-prompt { width: 100%; resize: none; padding: 10px 12px; color: #e8e8ee; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; font: 400 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; } .ds-prompt::placeholder { color: #9a9aa8; } .ds-prompt:focus { outline: none; border-color: #8ab4ff; }"
+    },
+    {
+      "name": "Owned Menu",
+      "kind": "nav",
+      "refersTo": "menu-card",
+      "description": "Every picker is this owned card on near-opaque Menu Glass: filter, uppercase group header, rows with an accent selection check.",
+      "html": "<div class=\"ds-menu\"><div class=\"ds-menu-search\"><input placeholder=\"Filter models…\" /></div><div class=\"ds-menu-list\"><button class=\"ds-group\"><span class=\"ds-group-caret\">▾</span>Anthropic</button><button class=\"ds-row ds-row--selected\"><span class=\"ds-row-name\">claude-haiku-4-5</span><span class=\"ds-row-side\"><span class=\"ds-badge ds-badge--accent\">Image</span><span class=\"ds-check\">✓</span></span></button><button class=\"ds-row\"><span class=\"ds-row-name\">claude-sonnet-5</span><span class=\"ds-row-side\"><span class=\"ds-badge ds-badge--accent\">Image</span><span class=\"ds-check\">✓</span></span></button><button class=\"ds-action\">Add a game…</button></div></div>",
+      "css": ".ds-menu { display: flex; flex-direction: column; width: 300px; background: rgba(24,24,32,0.97); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.45); overflow: hidden; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #e8e8ee; } .ds-menu-search { padding: 8px 8px 0; } .ds-menu-search input { width: 100%; padding: 5px 8px; color: #e8e8ee; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; font: inherit; box-sizing: border-box; } .ds-menu-search input::placeholder { color: #9a9aa8; } .ds-menu-search input:focus { outline: none; border-color: #8ab4ff; } .ds-menu-list { display: flex; flex-direction: column; padding: 4px 6px 6px; } .ds-group { display: flex; align-items: center; gap: 6px; padding: 6px; background: none; border: none; border-radius: 5px; color: #9a9aa8; font-family: inherit; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; text-align: left; cursor: pointer; } .ds-group:hover { color: #e8e8ee; } .ds-group-caret { font-size: 9px; } .ds-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; background: none; border: none; border-radius: 8px; color: #e8e8ee; font: inherit; text-align: left; cursor: pointer; } .ds-row:hover { background: rgba(255,255,255,0.06); } .ds-row-side { display: inline-flex; align-items: center; gap: 6px; } .ds-check { color: #8ab4ff; opacity: 0; } .ds-row--selected .ds-check { opacity: 1; } .ds-badge { padding: 1px 5px; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; background: rgba(255,255,255,0.08); color: #9a9aa8; font-size: 12px; line-height: 1; } .ds-badge--accent { color: #8ab4ff; } .ds-action { padding: 5px 8px; background: none; border: none; border-radius: 8px; color: #8ab4ff; font: inherit; text-align: left; cursor: pointer; } .ds-action:hover { background: rgba(255,255,255,0.06); }"
+    },
+    {
+      "name": "Capability Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "The capability pill: raised veil, hairline, neutral by default so it never competes with the accent check.",
+      "html": "<div class=\"ds-bed\"><span class=\"ds-pill\">offline list</span><span class=\"ds-pill ds-pill--accent\">Image</span></div>",
+      "css": ".ds-bed { display: inline-flex; gap: 8px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-pill { padding: 1px 5px; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; background: rgba(255,255,255,0.08); color: #9a9aa8; font: 400 12px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; white-space: nowrap; } .ds-pill--accent { color: #8ab4ff; }"
+    },
+    {
+      "name": "Error Box",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "The failure voice: Rose Signal ink on Rose Wash with a Rose Line border — the only non-blue color in the system.",
+      "html": "<div class=\"ds-bed-block\"><div class=\"ds-error\">DEEPSEEK_API_KEY is not set. Add it to .env or your OS environment.</div></div>",
+      "css": ".ds-bed-block { padding: 12px; background: #16161d; border-radius: 8px; } .ds-error { padding: 10px 12px; color: #ffb3bd; background: rgba(120,30,40,0.35); border: 1px solid rgba(255,120,140,0.25); border-radius: 10px; font: 400 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; white-space: pre-wrap; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field Guide",
+    "overview": "WikiLens is a field guide flipped open mid-hike: you summon it over the running game, read one terse, sourced entry, and pocket it again in seconds. The whole visual system serves that gesture. The surface is a single sheet of smoked glass (near-opaque so text survives any game backdrop) docked at the screen's right edge, hugging its content; everything on it is ink first and chrome never. The interface's personality — quiet, precise, instant — comes from what it refuses to do: no decoration, no entrance choreography, no color that isn't information.\n\nThe system explicitly rejects Overwolf-style gamer overlay bloat (neon RGB, widget clusters, aggressive branding) and generic AI chatbot styling (chat bubbles, bot avatars, sparkle-emoji \"AI\" decoration, typing indicators). The game is the main character; WikiLens borrows the screen and gives it back.",
+    "keyCharacteristics": [
+      "One smoked-glass sheet over the game; content-hugging, right-docked, gone when dismissed.",
+      "One accent hue (Moonlight Blue) that only ever marks the interactive, the selected, and the focused; a rose trio that only ever marks failure.",
+      "A 14px type ceiling: hierarchy by weight and ink strength, never by size.",
+      "Controls are quiet until touched — bare ink at rest, a faint veil on hover.",
+      "Two altitudes exactly: the panel above the game, menus above the panel.",
+      "State changes are instant; the only animation in the product is a reduced-motion-gated progress shimmer in the debug window."
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Moonlight Blue is the interface's only voice of color. If an element is not interactive, selected, or focused, it stays ink. The rose trio speaks only on failure. There is no third hue, and there are no gradients.", "section": "colors" },
+      { "name": "The Fourteen-Pixel Ceiling", "body": "14px is the largest type in the product. Nothing displays, headlines, or shouts; hierarchy is carried by weight, ink strength (muted → ink → strong), tracking, and case. If a design wants a bigger font, it wants attention the game should keep.", "section": "typography" },
+      { "name": "The Two Altitudes Rule", "body": "Exactly two things float: the panel above the game, and menus above the panel. There is no third level — no raised cards, no hovering toasts, no shadowed buttons. If a new element wants a shadow, it is claiming to be a window, and it almost certainly isn't one.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep html, body transparent in every window's stylesheet — the webview paints a black rectangle without it.",
+      "Do draw controls as bare ink at rest and reveal the veil fill only on hover/focus/open (\"quiet until touched\").",
+      "Do reserve Moonlight Blue for the interactive, the selected, and the focused (the One Signal Rule) — answers and data stay ink.",
+      "Do build every picker as an owned menu on Menu Glass, and keep menus direct children of .panel so .content's overflow can't clip them.",
+      "Do keep state changes instant, and gate any animation behind prefers-reduced-motion (the debug shimmer is the template).",
+      "Do retune paired constants together — styles.css margins ↔ window.rs floats, --menu-clearance* ↔ menuPlacement.ts — whenever geometry tokens change."
+    ],
+    "donts": [
+      "Don't ship Overwolf-style gamer overlay bloat: neon RGB, widget clusters, ads, or aggressive branding competing with the game for attention.",
+      "Don't ship generic AI chatbot styling: chat bubbles, bot avatars, sparkle-emoji \"AI\" decoration, or typing indicators.",
+      "Don't reintroduce a native <select> (or any OS-drawn popup) for anything shown over the game.",
+      "Don't add a third elevation — no shadowed buttons, raised cards, or toasts (the Two Altitudes Rule).",
+      "Don't introduce a new hue or gradient; the palette is Moonlight Blue, the inks, and the rose error trio.",
+      "Don't scale type past 14px for emphasis — promote weight or ink instead (the Fourteen-Pixel Ceiling).",
+      "Don't add entrance choreography or animate the answer stream; the player is mid-game and the audit test is: if you notice the panel while not asking it something, it's too loud."
+    ]
+  }
+}

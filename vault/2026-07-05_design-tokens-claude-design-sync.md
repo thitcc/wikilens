@@ -3,9 +3,9 @@ title: Design tokens and a Claude Design sync loop for the overlay UI
 type: plan
 status: done
 created: 2026-07-05
-updated: 2026-07-14
+updated: 2026-07-18
 tags: [frontend, overlay]
-related: ["[[2026-07-05_model-picker-menu]]", "[[2026-07-05_game-picker-owned-menu]]"]
+related: ["[[2026-07-05_model-picker-menu]]", "[[2026-07-05_game-picker-owned-menu]]", "[[2026-07-18_impeccable-design-context]]"]
 commit: [65b7f4d, c59fda6, 2ae9c03, fb1fe67]
 ---
 

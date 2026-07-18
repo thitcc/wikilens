@@ -51,3 +51,9 @@ graphify-out/
 
 # Per-machine Claude Code config (graphify hook-guard uses an absolute path).
 .claude/settings.local.json
+
+# impeccable design-context: track the tokens (design.json, live/config.json);
+# critique/ snapshots and live-session journals are per-session working notes,
+# never committed.
+.impeccable/critique/
+.impeccable/live/sessions/
