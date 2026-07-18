@@ -1,15 +1,21 @@
-//! The visual debug window: an always-on-top, opaque tool window rendering
-//! the `debug://…` event stream (see `debug.rs`) as live per-ask cards.
+//! The visual debug window: an always-on-top glass panel — same visual
+//! language as the overlay — rendering the `debug://…` event stream (see
+//! `debug.rs`) as live per-ask cards. Undecorated and transparent; the page
+//! draws the glass and its drop shadow, and its header is a
+//! `data-tauri-drag-region` handle (needs `core:window:allow-start-dragging`
+//! in `capabilities/debug.json` — without it drag silently no-ops).
 //!
 //! Exists only when `WIKILENS_DEBUG` was truthy at startup — `lib.rs` decides,
 //! and env can't change mid-process, so window existence always agrees with
 //! the per-ask flag read. It must never steal keyboard focus from the game:
 //! `focusable(false)` maps to `WS_EX_NOACTIVATE` on Windows, which covers
-//! creation, clicks, AND re-shows — tao's `show()` issues an activating
-//! `SW_SHOW`, so `focused(false)` alone would only cover creation. Closing is
-//! the app-global CloseRequested handler (hides; the hidden webview keeps
-//! receiving events, so history accumulates); the tray's "Show debug panel"
-//! item re-shows it.
+//! creation, clicks, drags, AND re-shows — tao's `show()` issues an
+//! activating `SW_SHOW`, so `focused(false)` alone would only cover creation
+//! (tao's drag loop is `WM_NCLBUTTONDOWN`/`HTCAPTION`, no activation needed).
+//! Hiding: the overlay footer's Debug chip (`toggle_debug_window` command),
+//! the tray's "Show debug panel", or the app-global CloseRequested handler
+//! (Alt+F4 hides; the hidden webview keeps receiving events, so history
+//! accumulates).
 
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
@@ -21,25 +27,41 @@ use crate::debug::DebugSink;
 /// Window label; must match `capabilities/debug.json`.
 pub const LABEL: &str = "debug";
 
-/// Logical inner size at creation; user-resizable afterwards.
-const WIDTH: f64 = 480.0;
-const HEIGHT: f64 = 640.0;
-const MIN_WIDTH: f64 = 360.0;
-const MIN_HEIGHT: f64 = 420.0;
+/// Logical size of the visible glass panel; user-resizable afterwards.
+const PANEL_W: f64 = 480.0;
+const PANEL_H: f64 = 640.0;
+const MIN_PANEL_W: f64 = 360.0;
+const MIN_PANEL_H: f64 = 420.0;
 
-/// Logical gap from the monitor's top-left corner. The overlay docks
-/// top-right, so the two can never overlap.
-const GAP: u32 = 12;
+/// Transparent apron around the glass so the CSS drop shadow (`--shadow-panel:
+/// 0 12px 32px`) renders on every side — a draggable window has no screen
+/// edge to hide a clipped shadow behind. Must match the `.debug-panel` margin
+/// in src/debug/styles.css (the window.rs ↔ styles.css pairing idiom).
+const APRON_TOP: f64 = 20.0;
+const APRON_RIGHT: f64 = 32.0;
+const APRON_BOTTOM: f64 = 44.0;
+const APRON_LEFT: f64 = 32.0;
 
-/// Create the debug window: top-left, opaque, decorated, always-on-top,
-/// never-activating. Called once from `.setup()` when the flag is on.
+/// Create the debug window: glass at the monitor's top-left (the apron is the
+/// visual gap), always-on-top, never-activating. Called once from `.setup()`
+/// when the flag is on.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("debug.html".into()))
         .title("WikiLens Debug")
-        .inner_size(WIDTH, HEIGHT)
-        .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
+        .inner_size(PANEL_W + APRON_LEFT + APRON_RIGHT, PANEL_H + APRON_TOP + APRON_BOTTOM)
+        .min_inner_size(
+            MIN_PANEL_W + APRON_LEFT + APRON_RIGHT,
+            MIN_PANEL_H + APRON_TOP + APRON_BOTTOM,
+        )
         .resizable(true)
-        .decorations(true)
+        // Double-clicking a drag region asks for a maximize toggle; a
+        // maximized glass sheet would cover the whole game, so forbid it
+        // structurally (the capability doesn't grant the command either).
+        .maximizable(false)
+        .decorations(false)
+        .transparent(true)
+        // The CSS box-shadow draws the shadow, like the overlay.
+        .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .focused(false)
@@ -51,11 +73,24 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Re-show after the user closed (= hid) the window — the tray item's action.
+/// Re-show after the user hid the window — the tray item's action.
 /// Deliberately no `set_focus`: the window is non-activating by design.
 pub fn show(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(LABEL) {
         let _ = win.show();
+    }
+}
+
+/// Hide if visible, else re-show — the overlay footer's Debug chip
+/// (`toggle_debug_window`). Mirrors `window::toggle_overlay`, minus the
+/// focus/emit steps: this window never takes focus and needs no re-arm event.
+pub fn toggle(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(LABEL) {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+        } else {
+            show(app);
+        }
     }
 }
 
@@ -70,9 +105,10 @@ pub fn sink(app: &AppHandle) -> Option<DebugSink> {
     }))
 }
 
-/// Pin to the top-left of the window's monitor, mirroring
-/// `window::position_top_right`'s DPI discipline: physical pixels throughout,
-/// monitor origin plus the scaled logical gap.
+/// Pin to the top-left corner of the window's monitor, mirroring
+/// `window::position_top_right`'s DPI discipline (physical pixels, monitor
+/// origin). No extra gap: the transparent apron already keeps the glass off
+/// the corner — one geometry system, not two.
 fn position_top_left(win: &WebviewWindow) -> tauri::Result<()> {
     let monitor = match win.current_monitor()? {
         Some(m) => m,
@@ -82,7 +118,6 @@ fn position_top_left(win: &WebviewWindow) -> tauri::Result<()> {
         },
     };
     let origin = monitor.position();
-    let gap = (GAP as f64 * monitor.scale_factor()).round() as i32;
-    win.set_position(PhysicalPosition::new(origin.x + gap, origin.y + gap))?;
+    win.set_position(PhysicalPosition::new(origin.x, origin.y))?;
     Ok(())
 }

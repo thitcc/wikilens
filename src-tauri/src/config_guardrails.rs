@@ -130,11 +130,12 @@ fn opener_permission_keeps_its_url_scope() {
     assert!(urls.contains("http://*"), "missing http://* scope: {urls:?}");
 }
 
-/// The debug window is a listen-only surface: it renders the `debug://…`
-/// event stream and invokes no commands, so its capability must stay exactly
-/// the event-loop minimum — strictly smaller than capture's.
+/// The debug page renders the `debug://…` event stream and invokes no app
+/// commands; its only command IPC is the core `start_dragging` the
+/// `data-tauri-drag-region` attribute fires (the window is undecorated and
+/// draggable). Pin exactly that — events + drag, nothing more.
 #[test]
-fn debug_capability_stays_listen_only() {
+fn debug_capability_grants_only_events_and_drag() {
     let cap = read_json(&manifest_dir().join("capabilities").join("debug.json"));
     let windows: Vec<&str> = cap["windows"]
         .as_array()
@@ -151,8 +152,8 @@ fn debug_capability_stays_listen_only() {
         .collect();
     assert_eq!(
         perms,
-        BTreeSet::from(["core:default", "core:event:default"]),
-        "the debug window invokes no commands — keep its capability listen-only"
+        BTreeSet::from(["core:default", "core:event:default", "core:window:allow-start-dragging"]),
+        "the debug page invokes no app commands — events + the drag-region's start_dragging only"
     );
 }
 

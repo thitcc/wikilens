@@ -60,21 +60,26 @@ export default function DebugApp() {
   }, []);
 
   return (
-    <main className="debug-app">
-      <header className="debug-header">
+    <main className="debug-panel">
+      {/* "deep": the whole header subtree drags the undecorated window
+          (clickable elements would still block). Needs the start-dragging
+          permission in capabilities/debug.json — silently inert without it. */}
+      <header className="debug-header" data-tauri-drag-region="deep">
         <span className="debug-brand">WikiLens debug</span>
         <span className="debug-count">
           {state.asks.length} ask{state.asks.length === 1 ? "" : "s"}
         </span>
       </header>
-      {state.asks.length === 0 ? (
-        <p className="debug-empty">
-          Waiting for the first ask… (asks appear here live while
-          WIKILENS_DEBUG is on)
-        </p>
-      ) : (
-        state.asks.map((ask) => <AskCard key={ask.askId} ask={ask} />)
-      )}
+      <div className="debug-scroll">
+        {state.asks.length === 0 ? (
+          <p className="debug-empty">
+            Waiting for the first ask… (asks appear here live while
+            WIKILENS_DEBUG is on)
+          </p>
+        ) : (
+          state.asks.map((ask) => <AskCard key={ask.askId} ask={ask} />)
+        )}
+      </div>
     </main>
   );
 }

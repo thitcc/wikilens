@@ -55,6 +55,17 @@ export function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
 
+/** Whether the debug window exists this session (WIKILENS_DEBUG at startup) —
+ * gates the footer's Debug chip. */
+export function debugAvailable(): Promise<boolean> {
+  return invoke<boolean>("debug_available");
+}
+
+/** Show/hide the debug window (the footer Debug chip's action). */
+export function toggleDebugWindow(): Promise<void> {
+  return invoke<void>("toggle_debug_window");
+}
+
 /** Ask a question about a game using a chosen provider and model; resolves
  * with the answer and sources. A blank `model` falls back to the provider's
  * default Rust-side. `imageId` optionally attaches a captured screenshot (from

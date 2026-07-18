@@ -65,17 +65,25 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 ### 8. Debug window (`WIKILENS_DEBUG=1`)
 
-- [ ] With the flag set, an opaque "WikiLens Debug" window opens top-left at
-      launch, above the borderless game. Without the flag: no window, and no
-      "Show debug panel" tray item.
+- [ ] With the flag set, a glass "WikiLens debug" panel opens at the
+      monitor's top-left corner at launch, above the borderless game — no
+      black rectangle behind it, drop shadow visible on all sides while it
+      floats mid-screen (transparency regressions apply here too). Without
+      the flag: no window, no "Show debug panel" tray item, and no Debug
+      chip in the overlay footer.
+- [ ] Dragging by the panel's header moves the window **without stealing
+      keyboard focus from the game** (keep typing in the game right after a
+      drag). Resizing from the invisible window edges (just outside the
+      glass) still works.
+- [ ] The overlay footer's **Debug** chip hides the window; clicking it again
+      re-shows it — both without activating it — and it works mid-ask.
 - [ ] An ask streams in live: the provisional row's bar animates, completed
       phases settle into relative-width bars, the outcome badge lands — and
       the stderr table still prints, unchanged.
 - [ ] Clicking, scrolling, and expanding groups in the debug window never
-      steals keyboard focus from the game (keep typing in the game while
-      interacting with it).
-- [ ] Closing the window hides it; tray → "Show debug panel" re-shows it
-      **without activating it**, with the session history intact.
+      steals keyboard focus from the game.
+- [ ] Alt+F4 / tray → "Show debug panel" round-trip keeps the session
+      history intact.
 - [ ] Drag it to the >100% scale monitor: text renders sharp and the window
       geometry stays sane.
 

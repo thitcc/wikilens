@@ -42,7 +42,7 @@ wikilens/
 │       └── SourceList.tsx        # wiki source links (open in system browser)
 └── src-tauri/                    # Backend (Rust) — run cargo commands here
     ├── tauri.conf.json           # windows "overlay" (right-dock) + "capture" (region-select), both transparent; CSP
-    ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only) + debug.json (debug — listen-only)
+    ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only) + debug.json (debug — events + start-dragging only)
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
@@ -51,14 +51,14 @@ wikilens/
         ├── hotkey.rs             # global shortcuts: Shift+C toggle + Ctrl+Shift+C capture (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture
+        ├── commands.rs           # #[tauri::command] ask / hide_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
-        ├── debug_window.rs       # visual debug window (flag-gated): create/show + the emit_to sink; top-left, never activates
+        ├── debug_window.rs       # visual debug window (flag-gated): glass, draggable, never activates; create/show/toggle + the emit_to sink
         ├── config_guardrails.rs  # test-only: parses the shipped config/capability files, pins the security invariants
         ├── test_support.rs       # test-only: shared wiremock fixtures + proptest strategies
         └── wiki/{mod,games,user,probe,search,fetch,html,wikitext,titles}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext; titles = per-game typo-recovery index
@@ -169,10 +169,14 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
   exits still report). The same flag also opens the **visual debug window**
-  at startup (`debug_window.rs` → `src/debug/`): live per-ask cards fed by the
-  `debug://…` events, with progress bars, collapsible details, and a ~25-ask
-  session history; closing hides it, the tray's "Show debug panel" re-shows
-  it. The table stays byte-identical — the window is additive. Independent of
+  at startup (`debug_window.rs` → `src/debug/`): a glass panel like the
+  overlay, draggable by its header, with live per-ask cards fed by the
+  `debug://…` events — progress bars, collapsible details, ~25-ask session
+  history. Toggle it from the overlay footer's Debug chip
+  (`toggle_debug_window`; the chip renders only when `debug_available` says
+  the window exists) or the tray's "Show debug panel"; closing/hiding never
+  loses history. The table stays byte-identical — the window is additive.
+  Independent of
   `WIKILENS_TRACE_RETRIEVAL`. The five
   retrieval-tuning env vars (rewrite toggle/model/provider, title index, trace)
   are documented in README's "Retrieval tuning (advanced)" table — that table is
@@ -216,8 +220,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 ## 5. Gotchas
 
-- `transparent: true` needs `background: transparent` on `html, body` in
-  `styles.css`, or the window renders as a black rectangle.
+- `transparent: true` needs `background: transparent` on `html, body`, or the
+  window renders as a black rectangle — in `styles.css` for the overlay AND in
+  `src/debug/styles.css` for the debug window (each bundle has its own sheet).
 - Position with **monitor offset + scale factor** (see `window::position_top_right`)
   — required for correct placement on multi-monitor / high-DPI setups.
 - The floating panel's geometry is **split across two runtimes**: `window.rs`
@@ -303,6 +308,14 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   to a nonexistent label is a **silent no-op** — `debug_window::sink` returns
   `None` when the window is absent, so don't bypass it with a raw
   `emit_to("debug", …)` and expect an error.
+- `data-tauri-drag-region` needs `core:window:allow-start-dragging` in that
+  window's capability — without it the attribute compiles and renders fine
+  but drag **silently no-ops** (ACL rejection in the webview console only).
+  Bare/`"true"` drags only when the mousedown target IS the attributed
+  element; `"deep"` (the debug header) drags the whole subtree while clickable
+  children still block. Its double-click maximize is denied by both the
+  capability and `maximizable(false)` — a maximized glass sheet would cover
+  the game.
 
 ## 6. Roadmap (do not implement unless asked)
 

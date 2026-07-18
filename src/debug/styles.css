@@ -1,9 +1,9 @@
 /* Debug window stylesheet — its own sheet on purpose: the overlay's
  * styles.css is pixel-paired with window.rs constants and stays byte-
  * untouched. Token VALUES below are copied from src/styles.css :root
- * (revisit as a shared tokens.css if a fourth page ever appears); the one
- * new token is --surface-window, opaque — this window is a plain decorated
- * tool window, not glass. */
+ * (revisit as a shared tokens.css if a fourth page ever appears). The window
+ * is glass like the overlay: transparent body, .debug-panel draws the
+ * surface, blur, border, and drop shadow. */
 
 :root {
   /* Ink (copied) */
@@ -12,8 +12,10 @@
   --fg-strong: #fff;
   --accent: #8ab4ff;
 
-  /* Surfaces (copied) + the opaque window base (new) */
-  --surface-window: #16161d;
+  /* Glass surfaces (copied) */
+  --surface-panel: rgba(18, 18, 24, 0.92);
+  --blur-panel: 12px;
+  --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.32);
   --surface-control: rgba(255, 255, 255, 0.06);
   --surface-inset: rgba(0, 0, 0, 0.3);
   --border: rgba(255, 255, 255, 0.08);
@@ -54,23 +56,69 @@
   box-sizing: border-box;
 }
 
+/* Transparent background is REQUIRED by the window's `transparent(true)`;
+   without it the webview paints a black rectangle (same gotcha as the
+   overlay). */
 html,
 body {
   margin: 0;
-  background: var(--surface-window);
+  padding: 0;
+  background: transparent;
 }
 
-.debug-app {
+body {
+  height: 100vh;
+  display: flex;
+}
+
+#root {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The glass panel — the overlay's .panel recipe. The margin is the
+   transparent shadow apron and must match the APRON_* constants in
+   src-tauri/src/debug_window.rs (window.rs ↔ styles.css pairing idiom):
+   full shadow extent on every side, since a draggable window has no screen
+   edge to hide a clipped shadow behind. */
+.debug-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-10);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 20px 32px 44px 32px;
   padding: var(--space-12);
+  gap: var(--space-10);
+  background: var(--surface-panel);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
+  /* Keeps the ask list's scrollbar inside the rounded corner. */
+  overflow: hidden;
 }
 
+/* The one drag handle of the undecorated window (data-tauri-drag-region). */
 .debug-header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  padding: var(--space-4) var(--space-2);
+  user-select: none;
+  cursor: grab;
+}
+
+/* The scrolling ask list; the header stays put while history scrolls. */
+.debug-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .debug-brand {

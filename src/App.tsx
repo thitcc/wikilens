@@ -3,6 +3,7 @@ import {
   ask,
   beginCapture,
   clearCapture,
+  debugAvailable,
   hideOverlay,
   listGames,
   listModels,
@@ -13,6 +14,7 @@ import {
   onCaptureError,
   onCaptureHotkey,
   onOverlayShown,
+  toggleDebugWindow,
 } from "./api";
 import type {
   AskStatus,
@@ -107,6 +109,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
+  const [debugChip, setDebugChip] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
@@ -146,6 +149,21 @@ function App() {
         });
       })
       .catch((e) => setError(String(e)));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // The footer Debug chip exists only when the debug window does
+  // (WIKILENS_DEBUG at startup). A failed probe just means no chip — never
+  // an error box.
+  useEffect(() => {
+    let active = true;
+    debugAvailable()
+      .then((available) => {
+        if (active) setDebugChip(available);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -465,6 +483,19 @@ function App() {
           />
         )}
         <div className="capture-cluster">
+          {debugChip && (
+            <button
+              type="button"
+              className="quiet-chip debug-chip"
+              // Never disabled while busy: mid-ask is exactly when the debug
+              // window is worth opening, and the command only touches window
+              // visibility.
+              onClick={() => void toggleDebugWindow().catch(() => {})}
+              title="Show or hide the debug panel"
+            >
+              <span className="chip-name">Debug</span>
+            </button>
+          )}
           {!vision && <span className="chip-hint">text-only model</span>}
           <button
             type="button"

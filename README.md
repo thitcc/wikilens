@@ -102,12 +102,13 @@ resets it.
 
 Set `WIKILENS_DEBUG=1` to watch what each ask costs. You get two views of the
 same data: a per-ask table on stderr (phase timings, models, token counts,
-queries, page titles + char counts — printed even when an ask fails), and a
-small **always-on-top debug window** that opens at the top-left with live
-progress bars per phase, expandable details, and a history of the session's
-asks. The window never takes keyboard focus from your game; closing it just
-hides it (the tray's "Show debug panel" brings it back). Neither view ever
-shows wiki text or API keys.
+queries, page titles + char counts — printed even when an ask fails), and an
+**always-on-top glass debug panel** — same look as the overlay — that opens
+at the top-left with live progress bars per phase, expandable details, and a
+history of the session's asks. Drag it anywhere by its header; show or hide
+it with the **Debug** chip in the overlay's footer (or the tray's "Show debug
+panel"). It never takes keyboard focus from your game, and hiding it keeps
+the history. Neither view ever shows wiki text or API keys.
 
 ## Commands
 

@@ -253,6 +253,21 @@ pub fn hide_overlay(app: AppHandle) {
     window::hide_overlay(&app);
 }
 
+/// Whether the visual debug window exists this session (`WIKILENS_DEBUG` was
+/// truthy at startup) — the overlay renders its footer Debug chip only then.
+/// Reveals a single bool about the local environment, never key material.
+#[tauri::command]
+pub fn debug_available() -> bool {
+    crate::debug::debug_enabled()
+}
+
+/// Show/hide the debug window (the overlay footer's Debug chip). A no-op when
+/// the window doesn't exist (flag off — the chip isn't rendered then anyway).
+#[tauri::command]
+pub fn toggle_debug_window(app: AppHandle) {
+    crate::debug_window::toggle(&app);
+}
+
 /// Start a region capture: hide the panel, freeze the monitor under the cursor,
 /// and show the capture overlay. Rejected while an `ask` is running — attaching
 /// a new image mid-request would race the attachment slot.

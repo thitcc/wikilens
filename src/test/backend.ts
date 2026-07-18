@@ -117,6 +117,10 @@ export function installBackend(
       list_models: () => MODELS,
       ask: () => ASK_OK,
       hide_overlay: () => undefined,
+      // Default false keeps the footer Debug chip out of unrelated tests;
+      // the Debug-chip suite overrides it to true.
+      debug_available: () => false,
+      toggle_debug_window: () => undefined,
       begin_capture: () => undefined,
       clear_capture: () => undefined,
       suggest_wikis: () => CANDIDATES,
