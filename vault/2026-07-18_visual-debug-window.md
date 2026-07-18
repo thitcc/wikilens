@@ -6,7 +6,7 @@ created: 2026-07-18
 updated: 2026-07-18
 tags: [frontend, tauri, rust]
 related: ["[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_concurrent-candidate-searches-and-status]]"]
-commit: [683fc23, b2d4797]
+commit: [683fc23, b2d4797, 3368d0e]
 ---
 
 # Visual debug window for the ask pipeline
@@ -193,3 +193,10 @@ requests a maximize toggle, denied both by the capability and `maximizable(false
   tests), clippy `-D warnings`, 230/230 offline cargo tests, 3-page build. Drag-under-
   `WS_EX_NOACTIVATE` and invisible-edge resize are the remaining empirical checks —
   smoke-checklist item 8 rewritten for the glass window.
+- 2026-07-18 — start-hidden fix (user feedback; shipped as 3368d0e): the window was
+  created visible, so with the flag set it appeared at launch while the overlay stayed
+  hidden — backwards. `create()` now passes `visible(false)`; the window opens only via
+  the Debug chip or tray, matching the overlay's start-hidden behavior. The hidden
+  webview still loads and receives `debug://` events (the overlay's own hidden-listener
+  mechanism), so pre-first-show asks land in the history. Smoke item 8 + README +
+  CLAUDE.md reworded. Gates re-run green (tsc, 41/41 Vitest, clippy, 230/230 cargo).
