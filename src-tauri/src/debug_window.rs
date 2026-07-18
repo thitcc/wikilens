@@ -7,7 +7,12 @@
 //!
 //! Exists only when `WIKILENS_DEBUG` was truthy at startup — `lib.rs` decides,
 //! and env can't change mid-process, so window existence always agrees with
-//! the per-ask flag read. It must never steal keyboard focus from the game:
+//! the per-ask flag read. Created **hidden**, like the overlay: nothing shows
+//! at launch until the user opens it (Debug chip / tray). The hidden webview
+//! still loads and receives `debug://…` events, so asks run before the first
+//! show are already in the history — the same mechanism that lets the hidden
+//! overlay listen for hotkey events.
+//! It must never steal keyboard focus from the game:
 //! `focusable(false)` maps to `WS_EX_NOACTIVATE` on Windows, which covers
 //! creation, clicks, drags, AND re-shows — tao's `show()` issues an
 //! activating `SW_SHOW`, so `focused(false)` alone would only cover creation
@@ -43,8 +48,8 @@ const APRON_BOTTOM: f64 = 44.0;
 const APRON_LEFT: f64 = 32.0;
 
 /// Create the debug window: glass at the monitor's top-left (the apron is the
-/// visual gap), always-on-top, never-activating. Called once from `.setup()`
-/// when the flag is on.
+/// visual gap), always-on-top, never-activating, and hidden until the Debug
+/// chip or tray shows it. Called once from `.setup()` when the flag is on.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let win = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("debug.html".into()))
         .title("WikiLens Debug")
@@ -64,6 +69,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)
+        // Start hidden, like the overlay: the window opens only via the Debug
+        // chip or tray item. The webview loads anyway, so events accumulate.
+        .visible(false)
         .focused(false)
         .focusable(false)
         .build()?;

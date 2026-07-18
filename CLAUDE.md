@@ -168,14 +168,15 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
-  exits still report). The same flag also opens the **visual debug window**
-  at startup (`debug_window.rs` → `src/debug/`): a glass panel like the
-  overlay, draggable by its header, with live per-ask cards fed by the
+  exits still report). The same flag also creates the **visual debug window**
+  (`debug_window.rs` → `src/debug/`): a glass panel like the overlay,
+  draggable by its header, with live per-ask cards fed by the
   `debug://…` events — progress bars, collapsible details, ~25-ask session
-  history. Toggle it from the overlay footer's Debug chip
-  (`toggle_debug_window`; the chip renders only when `debug_available` says
-  the window exists) or the tray's "Show debug panel"; closing/hiding never
-  loses history. The table stays byte-identical — the window is additive.
+  history. It starts **hidden**, matching the overlay: open it from the
+  overlay footer's Debug chip (`toggle_debug_window`; the chip renders only
+  when `debug_available` says the window exists) or the tray's "Show debug
+  panel"; closing/hiding never loses history, and the hidden webview keeps
+  recording asks run before the first show. The table stays byte-identical — the window is additive.
   Independent of
   `WIKILENS_TRACE_RETRIEVAL`. The five
   retrieval-tuning env vars (rewrite toggle/model/provider, title index, trace)
