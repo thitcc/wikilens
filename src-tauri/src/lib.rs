@@ -8,6 +8,7 @@ mod commands;
 #[cfg(test)]
 mod config_guardrails;
 mod debug;
+mod debug_window;
 mod error;
 mod hotkey;
 mod http;
@@ -61,6 +62,12 @@ pub fn run() {
             let handle = app.handle();
             tray::create(handle)?;
             hotkey::register(handle);
+            // Visual debug window — exists only when WIKILENS_DEBUG is truthy
+            // at startup (env can't change mid-process, so existence always
+            // agrees with the per-ask flag read in debug.rs).
+            if debug::debug_enabled() {
+                debug_window::create(handle)?;
+            }
             // User-added wikis, persisted in the app-data dir. Loaded here
             // (not in AppState) because the path resolver needs the handle.
             let data_dir = app.path().app_data_dir()?;
@@ -83,6 +90,8 @@ pub fn run() {
             commands::list_providers,
             commands::list_models,
             commands::hide_overlay,
+            commands::debug_available,
+            commands::toggle_debug_window,
             commands::begin_capture,
             commands::finish_capture,
             commands::cancel_capture,

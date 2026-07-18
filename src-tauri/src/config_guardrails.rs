@@ -130,6 +130,33 @@ fn opener_permission_keeps_its_url_scope() {
     assert!(urls.contains("http://*"), "missing http://* scope: {urls:?}");
 }
 
+/// The debug page renders the `debug://…` event stream and invokes no app
+/// commands; its only command IPC is the core `start_dragging` the
+/// `data-tauri-drag-region` attribute fires (the window is undecorated and
+/// draggable). Pin exactly that — events + drag, nothing more.
+#[test]
+fn debug_capability_grants_only_events_and_drag() {
+    let cap = read_json(&manifest_dir().join("capabilities").join("debug.json"));
+    let windows: Vec<&str> = cap["windows"]
+        .as_array()
+        .expect("windows array")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(windows, ["debug"], "debug capability must scope only the debug window");
+    let perms: BTreeSet<&str> = cap["permissions"]
+        .as_array()
+        .expect("permissions array")
+        .iter()
+        .map(permission_identifier)
+        .collect();
+    assert_eq!(
+        perms,
+        BTreeSet::from(["core:default", "core:event:default", "core:window:allow-start-dragging"]),
+        "the debug page invokes no app commands — events + the drag-region's start_dragging only"
+    );
+}
+
 /// `default-src` is the fallback for every unlisted directive (media, frames,
 /// workers, …) — it must stay exactly `'self'`.
 #[test]

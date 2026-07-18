@@ -1,7 +1,8 @@
 # Manual smoke checklist
 
-Run this before each release, and after touching `window.rs`, `hotkey.rs`,
-`tray.rs`, the overlay CSS, or `capabilities/*.json`. It is the compensating
+Run this before each release, and after touching `window.rs`,
+`debug_window.rs`, `hotkey.rs`, `tray.rs`, the overlay CSS, or
+`capabilities/*.json`. It is the compensating
 control for the surface automation can't reach — a real overlay over a real
 game on a real monitor (see
 `vault/2026-07-13_manual-smoke-checklist-live-cadence.md` for the rationale).
@@ -15,8 +16,8 @@ Copy the boxes into the release notes/log and tick them as you go.
   vision-capable and a text-only model reachable from the model menu.
 - If available, a second monitor at **>100% DPI scaling** for item 3 — if not,
   note "single monitor" in the run log.
-- Items 1–7 run on `npm run tauri dev`; item 8 runs on the packaged installer
-  from `npm run tauri build`.
+- Items 1–8 run on `npm run tauri dev` (item 8 needs `WIKILENS_DEBUG=1` set);
+  item 9 runs on the packaged installer from `npm run tauri build`.
 
 ### 1. Hotkey + tray
 
@@ -62,7 +63,33 @@ Copy the boxes into the release notes/log and tick them as you go.
       documented (README caveats, CLAUDE.md gotchas) — do **not** log it as a
       bug.
 
-### 8. Packaged build
+### 8. Debug window (`WIKILENS_DEBUG=1`)
+
+- [ ] With the flag set, **nothing extra shows at launch** (the debug
+      window starts hidden, like the overlay). The overlay footer's
+      **Debug** chip opens a glass "WikiLens debug" panel at the monitor's
+      top-left corner, above the borderless game — no black rectangle
+      behind it, drop shadow visible on all sides while it floats
+      mid-screen (transparency regressions apply here too). Without the
+      flag: no window, no "Show debug panel" tray item, and no Debug chip
+      in the overlay footer.
+- [ ] Dragging by the panel's header moves the window **without stealing
+      keyboard focus from the game** (keep typing in the game right after a
+      drag). Resizing from the invisible window edges (just outside the
+      glass) still works.
+- [ ] The overlay footer's **Debug** chip hides the window; clicking it again
+      re-shows it — both without activating it — and it works mid-ask.
+- [ ] An ask streams in live: the provisional row's bar animates, completed
+      phases settle into relative-width bars, the outcome badge lands — and
+      the stderr table still prints, unchanged.
+- [ ] Clicking, scrolling, and expanding groups in the debug window never
+      steals keyboard focus from the game.
+- [ ] Alt+F4 / tray → "Show debug panel" round-trip keeps the session
+      history intact — including asks run while the window was hidden.
+- [ ] Drag it to the >100% scale monitor: text renders sharp and the window
+      geometry stays sane.
+
+### 9. Packaged build
 
 - [ ] The `npm run tauri build` installer runs and the installed app launches.
 - [ ] With no `.env` present, API keys resolve from OS environment variables

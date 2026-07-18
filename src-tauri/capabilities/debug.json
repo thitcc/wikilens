@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "debug",
+  "description": "Permissions for the visual debug window. The page listens to debug:// and ask:// events and invokes no app commands; the one command IPC is core start_dragging, fired by the data-tauri-drag-region attribute (draggable undecorated window). No HTTP/FS.",
+  "windows": ["debug"],
+  "permissions": ["core:default", "core:event:default", "core:window:allow-start-dragging"]
+}

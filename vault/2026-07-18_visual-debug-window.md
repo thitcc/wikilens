@@ -1,12 +1,12 @@
 ---
 title: Visual debug window for the ask pipeline
 type: plan
-status: todo
+status: done
 created: 2026-07-18
 updated: 2026-07-18
 tags: [frontend, tauri, rust]
 related: ["[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_concurrent-candidate-searches-and-status]]"]
-commit:
+commit: [683fc23, b2d4797, 3368d0e]
 ---
 
 # Visual debug window for the ask pipeline
@@ -23,11 +23,14 @@ giving up the table.
 
 ## Goal / non-goals
 
-- Goal: with `WIKILENS_DEBUG` truthy, an always-on-top **opaque** debug window opens at app
+- Goal: with `WIKILENS_DEBUG` truthy, an always-on-top debug window opens at app
   launch and visualizes each ask live: per-phase progress bars, timings/hit/page/token counts,
   collapsible detail sections, and a newest-first history of the session's asks.
+- Goal (iteration 2): the window **looks and works like the overlay** — a transparent window
+  drawing the same glass panel (surface/blur/border/radius/shadow tokens) — is **draggable**
+  by its header, and toggles from a **Debug chip in the overlay footer** (plus the tray item).
 - Goal: the window never steals keyboard focus from the game — not at creation, not on
-  re-show, not on click. Closing it hides it; a tray item re-shows it.
+  re-show, not on click, not on drag. Hiding it (chip, tray, Alt+F4) keeps the history.
 - Goal: the new events obey `debug.rs`'s contract — never wiki text, never keys.
 - Non-goal: replacing the stderr table. It stays byte-identical; the golden render tests do
   not change.
@@ -105,6 +108,39 @@ add a small history in `AppState` + a `debug_history` command. An optional `ask:
 streamed-chars ticker (lengths only) is nice-to-have; drop it if payload discipline should
 stay maximally clean.
 
+### Iteration 2 — glass, drag, overlay toggle
+
+User feedback on the shipped window: it should look and work like the overlay, be draggable,
+and hide/show from an overlay button. Source-verified groundwork: tauri 2.11.5's drag script
+supports `data-tauri-drag-region="deep"` (whole subtree drags; clickable children still
+block); tao 0.35.3 implements start-dragging as `WM_NCLBUTTONDOWN`/`HTCAPTION` — no
+activation required, so it composes with `focusable(false)`; double-click on a drag region
+requests a maximize toggle, denied both by the capability and `maximizable(false)`.
+
+1. `debug_window.rs`: builder → `transparent(true)`, `decorations(false)`, `shadow(false)`
+   (CSS draws the shadow), `maximizable(false)`; keep resizable/always-on-top/skip-taskbar/
+   `focusable(false)`. `APRON_*` constants (20/32/44/32 — full shadow extent on every side;
+   a draggable window has no screen edge to hide a clipped shadow behind) paired by comment
+   with the `.debug-panel` margin; window = panel + apron (544×704), pinned at the monitor
+   **origin** (the apron is the visual gap — one geometry system). New `toggle(app)`
+   mirroring `window::toggle_overlay` minus focus/emit.
+2. `commands.rs` + `lib.rs`: `debug_available() -> bool` (= `debug_enabled()`; window
+   existence is startup-decided) and `toggle_debug_window(app)` — the `hide_overlay`
+   template. App-defined commands aren't ACL-gated, so `default.json` is untouched.
+3. `capabilities/debug.json`: + `core:window:allow-start-dragging` (drag silently no-ops
+   without it). Guardrail pin renamed `debug_capability_grants_only_events_and_drag` —
+   keeping "listen-only" while granting a command permission would make the pin lie.
+4. `src/debug/`: transparent `html, body` (black-rectangle gotcha now applies here);
+   `.debug-panel` = the overlay's `.panel` recipe with the apron margin; header carries
+   `data-tauri-drag-region="deep"` + `user-select: none`; ask list scrolls in an inner
+   `.debug-scroll` (page scroll would drag the glass out of the window; `overflow: hidden`
+   keeps the scrollbar inside the rounded corner).
+5. Overlay: footer Debug chip (`.quiet-chip` in the capture cluster), rendered only when
+   `debug_available`, **never disabled while busy** (mid-ask is when you want it), no
+   aria-pressed (the frontend can't know visibility — tray/Alt+F4 change it too). New
+   `api.ts` wrappers; `installBackend` defaults (`debug_available: () => false`) so
+   existing tests stay silent; `App.debug.test.tsx` covers absent/toggles/busy-clickable.
+
 ## Decisions & trade-offs
 
 - Separate window over an in-overlay drawer (user pick): doesn't compete with the panel's
@@ -122,8 +158,45 @@ stay maximally clean.
 - Liveness from the existing `ask://status` over new `debug://phase-started` emissions:
   coarser (one `searching` covers the joined raw search + rewrite) but zero new backend call
   sites; completed rows land seconds later and are authoritative.
+- (Iteration 2) Glass parity by copying the panel tokens into the debug sheet over extracting
+  a shared tokens.css: the overlay stylesheet stays byte-untouched; the debug page IS the
+  third page the original decision reserved judgment for, but a tokens split is its own
+  refactor — do it deliberately, not as a rider.
+- (Iteration 2) Full shadow apron on all four sides (20/32/44/32) over the overlay's
+  edge-docked 12px sides: a draggable window shows every shadow edge mid-screen; the cost is
+  a wider invisible click-capturing ring (flag-gated dev tool — accepted, in the checklist).
+- (Iteration 2) Drag via `data-tauri-drag-region="deep"` over a JS `startDragging` handler:
+  no api surface for the page (it stays app-command-free), and clickable header children
+  would still block dragging automatically.
 
 ## Status log
 
 - 2026-07-18 — created; design settled (event schema, sink emission, window lifecycle,
   listen-only capability, React page + reducer). Implementation not started.
+- 2026-07-18 — implemented as designed (shipped as 683fc23). `debug.rs` emits the six
+  events through the injected sink with exact-key-set pin tests; `debug_window.rs`
+  creates the top-left `focusable(false)` window; tray gains the flag-gated
+  "Show debug panel"; `capabilities/debug.json` pinned listen-only by a new guardrail
+  test; third rollup input renders the React cards (reducer + shimmer bars gated on
+  `prefers-reduced-motion`). Golden stderr-table tests untouched and green. All gates
+  pass: tsc, 38/38 Vitest, clippy `-D warnings`, 230/230 offline cargo tests. Runtime
+  focus/DPI/tray behavior recorded as smoke-checklist item 8 (manual surface —
+  the `WS_EX_NOACTIVATE` × WebView2 scroll question resolves there; fallback stays
+  documented in Approach).
+- 2026-07-18 — iteration 2 (user feedback on the shipped window; shipped as b2d4797):
+  glass parity with the overlay (transparent undecorated window, panel recipe + full
+  shadow apron via paired `APRON_*`/CSS constants, pinned at the monitor origin),
+  draggable header (`data-tauri-drag-region="deep"` + `core:window:allow-start-dragging`;
+  guardrail pin renamed to `debug_capability_grants_only_events_and_drag`),
+  `maximizable(false)` hardening, and an overlay footer Debug chip driving the new
+  `toggle_debug_window`/`debug_available` commands. Gates: tsc, 41/41 Vitest (+3 chip
+  tests), clippy `-D warnings`, 230/230 offline cargo tests, 3-page build. Drag-under-
+  `WS_EX_NOACTIVATE` and invisible-edge resize are the remaining empirical checks —
+  smoke-checklist item 8 rewritten for the glass window.
+- 2026-07-18 — start-hidden fix (user feedback; shipped as 3368d0e): the window was
+  created visible, so with the flag set it appeared at launch while the overlay stayed
+  hidden — backwards. `create()` now passes `visible(false)`; the window opens only via
+  the Debug chip or tray, matching the overlay's start-hidden behavior. The hidden
+  webview still loads and receives `debug://` events (the overlay's own hidden-listener
+  mechanism), so pre-first-show asks land in the history. Smoke item 8 + README +
+  CLAUDE.md reworded. Gates re-run green (tsc, 41/41 Vitest, clippy, 230/230 cargo).

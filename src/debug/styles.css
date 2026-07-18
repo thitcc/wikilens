@@ -1,0 +1,361 @@
+/* Debug window stylesheet — its own sheet on purpose: the overlay's
+ * styles.css is pixel-paired with window.rs constants and stays byte-
+ * untouched. Token VALUES below are copied from src/styles.css :root
+ * (revisit as a shared tokens.css if a fourth page ever appears). The window
+ * is glass like the overlay: transparent body, .debug-panel draws the
+ * surface, blur, border, and drop shadow. */
+
+:root {
+  /* Ink (copied) */
+  --fg: #e8e8ee;
+  --fg-muted: #9a9aa8;
+  --fg-strong: #fff;
+  --accent: #8ab4ff;
+
+  /* Glass surfaces (copied) */
+  --surface-panel: rgba(18, 18, 24, 0.92);
+  --blur-panel: 12px;
+  --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --surface-control: rgba(255, 255, 255, 0.06);
+  --surface-inset: rgba(0, 0, 0, 0.3);
+  --border: rgba(255, 255, 255, 0.08);
+
+  /* Status (copied) */
+  --error-fg: #ffb3bd;
+  --error-bg: rgba(120, 30, 40, 0.35);
+  --error-border: rgba(255, 120, 140, 0.25);
+
+  /* Shape (copied) */
+  --radius-chip: 5px;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+
+  /* Type (copied) */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --text-base: 14px;
+  --text-code: 12.5px;
+  --text-label: 12px;
+  --tracking-label: 0.06em;
+
+  /* Rhythm (copied subset) */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-10: 10px;
+  --space-12: 12px;
+
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Transparent background is REQUIRED by the window's `transparent(true)`;
+   without it the webview paints a black rectangle (same gotcha as the
+   overlay). */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+body {
+  height: 100vh;
+  display: flex;
+}
+
+#root {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The glass panel — the overlay's .panel recipe. The margin is the
+   transparent shadow apron and must match the APRON_* constants in
+   src-tauri/src/debug_window.rs (window.rs ↔ styles.css pairing idiom):
+   full shadow extent on every side, since a draggable window has no screen
+   edge to hide a clipped shadow behind. */
+.debug-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin: 20px 32px 44px 32px;
+  padding: var(--space-12);
+  gap: var(--space-10);
+  background: var(--surface-panel);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-panel);
+  /* Keeps the ask list's scrollbar inside the rounded corner. */
+  overflow: hidden;
+}
+
+/* The one drag handle of the undecorated window (data-tauri-drag-region). */
+.debug-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-2);
+  user-select: none;
+  cursor: grab;
+}
+
+/* The scrolling ask list; the header stays put while history scrolls. */
+.debug-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.debug-brand {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.debug-count {
+  font-size: var(--text-label);
+  color: var(--fg-muted);
+}
+
+.debug-empty {
+  margin: var(--space-12) 0;
+  color: var(--fg-muted);
+}
+
+/* ---- Ask card ---- */
+
+.ask-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-10) var(--space-12);
+  background: var(--surface-control);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+
+.ask-card.is-live {
+  border-color: var(--accent);
+}
+
+.ask-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ask-question {
+  color: var(--fg-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  font-size: var(--text-label);
+  color: var(--fg-muted);
+}
+
+.ask-model {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+}
+
+.ask-outcome {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.outcome-badge {
+  padding: var(--space-2) var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  font-size: var(--text-label);
+  color: var(--fg-muted);
+}
+
+.outcome-badge.is-running {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.outcome-badge.is-aborted {
+  color: var(--error-fg);
+  background: var(--error-bg);
+  border-color: var(--error-border);
+}
+
+.ask-total {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+  color: var(--fg-muted);
+}
+
+/* ---- Phase table ---- */
+
+.phases {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.phase-row {
+  display: grid;
+  grid-template-columns: 108px 1fr 56px minmax(0, 1.2fr);
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.phase-name {
+  font-size: var(--text-label);
+  color: var(--fg);
+}
+
+.phase-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.phase-bar--skipped {
+  background: none;
+  color: var(--fg-muted);
+  font-size: var(--text-label);
+  line-height: 1;
+  height: auto;
+}
+
+.phase-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* Indeterminate shimmer while a phase runs. The keyframes are gated: with
+ * reduced motion the fill falls back to a static accent strip. */
+.phase-bar-fill--running {
+  width: 40%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .phase-bar-fill--running {
+    animation: debug-shimmer 1.2s ease-in-out infinite;
+  }
+
+  @keyframes debug-shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+}
+
+.phase-ms {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+  text-align: right;
+  color: var(--fg);
+}
+
+.phase-detail {
+  font-size: var(--text-label);
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-row--provisional .phase-name,
+.phase-row--provisional .phase-detail {
+  color: var(--fg-muted);
+}
+
+/* ---- Collapsible groups (the model menu's group-header idiom) ---- */
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  padding: var(--space-6);
+  background: none;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.group-header:hover {
+  color: var(--fg);
+}
+
+.group-caret {
+  display: inline-block;
+  font-size: 9px;
+}
+
+.group-caret.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.group-note {
+  margin-left: auto;
+  font-size: var(--text-label);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+.detail-line {
+  font-size: var(--text-code);
+  font-family: var(--font-mono);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.detail-line--muted,
+.detail-chars,
+.detail-label {
+  color: var(--fg-muted);
+}
+
+.detail-label {
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+}
