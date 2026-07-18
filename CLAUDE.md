@@ -326,6 +326,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Answer history.
 - Overlay design follow-ups: accent-direction exploration and a high-contrast
   bright-scene variant (dropped from the 2026-07-05 design-sync plan).
+- Panel corner-pick: let the player choose which corner the overlay docks to
+  (top-right collides with common game HUDs — 2026-07-18 critique).
+- Footer vocabulary collapse: player-language model status in the footer, with
+  the provider/model machinery one level down (2026-07-18 critique).
 
 ## 7. Planning vault
 
@@ -355,6 +359,16 @@ vault (not the repo root — that would index `node_modules`).
 - `README.md` and this file are user/dev guides and are **not** part of the vault.
 - The roadmap above (§6) is the single source of truth for future ideas; promote an
   item to a full `plan` doc only when work on it starts.
+
+## Design Context
+
+- `PRODUCT.md` is the strategic design context (register, users, positioning,
+  design principles); `DESIGN.md` is the visual system, and its YAML
+  frontmatter is the **normative token source** the impeccable design detector
+  reads — new sizes/radii/colors get documented there, never silently.
+- `.impeccable/` holds the tracked machine-readable sidecar + live-mode
+  config; critique snapshots under `.impeccable/critique/` are local-only
+  (gitignored).
 
 ## graphify
 
