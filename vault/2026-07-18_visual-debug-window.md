@@ -1,12 +1,12 @@
 ---
 title: Visual debug window for the ask pipeline
 type: plan
-status: todo
+status: done
 created: 2026-07-18
 updated: 2026-07-18
 tags: [frontend, tauri, rust]
 related: ["[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_concurrent-candidate-searches-and-status]]"]
-commit:
+commit: 683fc23
 ---
 
 # Visual debug window for the ask pipeline
@@ -127,3 +127,13 @@ stay maximally clean.
 
 - 2026-07-18 — created; design settled (event schema, sink emission, window lifecycle,
   listen-only capability, React page + reducer). Implementation not started.
+- 2026-07-18 — implemented as designed (shipped as 683fc23). `debug.rs` emits the six
+  events through the injected sink with exact-key-set pin tests; `debug_window.rs`
+  creates the top-left `focusable(false)` window; tray gains the flag-gated
+  "Show debug panel"; `capabilities/debug.json` pinned listen-only by a new guardrail
+  test; third rollup input renders the React cards (reducer + shimmer bars gated on
+  `prefers-reduced-motion`). Golden stderr-table tests untouched and green. All gates
+  pass: tsc, 38/38 Vitest, clippy `-D warnings`, 230/230 offline cargo tests. Runtime
+  focus/DPI/tray behavior recorded as smoke-checklist item 8 (manual surface —
+  the `WS_EX_NOACTIVATE` × WebView2 scroll question resolves there; fallback stays
+  documented in Approach).
