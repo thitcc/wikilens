@@ -5,7 +5,9 @@
 WikiLens is a **Windows** desktop overlay for wiki-heavy games. A global hotkey
 (**Shift+C**) slides a glass panel in from the right edge; the player types a
 question and gets an answer generated **only** from the game's MediaWiki content
-(hotkey → panel → RAG over the wiki → streamed answer + sources). Works over
+(hotkey → panel → RAG over the wiki → streamed answer + sources). A second
+hotkey (**Ctrl+Shift+C**) — or the footer capture chip — grabs a screen region
+and attaches it to the prompt as an image (vision-capable models only). Works over
 **borderless/windowed** games only — exclusive fullscreen covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
@@ -13,17 +15,20 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
 ```
 wikilens/
-├── index.html, vite.config.ts, tsconfig*.json   # Vite/TS config
+├── index.html, capture.html, vite.config.ts, tsconfig*.json   # Vite/TS config; two rollup inputs (overlay + region-select pages)
 ├── vault/                        # planning vault: plans, decisions, notes (see §7)
 ├── docs/                         # dev guides: manual smoke checklist, AI-workflow explainer
-├── src/                          # Frontend (React + TS)
+├── src/                          # Frontend (React + TS; *.test.* files are colocated Vitest suites)
 │   ├── main.tsx                  # React entry
-│   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow
+│   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow, capture attachment chip
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
 │   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
 │   ├── modelPick.ts              # stored model pick + vision resolution (pure helpers, unit-tested)
+│   ├── menuPlacement.ts          # model-menu drop/flip measurement (paired constants — see §5)
+│   ├── menuScroll.ts             # centerRowInList(): centers the picked row in menu lists
 │   ├── styles.css                # Transparent body + glass dark panel
 │   ├── test/                     # Vitest harness: setup, fake IPC backend (mockIPC), mount helpers
+│   ├── capture/main.ts           # region-select page (vanilla TS, own bundle): drag → finish/cancel_capture
 │   └── components/
 │       ├── GameChip.tsx          # header chip: current game, opens the game menu
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
@@ -32,24 +37,29 @@ wikilens/
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
+│       ├── Badge.tsx             # capability pill (e.g. "Image" on vision-capable model rows)
 │       └── SourceList.tsx        # wiki source links (open in system browser)
 └── src-tauri/                    # Backend (Rust) — run cargo commands here
-    ├── tauri.conf.json           # window "overlay" (transparent, right-dock), CSP
-    ├── capabilities/default.json # webview permissions (no http/fs)
+    ├── tauri.conf.json           # windows "overlay" (right-dock) + "capture" (region-select), both transparent; CSP
+    ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only)
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
-        ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list cache
+        ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
         ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
-        ├── hotkey.rs             # Shift+C registration (release-safe)
+        ├── hotkey.rs             # global shortcuts: Shift+C toggle + Ctrl+Shift+C capture (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
-        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models
+        ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
+        ├── commands.rs           # #[tauri::command] ask / hide_overlay / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
-        └── wiki/{mod,games,user,probe,search,fetch,html,wikitext}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext
+        ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4)
+        ├── config_guardrails.rs  # test-only: parses the shipped config/capability files, pins the security invariants
+        ├── test_support.rs       # test-only: shared wiremock fixtures + proptest strategies
+        └── wiki/{mod,games,user,probe,search,fetch,html,wikitext,titles}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext; titles = per-game typo-recovery index
 ```
 
 **Data flow:** `hotkey → window toggle → frontend prompt → ask command → wiki
@@ -113,6 +123,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
     (`understanding` only while the rewrite's candidate searches run;
     `retrying` only when the first search found nothing).
   - `ask://delta` — `string` chunk of the streamed answer.
+  - `capture://hotkey` — `()`; Ctrl+Shift+C, routed to the overlay webview,
+    which invokes `begin_capture` (the frontend stays the single capture
+    entry point).
+  - `capture://armed` — `()`; sent to the reused capture webview each time
+    Rust shows it, so it re-arms its drag handlers.
+  - `capture://attached` — `{id, thumbUri, width, height}` on successful
+    `finish_capture`. Only the ≤88px thumbnail data-URI crosses IPC; the full
+    PNG (longest edge ≤1568px) stays in `AppState` until `ask` consumes it
+    by id.
+  - `capture://error` — `string`; user-readable capture failure (e.g. the
+    selection was too small).
 - **Adding a built-in game** = one `GameWiki` entry in `wiki/games.rs`. Nothing
   else — but verify the endpoint live first, derive `page_url` from the wiki's
   real `articlepath` (minecraft.wiki and wiki.warframe.com serve pages under
