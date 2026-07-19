@@ -14,6 +14,7 @@ import type {
   GameInfo,
   ModelList,
   ProviderInfo,
+  SettingsInfo,
   WikiCandidate,
 } from "../types";
 
@@ -74,6 +75,26 @@ export const CANDIDATES: WikiCandidate[] = [
   },
 ];
 
+/** The shipped defaults, mirroring Rust's `default_summon`/`default_capture`. */
+export const SETTINGS: SettingsInfo = {
+  hotkeys: {
+    summon: {
+      accelerator: "Ctrl+Backquote",
+      label: "Ctrl+`",
+      defaultAccelerator: "Ctrl+Backquote",
+      defaultLabel: "Ctrl+`",
+      isDefault: true,
+    },
+    capture: {
+      accelerator: "Ctrl+Shift+KeyC",
+      label: "Ctrl+Shift+C",
+      defaultAccelerator: "Ctrl+Shift+KeyC",
+      defaultLabel: "Ctrl+Shift+C",
+      isDefault: true,
+    },
+  },
+};
+
 // ---- Backend ----------------------------------------------------------------
 
 type CommandHandler = (args: unknown) => unknown;
@@ -125,6 +146,10 @@ export function installBackend(
       toggle_debug_window: () => undefined,
       begin_capture: () => undefined,
       clear_capture: () => undefined,
+      get_settings: () => SETTINGS,
+      set_hotkey: () => SETTINGS,
+      suspend_hotkeys: () => undefined,
+      resume_hotkeys: () => undefined,
       suggest_wikis: () => CANDIDATES,
       add_game: () => {
         throw new Error("add_game: override this handler in the test");
