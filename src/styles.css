@@ -635,7 +635,8 @@ body {
   color: var(--fg-muted);
 }
 
-.prompt-input:disabled {
+/* Busy asks make the box read-only (not disabled — that would drop focus). */
+.prompt-input:read-only {
   opacity: var(--opacity-disabled);
 }
 

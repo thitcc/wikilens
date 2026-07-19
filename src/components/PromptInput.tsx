@@ -4,19 +4,24 @@ interface PromptInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
-  disabled?: boolean;
+  busy?: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
 }
 
 /**
  * Multi-line question box. Enter submits; Shift+Enter inserts a newline.
  * The ref lets the parent focus/select the field when the overlay opens.
+ * While an ask runs the box is `readOnly`, not `disabled`: a disabled
+ * textarea drops keyboard focus to `<body>`, so the follow-up question would
+ * start typing into nothing. readOnly keeps focus and caret; keydown still
+ * fires, so the `busy` guard below (and the submit handler's own) stays
+ * load-bearing.
  */
 export function PromptInput({
   value,
   onChange,
   onSubmit,
-  disabled,
+  busy,
   inputRef,
 }: PromptInputProps) {
   return (
@@ -24,7 +29,7 @@ export function PromptInput({
       ref={inputRef}
       className="prompt-input"
       value={value}
-      disabled={disabled}
+      readOnly={busy}
       rows={2}
       placeholder="Ask about the game… (Enter to send, Shift+Enter for a new line)"
       aria-label="Question"
@@ -32,7 +37,7 @@ export function PromptInput({
       onKeyDown={(e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
-          if (!disabled) onSubmit();
+          if (!busy) onSubmit();
         }
       }}
     />

@@ -405,7 +405,7 @@ function App() {
         value={question}
         onChange={setQuestion}
         onSubmit={handleSubmit}
-        disabled={busy}
+        busy={busy}
         inputRef={inputRef}
       />
 
