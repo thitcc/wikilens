@@ -1,12 +1,12 @@
 ---
 title: Hotkey config — the first settings surface
 type: plan
-status: active
+status: done
 created: 2026-07-19
 updated: 2026-07-19
 tags: [hotkey, frontend, rust, overlay]
 related: ["[[2026-07-18_ask-lifecycle-fix-pass]]", "[[2026-07-02_scaffold]]"]
-commit:
+commit: [e48eeb7, bed760a, 531eae6, 592dc6a, 54a2112]
 ---
 
 # Hotkey config — the first settings surface
@@ -101,3 +101,13 @@ default summon key moved off the Shift+letter class entirely.
   left of 1 here; browser `e.code` for that position is `"Backquote"` —
   recorder, store, and OS registration agree. Ctrl+` stands; no decision doc
   needed.
+- 2026-07-19 — implemented as designed, one commit per step: Rust
+  store/rework (e48eeb7), IPC mirrors (bed760a), pure recorder helpers
+  (531eae6), Shortcuts popover + gear (592dc6a), docs pass + sync-agents
+  regen (54a2112). `/check` green (tsc, 78 Vitest, clippy, 247 cargo tests).
+- 2026-07-19 — done; live end-to-end verification on a dev run: injected
+  Ctrl+VK_OEM_3 toggled the overlay hidden → visible → hidden through the
+  store-driven registration (windows enumerated per press). Residual manual
+  smoke for the human pass: recorder round-trip in the real popover,
+  restart persistence, the collision-refusal message, and an in-game run
+  (smoke checklist §1–§2).
