@@ -66,10 +66,16 @@ export function toggleDebugWindow(): Promise<void> {
   return invoke<void>("toggle_debug_window");
 }
 
+/** The rejection value `ask` settles with after `cancelAsk` wins — mirrors
+ * `ASK_CANCELLED` in `commands.rs`. The one machine-readable command error:
+ * compare against it and reset quietly; never render it. */
+export const ASK_CANCELLED = "wikilens::ask-cancelled";
+
 /** Ask a question about a game using a chosen provider and model; resolves
  * with the answer and sources. A blank `model` falls back to the provider's
  * default Rust-side. `imageId` optionally attaches a captured screenshot (from
- * `onCaptureAttached`); Rust rejects a stale id. */
+ * `onCaptureAttached`); Rust rejects a stale id. Rejects with
+ * [`ASK_CANCELLED`] when `cancelAsk` aborts it. */
 export function ask(
   gameId: string,
   providerId: string,
@@ -86,6 +92,13 @@ export function ask(
     question,
     imageId: imageId ?? null,
   });
+}
+
+/** Abort the in-flight ask (the status row's Stop action). Always resolves:
+ * a no-op when nothing is running, idempotent on a double click. The `ask`
+ * promise itself then rejects with [`ASK_CANCELLED`]. */
+export function cancelAsk(): Promise<void> {
+  return invoke<void>("cancel_ask");
 }
 
 /** Start a region capture: hide the panel and show the crosshair overlay. The

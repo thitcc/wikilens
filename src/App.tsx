@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ASK_CANCELLED,
   ask,
   beginCapture,
+  cancelAsk,
   clearCapture,
   debugAvailable,
   hideOverlay,
@@ -336,6 +338,16 @@ function App() {
     void clearCapture().catch(() => {});
   }
 
+  // The status row's Stop action: fire the Rust-side abort and let the pending
+  // `ask` promise settle (with ASK_CANCELLED) — never reset state here, or a
+  // Stop racing a real completion would clobber the answer. The refocus covers
+  // keyboard activation: resolving unmounts the focused button, which would
+  // otherwise drop focus to <body> (the closeMenu trap).
+  function handleStop() {
+    void cancelAsk().catch(() => {});
+    inputRef.current?.focus();
+  }
+
   async function handleSubmit() {
     const trimmed = question.trim();
     if (busy || !trimmed || !selectedGame || !selectedProvider) return;
@@ -369,7 +381,10 @@ function App() {
       // screenshot is spent. A failed ask keeps it (this line isn't reached).
       setAttachment(null);
     } catch (e) {
-      setError(String(e));
+      // A cancelled ask resets quietly: no error box, and whatever partial
+      // answer already streamed stays on screen. (A delta racing the abort may
+      // still append after this settles — harmless, it lands on the kept text.)
+      if (String(e) !== ASK_CANCELLED) setError(String(e));
     } finally {
       setBusy(false);
       setStatus(null);
@@ -451,6 +466,16 @@ function App() {
         {!error && busy && status && (
           <div className="status">
             {STATUS_LABEL[status]}
+            <button
+              type="button"
+              className="status-stop"
+              // Keep the pointer press from stealing focus off the prompt —
+              // the (a) invariant; handleStop refocuses for keyboard users.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleStop}
+            >
+              Stop
+            </button>
             {slowHint && isWikiBoundStatus(status) && (
               <div className="status-hint">
                 The wiki is responding slowly — this isn't WikiLens.

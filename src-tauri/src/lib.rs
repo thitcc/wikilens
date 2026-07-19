@@ -97,6 +97,7 @@ pub fn run() {
             commands::cancel_capture,
             commands::clear_capture,
             commands::ask,
+            commands::cancel_ask,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

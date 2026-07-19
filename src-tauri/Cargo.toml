@@ -37,6 +37,10 @@ base64 = "0.22"
 # Promoted from dev-only: the capture flow's ~120 ms settle sleep before the
 # monitor snapshot (`tokio::time::sleep`, on Tauri's tokio runtime).
 tokio = { version = "1", features = ["time"] }
+# CancellationToken for aborting an in-flight `ask` (the status row's Stop):
+# level-triggered (a cancel landing before the await still fires) and needs no
+# extra tokio features. Already in the tree transitively.
+tokio-util = "0.7"
 
 [dev-dependencies]
 # For #[tokio::test] in the ignored live-wiki integration test (wiki/mod.rs).

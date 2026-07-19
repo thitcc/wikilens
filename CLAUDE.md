@@ -51,7 +51,7 @@ wikilens/
         ├── hotkey.rs             # global shortcuts: Shift+C toggle + Ctrl+Shift+C capture (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / hide_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
@@ -164,7 +164,11 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   behavior differences collapse to `ProviderKind` (Anthropic native vs
   OpenAI-compatible, shared by DeepSeek/OpenRouter). `llm.rs` and `models.rs`
   branch request-build + parsing on it.
-- Concurrency: `ask` rejects if one is already running (`AppState::ask_in_progress`).
+- Concurrency: `ask` rejects if one is already running (`AppState::ask_in_progress`);
+  `cancel_ask` (the status row's Stop) aborts the in-flight one by dropping its
+  future mid-await — `ask` then settles with the `wikilens::ask-cancelled`
+  sentinel (mirrored in `api.ts`), which the frontend maps to a quiet reset
+  that keeps the partial answer.
 - **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error

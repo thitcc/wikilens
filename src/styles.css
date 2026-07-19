@@ -722,6 +722,26 @@ body {
   font-size: var(--text-status);
 }
 
+/* Quiet inline Stop action beside the phase label — same vocabulary as the
+   quiet chips (muted ink, fills on hover), text-sized so the row stays one
+   ambient line. */
+.status-stop {
+  margin-left: var(--space-8);
+  padding: var(--space-2) var(--space-6);
+  border: none;
+  border-radius: var(--radius-chip);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+
+.status-stop:hover {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
 .status-hint {
   margin-top: var(--space-4);
   color: var(--fg-muted);

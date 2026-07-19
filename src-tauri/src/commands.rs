@@ -1,10 +1,11 @@
 //! Tauri commands — the only surface the frontend can call. Each returns a
 //! user-readable `String` on error so the UI can render it verbatim.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+use tokio_util::sync::CancellationToken;
 
 use crate::capture::{self, CropRect};
 use crate::debug::DebugReport;
@@ -310,6 +311,12 @@ pub fn clear_capture(state: State<'_, AppState>) {
     capture::clear(&state);
 }
 
+/// The `ask` command's settle value after `cancel_ask` wins the race — the one
+/// deliberately machine-readable command error (every other message is
+/// user-readable prose). The frontend compares against its mirror constant in
+/// `src/api.ts` and quietly resets instead of rendering an error box.
+pub const ASK_CANCELLED: &str = "wikilens::ask-cancelled";
+
 /// Answer a question about a game using its wiki as the source of truth.
 ///
 /// Emits progress events the UI listens for:
@@ -318,7 +325,9 @@ pub fn clear_capture(state: State<'_, AppState>) {
 ///   `"answering"`
 /// - `ask://delta` — streamed answer text chunks
 ///
-/// Only one `ask` runs at a time; a concurrent call is rejected.
+/// Only one `ask` runs at a time; a concurrent call is rejected. `cancel_ask`
+/// aborts the running one: the ask future is dropped at whatever await point it
+/// had reached and this command settles with [`ASK_CANCELLED`].
 ///
 /// `image_id` optionally names an attached screenshot (from `finish_capture`);
 /// a mismatch with the stored attachment fails fast as "capture it again". The
@@ -341,10 +350,20 @@ pub async fn ask(
     if state.ask_in_progress.swap(true, Ordering::SeqCst) {
         return Err("A question is already in progress".to_string());
     }
-    // Releases the slot on every exit path, including cancellation (drop).
-    let _guard = AskGuard(&state.ask_in_progress);
+    // Releases the slot (and disarms the cancel token) on every exit path,
+    // including cancellation (drop).
+    let _guard = AskGuard(&state);
 
-    run_ask(
+    // Arm this ask's cancel token. Per-ask and disarmed by the guard's Drop,
+    // so a stale `cancel_ask` that lands after this ask settles finds an empty
+    // slot instead of the next ask's token.
+    let cancel = CancellationToken::new();
+    *state
+        .cancel_ask
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(cancel.clone());
+
+    let run = run_ask(
         &app,
         &state,
         &store,
@@ -353,18 +372,61 @@ pub async fn ask(
         &model,
         &question,
         image_id.as_deref(),
-    )
-    .await
-    .map_err(String::from)
+    );
+    match race_cancel(run, cancel).await {
+        Some(result) => result.map_err(String::from),
+        None => Err(ASK_CANCELLED.to_string()),
+    }
 }
 
-/// Resets `ask_in_progress` when dropped, so a panic or a cancelled future can't
-/// leave the guard stuck.
-struct AskGuard<'a>(&'a AtomicBool);
+/// Race a future against its cancel token: `Some(output)` when the future
+/// finishes, `None` when the token fires first. Cancellation works by dropping
+/// the future at whatever await point it had reached — reqwest aborts the
+/// in-flight request, and the ask's `DebugReport` still emits its
+/// finished/aborted row from `Drop`. The run future is polled first, so a
+/// completed answer beats a simultaneous cancel.
+async fn race_cancel<F: std::future::Future>(
+    run: F,
+    cancel: CancellationToken,
+) -> Option<F::Output> {
+    use futures_util::future::{select, Either};
+    let cancelled = cancel.cancelled();
+    futures_util::pin_mut!(run, cancelled);
+    match select(run, cancelled).await {
+        Either::Left((output, _)) => Some(output),
+        Either::Right(((), _)) => None,
+    }
+}
+
+/// Cancel the in-flight `ask`, if any (the status row's Stop action). Fires the
+/// stored token; `ask` then settles with [`ASK_CANCELLED`]. Always `Ok`: with
+/// nothing in flight the slot is empty and this is a no-op, and
+/// `CancellationToken::cancel` is idempotent, so a double Stop is safe too.
+#[tauri::command]
+pub fn cancel_ask(state: State<'_, AppState>) {
+    if let Some(token) = state
+        .cancel_ask
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+    {
+        token.cancel();
+    }
+}
+
+/// Resets `ask_in_progress` and disarms the cancel token when dropped, so a
+/// panic or a cancelled future can't leave the guard stuck — and an idle-time
+/// `cancel_ask` finds nothing to fire.
+struct AskGuard<'a>(&'a AppState);
 
 impl Drop for AskGuard<'_> {
     fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
+        self.0
+            .cancel_ask
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        self.0.ask_in_progress.store(false, Ordering::SeqCst);
     }
 }
 
@@ -1027,6 +1089,95 @@ fn trace_retrieval(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::time::{Duration, Instant};
+
+    #[tokio::test]
+    async fn race_cancel_pre_cancelled_token_beats_a_pending_future() {
+        let token = CancellationToken::new();
+        token.cancel();
+        // Level-triggered: a cancel that landed before the race still fires.
+        let out = race_cancel(std::future::pending::<u8>(), token).await;
+        assert!(out.is_none());
+    }
+
+    #[tokio::test]
+    async fn race_cancel_lets_a_ready_future_beat_a_cancelled_token() {
+        let token = CancellationToken::new();
+        token.cancel();
+        // The run future is polled first: a completed answer wins over a
+        // simultaneous Stop.
+        let out = race_cancel(std::future::ready(7u8), token).await;
+        assert_eq!(out, Some(7));
+    }
+
+    #[tokio::test]
+    async fn race_cancel_interrupts_mid_await() {
+        let token = CancellationToken::new();
+        let trigger = token.clone();
+        let started = Instant::now();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            trigger.cancel();
+        });
+        let out = race_cancel(tokio::time::sleep(Duration::from_secs(30)), token).await;
+        assert!(out.is_none());
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "cancel must interrupt the await promptly, not wait it out"
+        );
+    }
+
+    #[tokio::test]
+    async fn race_cancel_aborts_a_hung_http_request() {
+        // The motivating case: a wiki (or LLM) socket that answers slowly.
+        // Cancellation must land mid-request by dropping the future — reqwest
+        // aborts the connection — not wait out the response.
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_delay(Duration::from_secs(30)),
+            )
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let token = CancellationToken::new();
+        let trigger = token.clone();
+        let started = Instant::now();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            trigger.cancel();
+        });
+        let request = async { client.get(server.uri()).send().await };
+        let out = race_cancel(request, token).await;
+        assert!(out.is_none());
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "cancel must abort the in-flight request promptly"
+        );
+    }
+
+    #[test]
+    fn ask_guard_drop_disarms_the_cancel_token_slot() {
+        let state = AppState::new();
+        state.ask_in_progress.store(true, Ordering::SeqCst);
+        *state
+            .cancel_ask
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            Some(CancellationToken::new());
+
+        drop(AskGuard(&state));
+
+        assert!(!state.ask_in_progress.load(Ordering::SeqCst));
+        // The slot is empty, so a stale cancel_ask after settle is a no-op.
+        assert!(state
+            .cancel_ask
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_none());
+    }
 
     #[test]
     fn effective_model_prefers_trimmed_request() {
