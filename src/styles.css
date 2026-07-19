@@ -120,6 +120,30 @@ body {
   box-sizing: border-box;
 }
 
+/* Authored keyboard-focus rings (One Signal Rule: Moonlight Blue marks the
+   interactive, the selected, and the focused). :focus-visible only — pointer
+   presses never ring. Standalone controls ring outside; in-list rows ring
+   inset so touching rows don't overlap; inputs keep their accent
+   border-shift instead (see .prompt-input:focus). */
+.quiet-chip:focus-visible,
+.status-stop:focus-visible,
+.hotkey-btn:focus-visible,
+.remove-btn:focus-visible,
+.attachment-remove:focus-visible,
+.menu-url-row button:focus-visible,
+.source-link:focus-visible,
+.answer a:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.model-row:focus-visible,
+.group-header:focus-visible,
+.menu-action:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* Floating glass panel: full width minus the gap (top/right) and the shadow
    apron (left/bottom) — the window itself is sized around it by window.rs.
    Height hugs the content and caps at the window (= 70% of the monitor);
