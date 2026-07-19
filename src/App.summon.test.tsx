@@ -1,7 +1,8 @@
 // Select-all suppression on re-summon: overlay://shown selects the old
 // question so the first keystroke starts a new one — unless the panel was
 // hidden moments ago (overlay://hidden), where the "old question" is a live
-// draft (the capital-C trap: typing `C` fires the global Shift+C toggle).
+// draft. Born as the capital-C trap fix (the old Shift+C default made typing
+// `C` fire the toggle); kept because any accidental hide arms the same loss.
 // Own file: this is a fake-timer regime, same rules as App.slowHint.test.tsx.
 
 import { screen } from "@testing-library/react";

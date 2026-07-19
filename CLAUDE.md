@@ -3,11 +3,13 @@
 ## 1. Project summary
 
 WikiLens is a **Windows** desktop overlay for wiki-heavy games. A global hotkey
-(**Shift+C**) slides a glass panel in from the right edge; the player types a
-question and gets an answer generated **only** from the game's MediaWiki content
-(hotkey → panel → RAG over the wiki → streamed answer + sources). A second
-hotkey (**Ctrl+Shift+C**) — or the footer capture chip — grabs a screen region
-and attaches it to the prompt as an image (vision-capable models only). Works over
+(**Ctrl+`** by default) slides a glass panel in from the right edge; the player
+types a question and gets an answer generated **only** from the game's MediaWiki
+content (hotkey → panel → RAG over the wiki → streamed answer + sources). A
+second hotkey (**Ctrl+Shift+C** by default) — or the footer capture chip — grabs
+a screen region and attaches it to the prompt as an image (vision-capable models
+only). Both shortcuts are configurable from the header gear's **Shortcuts**
+popover (persisted to `settings.json` in the app-data dir). Works over
 **borderless/windowed** games only — exclusive fullscreen covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
@@ -24,6 +26,7 @@ wikilens/
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
 │   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
 │   ├── modelPick.ts              # stored model pick + vision resolution (pure helpers, unit-tested)
+│   ├── hotkeys.ts                # recorder pure helpers: combo→accelerator, validation, labels (paired with hotkey.rs)
 │   ├── menuPlacement.ts          # model-menu drop/flip measurement (paired constants — see §5)
 │   ├── menuScroll.ts             # centerRowInList(): centers the picked row in menu lists
 │   ├── styles.css                # Transparent body + glass dark panel
@@ -35,6 +38,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
+│       ├── SettingsMenu.tsx      # Shortcuts popover: a key-recorder row per hotkey (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -47,11 +51,12 @@ wikilens/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
+        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys; loaded in setup before registration
         ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
-        ├── hotkey.rs             # global shortcuts: Shift+C toggle + Ctrl+Shift+C capture (release-safe)
+        ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
@@ -123,16 +128,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
     the old question — unless the panel hid <2s ago (see `overlay://hidden`).
   - `overlay://hidden` — `()`; fired by every hide path (Esc, hotkey toggle,
     tray, Alt+F4, capture). The frontend timestamps it and skips the next
-    show's select-all within 2s, so an accidental capital-C hide can't arm a
-    draft-replacing keystroke.
+    show's select-all within 2s, so an accidental hide can't arm a
+    draft-replacing keystroke (born as the capital-C trap under the old
+    Shift+C default — see §5). The settings recorder also disarms on it.
   - `ask://status` —
     `"searching" | "understanding" | "retrying" | "reading" | "answering"`
     (`understanding` only while the rewrite's candidate searches run;
     `retrying` only when the first search found nothing).
   - `ask://delta` — `string` chunk of the streamed answer.
-  - `capture://hotkey` — `()`; Ctrl+Shift+C, routed to the overlay webview,
-    which invokes `begin_capture` (the frontend stays the single capture
-    entry point).
+  - `capture://hotkey` — `()`; the capture shortcut (default Ctrl+Shift+C),
+    routed to the overlay webview, which invokes `begin_capture` (the
+    frontend stays the single capture entry point).
   - `capture://armed` — `()`; sent to the reused capture webview each time
     Rust shows it, so it re-arms its drag handlers.
   - `capture://attached` — `{id, thumbUri, width, height}` on successful
@@ -263,10 +269,16 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   the fallback when a parse call fails or times out. `prop=extracts` is still
   avoided: many game wikis lack TextExtracts, and whole-article extracts are
   capped to one page (it would silently drop the other search hits).
-- The spec'd **Shift+C** is a bare Shift+letter global hotkey: on Windows it
-  swallows Shift+C system-wide, so a capital `C` can't be typed into the prompt.
-  Search is case-insensitive so lowercase works; prefer a Ctrl/Alt combo when the
-  hotkey becomes configurable (see `hotkey.rs`).
+- **(Resolved by the Ctrl+` default.)** A bare Shift+letter global hotkey — the
+  originally spec'd **Shift+C** — swallows that letter system-wide on Windows,
+  so a capital `C` could never be typed into the prompt (the capital-C
+  draft-loss trap). That history is why the summon default is **Ctrl+`**, why
+  the shortcut recorder refuses Shift-only combos (`validateCombo` in
+  `src/hotkeys.ts`), and why the 2s select-all suppression exists (§4
+  `overlay://hidden`). Note the accelerator is a **virtual key**
+  (`Code::Backquote` → `VK_OEM_3`, layout-resolved by Windows); it sits at the
+  key left of 1 on US and ABNT2 layouts (verified on-device,
+  vault/2026-07-19_hotkey-config.md).
 - Opening links needs both the opener command **and** a URL scope: the capability
   grants `opener:allow-open-url` **with** an inline `http(s)://*` scope. Without the
   scope, `open_url` returns `ForbiddenUrl` at runtime (compiles fine).
@@ -331,8 +343,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 - Foreground-window game auto-detection.
 - SQLite cache of fetched wiki pages.
-- User-configurable hotkey.
 - Answer history.
+- Menu keyboard navigation: arrow keys, authored focus rings, and an
+  "Answer ready — N sources" announcement.
+- Compose the next question while an answer is still streaming.
 - Overlay design follow-ups: accent-direction exploration and a high-contrast
   bright-scene variant (dropped from the 2026-07-05 design-sync plan).
 - Panel corner-pick: let the player choose which corner the overlay docks to

@@ -102,10 +102,10 @@ function isWikiBoundStatus(s: AskStatus): boolean {
 }
 
 /** A show this soon after a hide skips the select-all: an accidental hide
- * (typing a capital C fires the global Shift+C toggle) followed by a
- * re-summon must not arm a keystroke that replaces the whole draft. The full
- * fix is the configurable hotkey (roadmap); this defuses the data loss.
- * Exported for the fake-timer tests. */
+ * followed by a re-summon must not arm a keystroke that replaces the whole
+ * draft. Born as the capital-C trap fix (the old Shift+C default made typing
+ * `C` fire the toggle — resolved by the Ctrl+` default); kept because any
+ * accidental hide arms the same loss. Exported for the fake-timer tests. */
 export const SELECT_SUPPRESS_MS = 2_000;
 
 function App() {

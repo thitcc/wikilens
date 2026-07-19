@@ -199,8 +199,8 @@ export function onCaptureError(
   return listen<string>("capture://error", (event) => callback(event.payload));
 }
 
-/** Fired when the Ctrl+Shift+C hotkey is pressed (routed through Rust so the
- * frontend stays the single capture entry point). */
+/** Fired when the capture shortcut (default Ctrl+Shift+C) is pressed (routed
+ * through Rust so the frontend stays the single capture entry point). */
 export function onCaptureHotkey(callback: () => void): Promise<UnlistenFn> {
   return listen("capture://hotkey", () => callback());
 }

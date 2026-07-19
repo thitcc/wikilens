@@ -143,12 +143,17 @@ All changes land through a pull request — no direct commits to `main`:
 
 ## Using it
 
-- **Shift+C** — show/hide the overlay from anywhere (also available from the tray).
+- **Ctrl+`** (the key left of 1) — show/hide the overlay from anywhere (also
+  available from the tray).
 - Pick your **LLM provider** and **game** from the dropdowns in the header; both
   choices are remembered between sessions.
 - When shown, the panel takes focus so you can type immediately.
 - **Enter** sends your question; **Shift+Enter** adds a newline.
-- **Esc** (or Shift+C again) hides the panel; focus returns to the game.
+- **Esc** (or Ctrl+` again) hides the panel; focus returns to the game.
+- **Changing the shortcuts:** the header's gear opens **Shortcuts** — press
+  **Change** on a row, then press the new combo (Esc cancels). Both the summon
+  and capture shortcuts are configurable; choices persist in `settings.json`
+  in the app-data dir, and **Reset** restores a default.
 - The app starts hidden and lives in the **system tray**. It only quits via the
   tray's **Quit** item — closing the window just hides it.
 
@@ -179,7 +184,8 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 1. Set a key: `cp .env.example .env` and fill in one provider's key (or export it,
    e.g. `$env:ANTHROPIC_API_KEY = "sk-ant-..."`).
 2. From the repo root: `npm install` then `npm run tauri dev`.
-3. Wait for the tray icon to appear (the window starts hidden), then press **Shift+C**.
+3. Wait for the tray icon to appear (the window starts hidden), then press
+   **Ctrl+`** (the key left of 1).
 4. The panel slides in from the right and focuses the input.
 5. Choose your **provider** (the one you set a key for) and a **game**, then ask a
    question — e.g. **Conan Exiles** → *"how do I make steel bars?"*, or **Core
@@ -201,11 +207,11 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
   paint over the overlay — that's expected, not a bug. Switch the game to
   borderless mode.
 - **Windows only** for now (macOS/Linux are not targeted).
-- **The Shift+C hotkey swallows Shift+C system-wide.** Because it's registered as a
-  bare Shift+letter global hotkey, you can't type a **capital C** into the prompt
-  (pressing Shift+C toggles the overlay), and an in-game Shift+C toggles the panel.
-  Wiki search is case-insensitive, so lowercase queries work fine. A Ctrl/Alt-based
-  combo is preferable and is planned as part of the configurable-hotkey work.
+- **Global shortcuts swallow their combo system-wide.** That's why the defaults
+  are Ctrl-based: the original **Shift+C** summon key made a capital **C**
+  untypeable everywhere (registered as a bare Shift+letter, it fired instead of
+  typing) — resolved by the **Ctrl+`** default, and the reason the shortcut
+  recorder refuses Shift-only combos.
 - Answers are only as good as the wiki. WikiLens will say so when the pages don't
   contain the answer, rather than guessing.
 
