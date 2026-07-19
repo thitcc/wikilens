@@ -1,12 +1,12 @@
 ---
 title: Fix the ask lifecycle — focus, cancel, partial answers, silent failures, AT announcements
 type: plan
-status: active
+status: done
 created: 2026-07-18
 updated: 2026-07-18
 tags: [frontend, rust, overlay]
 related: ["[[2026-07-18_impeccable-design-context]]"]
-commit:
+commit: [760b1fb, 6a8e9c3, 14a6d49, 943311a, 1561080, dc010c0]
 ---
 
 # Fix the ask lifecycle — focus, cancel, partial answers, silent failures, AT announcements
@@ -91,3 +91,13 @@ between pressing Enter and reading the answer:
 ## Status log
 - 2026-07-18 — created from the critique's Recommended Actions; scope fixed
   (a–e + aria) with two follow-up PRs split out; status → active.
+- 2026-07-18 — **done.** All six items landed as one commit each (see
+  `commit:`): readOnly focus retention with focus assertions; the Stop
+  action + `cancel_ask` token race (5 new Rust tests, incl. a wiremock pin
+  that a hung 30s socket aborts in ~100ms); the un-gated partial answer;
+  the capture hotkey's guarded `show_overlay` + shared copy; the
+  `overlay://hidden` select-suppression (2s window, fake-timer suite); the
+  role=status/alert + aria-current pass. Verified: tsc, Vitest 49/49 (8 new
+  frontend tests), clippy clean, cargo 235 passed, impeccable detector
+  exit 0. Follow-ups queued as roadmap/next PRs: hotkey-config panel
+  (the real capital-C fix), menu keyboard nav + focus indicators.
