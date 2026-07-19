@@ -10,7 +10,7 @@ related:
   - "[[2026-07-18_ask-lifecycle-fix-pass]]"
   - "[[2026-07-05_game-picker-owned-menu]]"
   - "[[2026-07-16_model-menu-dropdown]]"
-commit: [d707e2f, 80194e1, f7a5574, ba98e50, ebcaaa3, 98ee888, b0fd7ca]
+commit: [d707e2f, 80194e1, f7a5574, ba98e50, ebcaaa3, 98ee888, b0fd7ca, 42ae166]
 ---
 
 # Menu keyboard navigation, authored focus rings, and the answer-ready announcement
@@ -116,3 +116,9 @@ The branch name `feat/menu-keyboard-nav` was pre-committed by the critique itsel
   (missing-key dead end, raw provider bodies). New top P1s are first-run key
   setup and the already-queued combobox-semantics follow-up (§6 roadmap).
   Done: status set, commit list recorded.
+- 2026-07-19 — manual-pass finding (same PR, `42ae166`): with an OpenRouter
+  model selected, the menu opened with its group still collapsed — the
+  selected row was hidden until a manual expand. The selection's group is now
+  deleted from `INITIALLY_COLLAPSED` at mount (fetch included), pinned by a
+  ModelMenu test; the CLAUDE.md gotcha gained the exception. `/check` green
+  (115 Vitest, clippy, 247 cargo).
