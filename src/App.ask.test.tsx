@@ -22,9 +22,16 @@ test("ask flow: status transitions, delta accumulation, args, busy reset", async
 
   await user.type(questionBox(), "how do I fish{Enter}");
 
-  // Submit set the first phase synchronously and disabled the input.
+  // Submit set the first phase synchronously and locked the input — readOnly,
+  // not disabled, so keyboard focus never drops to <body> mid-ask.
   expect(screen.getByText("Searching the wiki…")).toBeTruthy();
-  expect(questionBox().disabled).toBe(true);
+  expect(questionBox().readOnly).toBe(true);
+  expect(document.activeElement).toBe(questionBox());
+  // The phase label lives in a live region, so assistive tech hears the
+  // lifecycle (role="status" = polite announcements).
+  expect(screen.getByRole("status").textContent).toContain(
+    "Searching the wiki…",
+  );
 
   await fireBackendEvent("ask://status", "understanding");
   expect(screen.getByText("Understanding your question…")).toBeTruthy();
@@ -51,10 +58,12 @@ test("ask flow: status transitions, delta accumulation, args, busy reset", async
     gate.resolve(ASK_OK);
   });
 
-  // The final result replaces the stream; busy is over, status gone.
+  // The final result replaces the stream; busy is over, status gone, and the
+  // prompt still holds focus for the follow-up question.
   expect(screen.getByText(/to raise spawn rates/)).toBeTruthy();
   expect(screen.queryByText("Reading pages…")).toBeNull();
-  expect(questionBox().disabled).toBe(false);
+  expect(questionBox().readOnly).toBe(false);
+  expect(document.activeElement).toBe(questionBox());
 });
 
 test("a rejected ask shows the error, keeps the attachment, re-enables input", async () => {
@@ -72,10 +81,32 @@ test("a rejected ask shows the error, keeps the attachment, re-enables input", a
   await user.type(questionBox(), "what is this{Enter}");
 
   await screen.findByText(/provider exploded/);
+  // The error box is an alert, so assistive tech hears the failure.
+  expect(screen.getByRole("alert").textContent).toContain("provider exploded");
   // Failed ask: the screenshot is NOT spent — the strip survives for a retry.
   expect(screen.getByAltText("Screenshot to attach")).toBeTruthy();
-  expect(questionBox().disabled).toBe(false);
+  expect(questionBox().readOnly).toBe(false);
   expect(backend.callsTo("ask")).toHaveLength(1);
+});
+
+test("a mid-stream error keeps the partial answer visible", async () => {
+  const backend = installBackend();
+  const gate = deferred<AskResult>();
+  backend.onCommand("ask", () => gate.promise);
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.type(questionBox(), "how do I fish{Enter}");
+  await fireBackendEvent("ask://delta", "Cast the ");
+  await fireBackendEvent("ask://delta", "fishing rod");
+
+  await act(async () => {
+    gate.reject(new Error("provider exploded"));
+  });
+
+  // Both render: the error explains, the partial isn't thrown away.
+  expect(screen.getByText(/provider exploded/)).toBeTruthy();
+  expect(screen.getByText("Cast the fishing rod")).toBeTruthy();
 });
 
 test("a successful ask clears the attachment and echoes its id", async () => {
@@ -105,7 +136,21 @@ test("Enter is a no-op when an attachment meets a text-only model", async () => 
 
   await user.type(questionBox(), "what is this{Enter}");
   expect(backend.callsTo("ask")).toHaveLength(0);
-  expect(questionBox().disabled).toBe(false);
+  expect(questionBox().readOnly).toBe(false);
+});
+
+test("the capture hotkey on a text-only model surfaces the panel and the copy", async () => {
+  localStorage.setItem(PROVIDER_STORAGE_KEY, "deepseek");
+  const backend = installBackend();
+  await renderApp();
+
+  await fireBackendEvent("capture://hotkey");
+
+  // Never silent: no capture starts, the hidden panel is asked to show, and
+  // the existing "can't read images" copy explains why.
+  expect(backend.callsTo("begin_capture")).toHaveLength(0);
+  expect(backend.callsTo("show_overlay")).toHaveLength(1);
+  expect(screen.getByText(/This model can't read images/)).toBeTruthy();
 });
 
 test("the capture hotkey sees current busy state, not a stale closure", async () => {

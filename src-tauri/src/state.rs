@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use tokio_util::sync::CancellationToken;
+
 use crate::capture::{Attachment, PendingShot};
 use crate::models::ModelInfo;
 use crate::wiki::titles::TitleIndex;
@@ -20,6 +22,11 @@ pub struct AppState {
     pub http: reqwest::Client,
     /// `true` while an `ask` command is running. See `commands::ask`.
     pub ask_in_progress: AtomicBool,
+    /// The in-flight ask's cancel token — `Some` for exactly as long as an
+    /// `ask` runs (armed right after the concurrency claim, disarmed by the
+    /// ask guard's Drop, so a stale `cancel_ask` can never touch the next
+    /// ask). Same never-held-across-await discipline as `models_cache`.
+    pub cancel_ask: Mutex<Option<CancellationToken>>,
     /// Session cache of live-fetched model lists, keyed by provider id.
     /// Live lists only — fallbacks are never cached, so a transient failure
     /// retries on the next menu open. A std `Mutex` is fine because it is
@@ -53,6 +60,7 @@ impl AppState {
             // in `crate::http` — every request in the app flows through it.
             http: crate::http::build_client(),
             ask_in_progress: AtomicBool::new(false),
+            cancel_ask: Mutex::new(None),
             models_cache: Mutex::new(HashMap::new()),
             pending_shot: Mutex::new(None),
             attachment: Mutex::new(None),

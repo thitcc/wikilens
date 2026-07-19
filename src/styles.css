@@ -635,7 +635,8 @@ body {
   color: var(--fg-muted);
 }
 
-.prompt-input:disabled {
+/* Busy asks make the box read-only (not disabled — that would drop focus). */
+.prompt-input:read-only {
   opacity: var(--opacity-disabled);
 }
 
@@ -716,9 +717,34 @@ body {
   gap: var(--space-12);
 }
 
+/* Label (+ hint) in a live region on the left, the Stop action beside the
+   first line — baseline-aligned so Stop rides the label even once the hint
+   wraps in below it. */
 .status {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
   color: var(--fg-muted);
   font-size: var(--text-status);
+}
+
+/* Quiet inline Stop action beside the phase label — same vocabulary as the
+   quiet chips (muted ink, fills on hover), text-sized so the row stays one
+   ambient line. */
+.status-stop {
+  padding: var(--space-2) var(--space-6);
+  border: none;
+  border-radius: var(--radius-chip);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+
+.status-stop:hover {
+  background: var(--surface-control);
+  color: var(--fg);
 }
 
 .status-hint {

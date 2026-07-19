@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ASK_CANCELLED,
   ask,
   beginCapture,
+  cancelAsk,
   clearCapture,
   debugAvailable,
   hideOverlay,
@@ -13,7 +15,9 @@ import {
   onCaptureAttached,
   onCaptureError,
   onCaptureHotkey,
+  onOverlayHidden,
   onOverlayShown,
+  showOverlay,
   toggleDebugWindow,
 } from "./api";
 import type {
@@ -64,6 +68,12 @@ function storedRecentGames(): string[] {
   return [];
 }
 
+/** Why an image can't go to the current model — shared by the attachment
+ * strip's hint and the capture hotkey's error surface, so the two never
+ * drift. */
+const CAPTURE_NEEDS_VISION =
+  "This model can't read images — remove it or pick one with the Image badge.";
+
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
   understanding: "Understanding your question…",
@@ -82,6 +92,13 @@ export const SLOW_WIKI_HINT_MS = 10_000;
 function isWikiBoundStatus(s: AskStatus): boolean {
   return s !== "answering";
 }
+
+/** A show this soon after a hide skips the select-all: an accidental hide
+ * (typing a capital C fires the global Shift+C toggle) followed by a
+ * re-summon must not arm a keystroke that replaces the whole draft. The full
+ * fix is the configurable hotkey (roadmap); this defuses the data loss.
+ * Exported for the fake-timer tests. */
+export const SELECT_SUPPRESS_MS = 2_000;
 
 function App() {
   const [games, setGames] = useState<GameInfo[]>([]);
@@ -117,6 +134,9 @@ function App() {
   // Latest capture handler, so the mount-only hotkey listener always sees
   // current state (e.g. `busy`) instead of a stale mount-time closure.
   const requestCaptureRef = useRef<() => void>(() => {});
+  // When the overlay last hid (overlay://hidden), for the select-all
+  // suppression below. 0 = never, so the first show always selects.
+  const lastHiddenAtRef = useRef(0);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -223,7 +243,15 @@ function App() {
     void onOverlayShown(() => {
       setOpenMenu(null);
       inputRef.current?.focus();
-      inputRef.current?.select();
+      // Select the old question so the first keystroke starts the new one —
+      // unless the panel was hidden moments ago, where "the old question" is
+      // really a live draft the player is mid-typing (see SELECT_SUPPRESS_MS).
+      if (Date.now() - lastHiddenAtRef.current > SELECT_SUPPRESS_MS) {
+        inputRef.current?.select();
+      }
+    }).then(register);
+    void onOverlayHidden(() => {
+      lastHiddenAtRef.current = Date.now();
     }).then(register);
     void onAskStatus((s) => setStatus(s)).then(register);
     void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);
@@ -320,9 +348,17 @@ function App() {
 
   // Start a capture (footer button and hotkey both land here). Rust hides the
   // panel, shows the crosshair overlay, and later fires capture://attached.
-  // The `!vision` guard covers the hotkey path; the button is already disabled.
+  // The `!vision` branch covers the hotkey path (the button is already
+  // disabled): a global hotkey must never fail silently, so surface the
+  // existing copy — and show the panel first, since the hotkey also fires
+  // while it's hidden. Busy stays a silent no-op (the ask lock is visible).
   function handleCaptureRequest() {
-    if (busy || !vision) return;
+    if (busy) return;
+    if (!vision) {
+      void showOverlay().catch(() => {});
+      setError(CAPTURE_NEEDS_VISION);
+      return;
+    }
     setOpenMenu(null);
     void beginCapture().catch((e) => setError(String(e)));
   }
@@ -334,6 +370,16 @@ function App() {
     // The frontend already dropped it; a failed Rust clear is harmless (the
     // next successful ask or capture overwrites the slot anyway).
     void clearCapture().catch(() => {});
+  }
+
+  // The status row's Stop action: fire the Rust-side abort and let the pending
+  // `ask` promise settle (with ASK_CANCELLED) — never reset state here, or a
+  // Stop racing a real completion would clobber the answer. The refocus covers
+  // keyboard activation: resolving unmounts the focused button, which would
+  // otherwise drop focus to <body> (the closeMenu trap).
+  function handleStop() {
+    void cancelAsk().catch(() => {});
+    inputRef.current?.focus();
   }
 
   async function handleSubmit() {
@@ -369,7 +415,10 @@ function App() {
       // screenshot is spent. A failed ask keeps it (this line isn't reached).
       setAttachment(null);
     } catch (e) {
-      setError(String(e));
+      // A cancelled ask resets quietly: no error box, and whatever partial
+      // answer already streamed stays on screen. (A delta racing the abort may
+      // still append after this settles — harmless, it lands on the kept text.)
+      if (String(e) !== ASK_CANCELLED) setError(String(e));
     } finally {
       setBusy(false);
       setStatus(null);
@@ -405,7 +454,7 @@ function App() {
         value={question}
         onChange={setQuestion}
         onSubmit={handleSubmit}
-        disabled={busy}
+        busy={busy}
         inputRef={inputRef}
       />
 
@@ -438,28 +487,47 @@ function App() {
             </button>
           </div>
           {!vision && (
-            <div className="attachment-hint">
-              This model can't read images — remove it or pick one with the Image
-              badge.
-            </div>
+            <div className="attachment-hint">{CAPTURE_NEEDS_VISION}</div>
           )}
         </div>
       )}
 
       <div className="content">
-        {error && <div className="error">{error}</div>}
-        {!error && busy && status && (
-          <div className="status">
-            {STATUS_LABEL[status]}
-            {slowHint && isWikiBoundStatus(status) && (
-              <div className="status-hint">
-                The wiki is responding slowly — this isn't WikiLens.
-              </div>
-            )}
+        {error && (
+          <div className="error" role="alert">
+            {error}
           </div>
         )}
-        {!error && answer && <AnswerView markdown={answer} />}
-        {!error && <SourceList sources={sources} />}
+        {!error && busy && status && (
+          <div className="status">
+            {/* The live region wraps the label + hint only — with Stop inside,
+                every phase change would re-announce a "Stop" button. */}
+            <div role="status">
+              {STATUS_LABEL[status]}
+              {slowHint && isWikiBoundStatus(status) && (
+                <div className="status-hint">
+                  The wiki is responding slowly — this isn't WikiLens.
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="status-stop"
+              // Keep the pointer press from stealing focus off the prompt —
+              // the (a) invariant; handleStop refocuses for keyboard users.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleStop}
+            >
+              Stop
+            </button>
+          </div>
+        )}
+        {/* Not gated on error: a mid-stream failure keeps the partial that
+            already streamed (submit cleared `answer`, so it's this ask's own
+            text). Sources are cleared on submit and set only on success, so
+            the list self-hides under an error. */}
+        {answer && <AnswerView markdown={answer} />}
+        <SourceList sources={sources} />
         {showPlaceholder && (
           <div className="placeholder">
             Press <kbd>Shift</kbd>+<kbd>C</kbd> anytime to open this panel. Ask a

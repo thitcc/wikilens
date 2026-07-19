@@ -116,7 +116,9 @@ export function installBackend(
       list_providers: () => PROVIDERS,
       list_models: () => MODELS,
       ask: () => ASK_OK,
+      cancel_ask: () => undefined,
       hide_overlay: () => undefined,
+      show_overlay: () => undefined,
       // Default false keeps the footer Debug chip out of unrelated tests;
       // the Debug-chip suite overrides it to true.
       debug_available: () => false,

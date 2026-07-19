@@ -246,6 +246,9 @@ glass, not as a form.
   focus ring.
 - **Accent action rows** ("Add a game…", "Find its wiki"): same anatomy at
   menu-row size, ink swapped for Moonlight Blue.
+- **Inline text action** ("Stop", beside the phase label in the status row):
+  the quiet-chip anatomy at 12px label size, resting as muted ink inside the
+  status line — an escape hatch, not a call to action.
 - **Disabled:** 0.6 opacity, cursor reverts.
 
 ### Chips (Badges)

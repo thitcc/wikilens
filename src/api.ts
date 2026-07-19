@@ -55,6 +55,12 @@ export function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
 
+/** Show the overlay window if it's hidden; a visible panel is untouched (no
+ * `overlay://shown` re-fire, so an open draft is never re-selected). */
+export function showOverlay(): Promise<void> {
+  return invoke<void>("show_overlay");
+}
+
 /** Whether the debug window exists this session (WIKILENS_DEBUG at startup) —
  * gates the footer's Debug chip. */
 export function debugAvailable(): Promise<boolean> {
@@ -66,10 +72,16 @@ export function toggleDebugWindow(): Promise<void> {
   return invoke<void>("toggle_debug_window");
 }
 
+/** The rejection value `ask` settles with after `cancelAsk` wins — mirrors
+ * `ASK_CANCELLED` in `commands.rs`. The one machine-readable command error:
+ * compare against it and reset quietly; never render it. */
+export const ASK_CANCELLED = "wikilens::ask-cancelled";
+
 /** Ask a question about a game using a chosen provider and model; resolves
  * with the answer and sources. A blank `model` falls back to the provider's
  * default Rust-side. `imageId` optionally attaches a captured screenshot (from
- * `onCaptureAttached`); Rust rejects a stale id. */
+ * `onCaptureAttached`); Rust rejects a stale id. Rejects with
+ * [`ASK_CANCELLED`] when `cancelAsk` aborts it. */
 export function ask(
   gameId: string,
   providerId: string,
@@ -86,6 +98,13 @@ export function ask(
     question,
     imageId: imageId ?? null,
   });
+}
+
+/** Abort the in-flight ask (the status row's Stop action). Always resolves:
+ * a no-op when nothing is running, idempotent on a double click. The `ask`
+ * promise itself then rejects with [`ASK_CANCELLED`]. */
+export function cancelAsk(): Promise<void> {
+  return invoke<void>("cancel_ask");
 }
 
 /** Start a region capture: hide the panel and show the crosshair overlay. The
@@ -109,6 +128,13 @@ export function openExternal(url: string): Promise<void> {
 /** Fired after the overlay is shown; use it to focus the prompt input. */
 export function onOverlayShown(callback: () => void): Promise<UnlistenFn> {
   return listen("overlay://shown", () => callback());
+}
+
+/** Fired after the overlay is hidden (Esc, hotkey toggle, tray, Alt+F4, the
+ * capture flow). The hidden webview stays mounted and hears it; the frontend
+ * timestamps it to keep a quick re-summon from select-alling the draft. */
+export function onOverlayHidden(callback: () => void): Promise<UnlistenFn> {
+  return listen("overlay://hidden", () => callback());
 }
 
 /** Fired as the `ask` command advances through its phases. */
