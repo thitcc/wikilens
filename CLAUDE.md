@@ -28,7 +28,8 @@ wikilens/
 │   ├── modelPick.ts              # stored model pick + vision resolution (pure helpers, unit-tested)
 │   ├── hotkeys.ts                # recorder pure helpers: combo→accelerator, validation, labels (paired with hotkey.rs)
 │   ├── menuPlacement.ts          # model-menu drop/flip measurement (paired constants — see §5)
-│   ├── menuScroll.ts             # centerRowInList(): centers the picked row in menu lists
+│   ├── menuNav.ts                # nextHighlight(): arrow-key highlight movement for the menus (pure, unit-tested)
+│   ├── menuScroll.ts             # centerRowInList() + keepRowInView(): center the picked row on open, reveal the highlighted row on arrows
 │   ├── styles.css                # Transparent body + glass dark panel
 │   ├── test/                     # Vitest harness: setup, fake IPC backend (mockIPC), mount helpers
 │   ├── capture/main.ts           # region-select page (vanilla TS, own bundle): drag → finish/cancel_capture
@@ -318,7 +319,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
   and its menu group starts collapsed, which also defers the fetch until first
-  expand.
+  expand. Exception: when the **current selection** lives there, the group
+  opens expanded (and fetches) so the picked row isn't hidden behind a
+  collapsed header.
 - The debug window's `focusable(false)` is **load-bearing**, not cosmetic:
   tao's `show()` issues an activating `SW_SHOW`, so `focused(false)` alone
   only covers creation — a tray re-show would steal keyboard focus from the
@@ -344,8 +347,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Foreground-window game auto-detection.
 - SQLite cache of fetched wiki pages.
 - Answer history.
-- Menu keyboard navigation: arrow keys, authored focus rings, and an
-  "Answer ready — N sources" announcement.
+- Menu combobox semantics (`aria-activedescendant`): expose the arrow-key
+  highlight to assistive tech conformantly — needs ModelMenu's interactive
+  group headers restructured out of the list first (a valid listbox can't
+  contain them).
 - Compose the next question while an answer is still streaming.
 - Overlay design follow-ups: accent-direction exploration and a high-contrast
   bright-scene variant (dropped from the 2026-07-05 design-sync plan).

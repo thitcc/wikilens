@@ -244,8 +244,14 @@ is claiming to be a window, and it almost certainly isn't one.
 ## 5. Components
 
 Quiet until touched: every control rests as bare ink and only surfaces a
-faint veil fill on hover, focus, or open. The panel at idle reads as text on
-glass, not as a form.
+faint veil fill on hover, open, or the keyboard highlight. The panel at idle
+reads as text on glass, not as a form.
+
+**Keyboard focus** (`:focus-visible`) speaks with the accent instead: a 1px
+Moonlight Blue outline, offset 2px on standalone controls (chips, links,
+inline actions) and inset 1px on in-list rows so touching rows don't overlap.
+Pointer presses never ring. Inputs keep their border-shift (see Inputs) — a
+field with a border needs no second voice.
 
 ### Buttons (Quiet Chips)
 
@@ -254,6 +260,8 @@ glass, not as a form.
 - **Hover / Open:** veil fill (rgba(255,255,255,0.06)) and ink promotion to
   #e8e8ee; the open state mirrors hover because an owned popup has no native
   focus ring.
+- **Keyboard focus:** the authored Moonlight Blue outline (see "Keyboard
+  focus" above), replacing the UA default ring.
 - **Accent action rows** ("Add a game…", "Find its wiki"): same anatomy at
   menu-row size, ink swapped for Moonlight Blue.
 - **Inline text action** ("Stop", beside the phase label in the status row):
@@ -294,8 +302,15 @@ glass, not as a form.
   at top, scrolling list, optional pinned footer action; never a native
   `<select>` (OS-drawn popups render as unstylable white sheets over the
   glass).
-- **Rows:** 13px ink text, 8px radius, veil on hover; selection is a
-  Moonlight Blue check (and monogram tiles promote to ink on hover/selected).
+- **Rows:** 13px ink text, 8px radius, veil on hover *and* on the arrow-key
+  highlight (the keyboard's hover — same voice, independent states); selection
+  is a Moonlight Blue check (and monogram tiles promote to ink on
+  hover/selected).
+- **Keyboard:** focus stays on the filter input; Up/Down move the highlight
+  through the pickable rows only (no wrap — Home/End jump), Enter picks the
+  highlighted row, and typing keeps filtering. Group headers and pinned
+  footer actions stay outside the arrow order (Tab reaches them, ringed by
+  the authored focus outline).
 - **Group headers:** label-style uppercase, collapsible with a rotating
   9px caret.
 - **Placement:** menus are direct children of the panel, anchored by paired
@@ -319,7 +334,8 @@ ink on hover/selection. The system's only "icon", and it's typography.
 - **Do** keep `html, body` transparent in every window's stylesheet — the
   webview paints a black rectangle without it.
 - **Do** draw controls as bare ink at rest and reveal the veil fill only on
-  hover/focus/open ("quiet until touched").
+  hover/open and the keyboard highlight ("quiet until touched"); keyboard
+  focus speaks with the Moonlight Blue outline, never a fill.
 - **Do** reserve Moonlight Blue for the interactive, the selected, and the
   focused (the One Signal Rule) — answers and data stay ink.
 - **Do** build every picker as an owned menu on Menu Glass, and keep menus

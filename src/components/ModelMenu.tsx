@@ -1,12 +1,13 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { listModels } from "../api";
+import { isNavKey, nextHighlight } from "../menuNav";
 import {
   MENU_FIXED_HEIGHT,
   modelMenuPlacement,
   type MenuPlacement,
 } from "../menuPlacement";
-import { centerRowInList } from "../menuScroll";
+import { centerRowInList, keepRowInView } from "../menuScroll";
 import type { ModelInfo, ModelList, ProviderInfo } from "../types";
 import { Badge } from "./Badge";
 
@@ -20,7 +21,10 @@ interface ModelMenuProps {
 }
 
 /** OpenRouter's 300+ model catalog would dominate the menu, so its group
- * starts collapsed — which also defers its fetch until first expand. */
+ * starts collapsed — which also defers its fetch until first expand. One
+ * exception, applied at mount: the group holding the *current selection*
+ * opens expanded, so the picked row is visible, centered, and highlighted
+ * instead of hidden behind a collapsed header. */
 const INITIALLY_COLLAPSED = new Set(["openrouter"]);
 
 /**
@@ -36,6 +40,10 @@ const INITIALLY_COLLAPSED = new Set(["openrouter"]);
  *
  * Rendered as a direct child of `.panel` — never inside `.content`, whose
  * `overflow-y: auto` would clip the absolutely-positioned menu.
+ *
+ * Keyboard model shared with GameMenu (see its doc comment): arrows move a
+ * visible highlight through the model rows only — group headers stay Tab
+ * territory — and Enter picks the highlighted row.
  */
 export function ModelMenu({
   providers,
@@ -45,14 +53,24 @@ export function ModelMenu({
   chipRef,
 }: ModelMenuProps) {
   const [filter, setFilter] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(INITIALLY_COLLAPSED),
-  );
+  // The selection's own group never starts collapsed (see INITIALLY_COLLAPSED)
+  // — fresh per open, since the menu remounts every open.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    const initial = new Set(INITIALLY_COLLAPSED);
+    initial.delete(selected.providerId);
+    return initial;
+  });
   const [lists, setLists] = useState<Record<string, ModelList>>({});
   const [loading, setLoading] = useState<Set<string>>(() => new Set());
+  // The keyboard highlight, as a `${providerId}:${modelId}` row key. null =
+  // "auto": the first match while filtering, the selected row otherwise. A
+  // key survives rows appearing above it (async lists) and degrades to
+  // no-highlight when its row vanishes (group collapsed).
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const didCenterRef = useRef(false);
   const requestedRef = useRef<Set<string>>(new Set());
   const [placement, setPlacement] = useState<MenuPlacement>({
@@ -179,15 +197,38 @@ export function ModelMenu({
     model.label.toLowerCase().includes(query) ||
     model.id.toLowerCase().includes(query);
 
-  /** Visible rows in display order, for Enter-picks-the-first-match. */
-  function firstVisible(): { providerId: string; model: ModelInfo } | null {
-    for (const provider of providers) {
-      if (collapsed.has(provider.id)) continue;
-      const model = lists[provider.id]?.models.find(matches);
-      if (model) return { providerId: provider.id, model };
+  // The arrow-navigable rows in display order — the same traversal the old
+  // Enter-picks-the-first-match walked, generalized: collapsed groups are
+  // skipped, so their rows (and the group headers, which stay Tab territory)
+  // never enter the arrow order.
+  const rows: Array<{ key: string; providerId: string; model: ModelInfo }> = [];
+  for (const provider of providers) {
+    if (collapsed.has(provider.id)) continue;
+    for (const model of lists[provider.id]?.models ?? []) {
+      if (matches(model)) {
+        rows.push({ key: `${provider.id}:${model.id}`, providerId: provider.id, model });
+      }
     }
-    return null;
   }
+
+  // Derived, never stored: a stale index can't point at the wrong row when
+  // lists arrive or a group collapses. Auto (null) anchors on the first match
+  // while filtering, else on the selected row — falling back to the top row
+  // (visible in an unscrolled list) when the selection hides inside a
+  // collapsed group or its list hasn't arrived yet.
+  const selectedKey = `${selected.providerId}:${selected.modelId}`;
+  const highlightIndex =
+    highlightKey !== null
+      ? rows.findIndex((r) => r.key === highlightKey)
+      : rows.length === 0
+        ? -1
+        : query
+          ? 0
+          : Math.max(
+              rows.findIndex((r) => r.key === selectedKey),
+              0,
+            );
+  const highlightedKey = highlightIndex >= 0 ? rows[highlightIndex].key : null;
 
   return (
     <div
@@ -204,12 +245,34 @@ export function ModelMenu({
           placeholder="Filter models…"
           aria-label="Filter models"
           autoFocus
-          onChange={(e) => setFilter(e.currentTarget.value)}
+          onChange={(e) => {
+            setFilter(e.currentTarget.value);
+            // Re-anchor on the first match — and scroll to the top so the
+            // auto-highlight is actually visible (a highlighted-but-scrolled-
+            // away row would recreate the invisible-pick bug).
+            setHighlightKey(null);
+            if (listRef.current) listRef.current.scrollTop = 0;
+          }}
           onKeyDown={(e) => {
+            // Esc stays with the capture-phase window listener above — the
+            // menu/overlay layering must not gain a third handler here.
+            if (isNavKey(e.key)) {
+              e.preventDefault(); // the caret would jump to the input's ends
+              const next = nextHighlight(highlightIndex, rows.length, e.key);
+              if (next >= 0) {
+                const target = rows[next];
+                setHighlightKey(target.key);
+                keepRowInView(
+                  listRef.current,
+                  rowRefs.current.get(target.key) ?? null,
+                );
+              }
+              return;
+            }
             if (e.key === "Enter") {
               e.preventDefault();
-              const first = firstVisible();
-              if (first) onSelect(first.providerId, first.model);
+              const target = rows[highlightIndex];
+              if (target) onSelect(target.providerId, target.model);
             }
           }}
         />
@@ -251,12 +314,24 @@ export function ModelMenu({
                   const isSelected =
                     provider.id === selected.providerId &&
                     model.id === selected.modelId;
+                  const rowKey = `${provider.id}:${model.id}`;
                   return (
                     <button
                       key={model.id}
                       type="button"
-                      className={"model-row" + (isSelected ? " selected" : "")}
-                      ref={isSelected ? selectedRowRef : undefined}
+                      className={
+                        "model-row" +
+                        (isSelected ? " selected" : "") +
+                        (rowKey === highlightedKey ? " is-highlighted" : "")
+                      }
+                      ref={(el) => {
+                        if (el) rowRefs.current.set(rowKey, el);
+                        else rowRefs.current.delete(rowKey);
+                        // Keep feeding the center-on-open ref — dropping this
+                        // silently kills the scroll-to-selected (jsdom can't
+                        // catch it).
+                        if (isSelected) selectedRowRef.current = el;
+                      }}
                       // The assistive-tech counterpart of the check glyph.
                       aria-current={isSelected ? "true" : undefined}
                       onClick={() => onSelect(provider.id, model)}

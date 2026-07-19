@@ -64,6 +64,63 @@ test("ask flow: status transitions, delta accumulation, args, busy reset", async
   expect(screen.queryByText("Reading pages…")).toBeNull();
   expect(questionBox().readOnly).toBe(false);
   expect(document.activeElement).toBe(questionBox());
+
+  // The region persists through the resolve (an unmounted live region can't
+  // announce) and carries the one-shot arrival announcement; the Stop button
+  // left with the busy state.
+  expect(screen.getByRole("status").textContent).toBe(
+    "Answer ready — 1 source",
+  );
+  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+});
+
+test("the answer-ready announcement pluralizes the source count", async () => {
+  const backend = installBackend();
+  backend.onCommand("ask", (): AskResult => {
+    return {
+      answer: "Plant **Winter Seeds**.",
+      sources: [
+        { title: "Winter", url: "https://stardewvalleywiki.com/Winter" },
+        { title: "Crops", url: "https://stardewvalleywiki.com/Crops" },
+      ],
+    };
+  });
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.type(questionBox(), "best winter crops{Enter}");
+  await screen.findByText(/Winter Seeds/);
+  expect(screen.getByRole("status").textContent).toBe(
+    "Answer ready — 2 sources",
+  );
+});
+
+test("submitting the next question clears the stale announcement", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.type(questionBox(), "how do I fish{Enter}");
+  await screen.findByText(/to raise spawn rates/);
+  expect(screen.getByRole("status").textContent).toContain("Answer ready");
+
+  const gate = deferred<AskResult>();
+  backend.onCommand("ask", () => gate.promise);
+  await user.type(questionBox(), "another question{Enter}");
+
+  // The region is back to phase duty — a same-N repeat ask must re-announce,
+  // which needs the content to actually change in between.
+  expect(screen.getByRole("status").textContent).toContain(
+    "Searching the wiki…",
+  );
+  expect(screen.getByRole("status").textContent).not.toContain("Answer ready");
+
+  await act(async () => {
+    gate.resolve(ASK_OK);
+  });
+  expect(screen.getByRole("status").textContent).toBe(
+    "Answer ready — 1 source",
+  );
 });
 
 test("a rejected ask shows the error, keeps the attachment, re-enables input", async () => {
@@ -83,6 +140,8 @@ test("a rejected ask shows the error, keeps the attachment, re-enables input", a
   await screen.findByText(/provider exploded/);
   // The error box is an alert, so assistive tech hears the failure.
   expect(screen.getByRole("alert").textContent).toContain("provider exploded");
+  // The failure voice is the alert's alone — no answer-ready announcement.
+  expect(screen.getByRole("status").textContent).not.toContain("Answer ready");
   // Failed ask: the screenshot is NOT spent — the strip survives for a retry.
   expect(screen.getByAltText("Screenshot to attach")).toBeTruthy();
   expect(questionBox().readOnly).toBe(false);

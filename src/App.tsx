@@ -90,6 +90,15 @@ const STATUS_LABEL: Record<AskStatus, string> = {
   answering: "Answering…",
 };
 
+/** The one-shot answer-ready announcement (2026-07-19 critique P1: phases
+ * were announced but the answer's arrival was silent — "Answering…" then
+ * silence, forever). Spoken through the persistent role=status region. */
+function answerReadyLabel(sourceCount: number): string {
+  if (sourceCount === 0) return "Answer ready";
+  if (sourceCount === 1) return "Answer ready — 1 source";
+  return `Answer ready — ${sourceCount} sources`;
+}
+
 /** How long one ask phase may run before the slow-wiki hint shows. Above the
  * healthy worst cases (search ≲3s, 4-page fetch ≲8s), below the backend's 12s
  * per-request fetch timeout. Exported for the fake-timer tests. */
@@ -131,6 +140,11 @@ function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [status, setStatus] = useState<AskStatus | null>(null);
   const [slowHint, setSlowHint] = useState(false);
+  // The one-shot "Answer ready — N sources" text, set on resolve only (never
+  // cancel or error) and cleared on the next submit — no timer: the text is
+  // visually hidden, staying accurate for as long as the answer is on screen,
+  // and clearing on submit guarantees a same-N repeat ask re-announces.
+  const [announcement, setAnnouncement] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
@@ -421,6 +435,7 @@ function App() {
     setError(null);
     setAnswer("");
     setSources([]);
+    setAnnouncement(null);
     setStatus("searching");
 
     try {
@@ -437,6 +452,7 @@ function App() {
       );
       setAnswer(result.answer);
       setSources(result.sources);
+      setAnnouncement(answerReadyLabel(result.sources.length));
       // Clears-on-success, mirroring the Rust slot: the model answered, so the
       // screenshot is spent. A failed ask keeps it (this line isn't reached).
       setAttachment(null);
@@ -452,6 +468,9 @@ function App() {
   }
 
   const showPlaceholder = !error && !busy && !answer;
+  // The phase to display, null outside a healthy busy ask. A narrowed value
+  // (not a boolean) so STATUS_LABEL[activeStatus] type-checks in the JSX.
+  const activeStatus = !error && busy ? status : null;
   // Configured shortcut copy, falling back to the shipped defaults until
   // get_settings resolves (or if it failed).
   const summonKeys = labelParts(
@@ -565,18 +584,28 @@ function App() {
             {error}
           </div>
         )}
-        {!error && busy && status && (
-          <div className="status">
-            {/* The live region wraps the label + hint only — with Stop inside,
-                every phase change would re-announce a "Stop" button. */}
-            <div role="status">
-              {STATUS_LABEL[status]}
-              {slowHint && isWikiBoundStatus(status) && (
-                <div className="status-hint">
-                  The wiki is responding slowly — this isn't WikiLens.
-                </div>
-              )}
-            </div>
+        {/* Always mounted: a live region that unmounts in the resolve commit
+            can never announce, so the row persists — visible as the status
+            line while busy, visually hidden while carrying the one-shot
+            answer-ready announcement (or nothing). */}
+        <div className={activeStatus ? "status" : "visually-hidden"}>
+          {/* The live region wraps the label + hint only — with Stop inside,
+              every phase change would re-announce a "Stop" button. */}
+          <div role="status">
+            {activeStatus ? (
+              <>
+                {STATUS_LABEL[activeStatus]}
+                {slowHint && isWikiBoundStatus(activeStatus) && (
+                  <div className="status-hint">
+                    The wiki is responding slowly — this isn't WikiLens.
+                  </div>
+                )}
+              </>
+            ) : (
+              announcement
+            )}
+          </div>
+          {activeStatus && (
             <button
               type="button"
               className="status-stop"
@@ -587,8 +616,8 @@ function App() {
             >
               Stop
             </button>
-          </div>
-        )}
+          )}
+        </div>
         {/* Not gated on error: a mid-stream failure keeps the partial that
             already streamed (submit cleared `answer`, so it's this ask's own
             text). Sources are cleared on submit and set only on success, so
