@@ -117,6 +117,9 @@ export function GameMenu({
         ref={withRef && isSelected ? selectedRowRef : undefined}
         type="button"
         className={"model-row" + (isSelected ? " selected" : "")}
+        // The visual selection mark is an aria-hidden check glyph; this is
+        // its assistive-tech counterpart.
+        aria-current={isSelected ? "true" : undefined}
         onClick={() => onSelect(game.id)}
       >
         <span className="row-main">

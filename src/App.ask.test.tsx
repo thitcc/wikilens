@@ -27,6 +27,11 @@ test("ask flow: status transitions, delta accumulation, args, busy reset", async
   expect(screen.getByText("Searching the wiki…")).toBeTruthy();
   expect(questionBox().readOnly).toBe(true);
   expect(document.activeElement).toBe(questionBox());
+  // The phase label lives in a live region, so assistive tech hears the
+  // lifecycle (role="status" = polite announcements).
+  expect(screen.getByRole("status").textContent).toContain(
+    "Searching the wiki…",
+  );
 
   await fireBackendEvent("ask://status", "understanding");
   expect(screen.getByText("Understanding your question…")).toBeTruthy();
@@ -76,6 +81,8 @@ test("a rejected ask shows the error, keeps the attachment, re-enables input", a
   await user.type(questionBox(), "what is this{Enter}");
 
   await screen.findByText(/provider exploded/);
+  // The error box is an alert, so assistive tech hears the failure.
+  expect(screen.getByRole("alert").textContent).toContain("provider exploded");
   // Failed ask: the screenshot is NOT spent — the strip survives for a retry.
   expect(screen.getByAltText("Screenshot to attach")).toBeTruthy();
   expect(questionBox().readOnly).toBe(false);

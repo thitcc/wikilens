@@ -60,6 +60,29 @@ test("at most one menu is open at a time", async () => {
   expect(dialogs[0].getAttribute("aria-label")).toBe("Choose a model");
 });
 
+test("the selected row is marked for assistive tech, not just the check glyph", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderApp();
+
+  // Game menu: exactly the selected game's rows carry aria-current (it can
+  // appear in both Recent and All games).
+  await user.click(screen.getByRole("button", { name: /^Game: / }));
+  const gameDialog = screen.getByRole("dialog", { name: "Choose a game" });
+  const current = gameDialog.querySelectorAll('[aria-current="true"]');
+  expect(current.length).toBeGreaterThan(0);
+  for (const row of current) {
+    expect(row.textContent).toContain("Terraria");
+  }
+  await user.keyboard("{Escape}");
+
+  // Model menu: the picked (default) model's row carries it too.
+  await user.click(screen.getByRole("button", { name: /^Model: / }));
+  const modelDialog = screen.getByRole("dialog", { name: "Choose a model" });
+  const picked = modelDialog.querySelector('[aria-current="true"]');
+  expect(picked?.textContent).toContain("Claude Sonnet 5");
+});
+
 test("overlay://shown closes whatever menu is open", async () => {
   installBackend();
   const user = userEvent.setup();

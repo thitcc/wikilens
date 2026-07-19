@@ -493,10 +493,23 @@ function App() {
       )}
 
       <div className="content">
-        {error && <div className="error">{error}</div>}
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
         {!error && busy && status && (
           <div className="status">
-            {STATUS_LABEL[status]}
+            {/* The live region wraps the label + hint only — with Stop inside,
+                every phase change would re-announce a "Stop" button. */}
+            <div role="status">
+              {STATUS_LABEL[status]}
+              {slowHint && isWikiBoundStatus(status) && (
+                <div className="status-hint">
+                  The wiki is responding slowly — this isn't WikiLens.
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="status-stop"
@@ -507,11 +520,6 @@ function App() {
             >
               Stop
             </button>
-            {slowHint && isWikiBoundStatus(status) && (
-              <div className="status-hint">
-                The wiki is responding slowly — this isn't WikiLens.
-              </div>
-            )}
           </div>
         )}
         {/* Not gated on error: a mid-stream failure keeps the partial that

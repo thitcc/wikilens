@@ -257,6 +257,8 @@ export function ModelMenu({
                       type="button"
                       className={"model-row" + (isSelected ? " selected" : "")}
                       ref={isSelected ? selectedRowRef : undefined}
+                      // The assistive-tech counterpart of the check glyph.
+                      aria-current={isSelected ? "true" : undefined}
                       onClick={() => onSelect(provider.id, model)}
                     >
                       <span className="row-name">{model.label}</span>
