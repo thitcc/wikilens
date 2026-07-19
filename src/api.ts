@@ -55,6 +55,12 @@ export function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
 
+/** Show the overlay window if it's hidden; a visible panel is untouched (no
+ * `overlay://shown` re-fire, so an open draft is never re-selected). */
+export function showOverlay(): Promise<void> {
+  return invoke<void>("show_overlay");
+}
+
 /** Whether the debug window exists this session (WIKILENS_DEBUG at startup) —
  * gates the footer's Debug chip. */
 export function debugAvailable(): Promise<boolean> {

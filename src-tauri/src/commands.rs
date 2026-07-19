@@ -254,6 +254,15 @@ pub fn hide_overlay(app: AppHandle) {
     window::hide_overlay(&app);
 }
 
+/// Show the overlay if it's hidden (a visible panel is left untouched — no
+/// `overlay://shown` re-fire, no select-all on a draft). Used by the frontend
+/// when the capture hotkey fires against a text-only model: the panel must
+/// appear to carry the explanation, or the hotkey fails silently.
+#[tauri::command]
+pub fn show_overlay(app: AppHandle) {
+    window::show_overlay_if_hidden(&app);
+}
+
 /// Whether the visual debug window exists this session (`WIKILENS_DEBUG` was
 /// truthy at startup) — the overlay renders its footer Debug chip only then.
 /// Reveals a single bool about the local environment, never key material.

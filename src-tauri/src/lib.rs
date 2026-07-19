@@ -90,6 +90,7 @@ pub fn run() {
             commands::list_providers,
             commands::list_models,
             commands::hide_overlay,
+            commands::show_overlay,
             commands::debug_available,
             commands::toggle_debug_window,
             commands::begin_capture,

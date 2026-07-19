@@ -132,6 +132,20 @@ test("Enter is a no-op when an attachment meets a text-only model", async () => 
   expect(questionBox().readOnly).toBe(false);
 });
 
+test("the capture hotkey on a text-only model surfaces the panel and the copy", async () => {
+  localStorage.setItem(PROVIDER_STORAGE_KEY, "deepseek");
+  const backend = installBackend();
+  await renderApp();
+
+  await fireBackendEvent("capture://hotkey");
+
+  // Never silent: no capture starts, the hidden panel is asked to show, and
+  // the existing "can't read images" copy explains why.
+  expect(backend.callsTo("begin_capture")).toHaveLength(0);
+  expect(backend.callsTo("show_overlay")).toHaveLength(1);
+  expect(screen.getByText(/This model can't read images/)).toBeTruthy();
+});
+
 test("the capture hotkey sees current busy state, not a stale closure", async () => {
   const backend = installBackend();
   const gate = deferred<AskResult>();

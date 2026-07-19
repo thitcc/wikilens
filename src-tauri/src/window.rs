@@ -58,6 +58,21 @@ pub fn show_overlay(app: &AppHandle) {
     let _ = win.emit(EVENT_SHOWN, ());
 }
 
+/// Show the overlay only when it's hidden. The guard is the point: re-showing
+/// a visible panel would re-emit `overlay://shown`, whose frontend handler
+/// select-alls the prompt — on an open panel with a draft, the next keystroke
+/// would replace the whole question. Used by the `show_overlay` command (the
+/// capture hotkey's "this model can't read images" surface).
+pub fn show_overlay_if_hidden(app: &AppHandle) {
+    let Some(win) = overlay_window(app) else {
+        eprintln!("[wikilens] overlay window '{OVERLAY_LABEL}' not found");
+        return;
+    };
+    if !win.is_visible().unwrap_or(false) {
+        show_overlay(app);
+    }
+}
+
 /// Hide the overlay. Used by the `Esc` handler (via the `hide_overlay` command)
 /// and the tray menu.
 pub fn hide_overlay(app: &AppHandle) {

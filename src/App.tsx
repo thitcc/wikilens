@@ -16,6 +16,7 @@ import {
   onCaptureError,
   onCaptureHotkey,
   onOverlayShown,
+  showOverlay,
   toggleDebugWindow,
 } from "./api";
 import type {
@@ -65,6 +66,12 @@ function storedRecentGames(): string[] {
   }
   return [];
 }
+
+/** Why an image can't go to the current model — shared by the attachment
+ * strip's hint and the capture hotkey's error surface, so the two never
+ * drift. */
+const CAPTURE_NEEDS_VISION =
+  "This model can't read images — remove it or pick one with the Image badge.";
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
@@ -322,9 +329,17 @@ function App() {
 
   // Start a capture (footer button and hotkey both land here). Rust hides the
   // panel, shows the crosshair overlay, and later fires capture://attached.
-  // The `!vision` guard covers the hotkey path; the button is already disabled.
+  // The `!vision` branch covers the hotkey path (the button is already
+  // disabled): a global hotkey must never fail silently, so surface the
+  // existing copy — and show the panel first, since the hotkey also fires
+  // while it's hidden. Busy stays a silent no-op (the ask lock is visible).
   function handleCaptureRequest() {
-    if (busy || !vision) return;
+    if (busy) return;
+    if (!vision) {
+      void showOverlay().catch(() => {});
+      setError(CAPTURE_NEEDS_VISION);
+      return;
+    }
     setOpenMenu(null);
     void beginCapture().catch((e) => setError(String(e)));
   }
@@ -453,10 +468,7 @@ function App() {
             </button>
           </div>
           {!vision && (
-            <div className="attachment-hint">
-              This model can't read images — remove it or pick one with the Image
-              badge.
-            </div>
+            <div className="attachment-hint">{CAPTURE_NEEDS_VISION}</div>
           )}
         </div>
       )}
