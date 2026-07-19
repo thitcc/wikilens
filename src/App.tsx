@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ASK_CANCELLED,
   ask,
@@ -6,6 +6,7 @@ import {
   cancelAsk,
   clearCapture,
   debugAvailable,
+  getSettings,
   hideOverlay,
   listGames,
   listModels,
@@ -26,9 +27,15 @@ import type {
   GameInfo,
   ModelInfo,
   ProviderInfo,
+  SettingsInfo,
   Source,
   StoredModelPick,
 } from "./types";
+import {
+  DEFAULT_CAPTURE_LABEL,
+  DEFAULT_SUMMON_LABEL,
+  labelParts,
+} from "./hotkeys";
 import {
   MODEL_STORAGE_PREFIX,
   PROVIDER_STORAGE_KEY,
@@ -38,6 +45,7 @@ import {
 } from "./modelPick";
 import { AddGameMenu } from "./components/AddGameMenu";
 import { GameChip } from "./components/GameChip";
+import { SettingsMenu } from "./components/SettingsMenu";
 import { GameMenu } from "./components/GameMenu";
 import { ModelChip } from "./components/ModelChip";
 import { ModelMenu } from "./components/ModelMenu";
@@ -116,7 +124,7 @@ function App() {
   // At most one popover at a time — their capture-phase Esc handlers would
   // otherwise stack, and one Esc would close both.
   const [openMenu, setOpenMenu] = useState<
-    "game" | "addGame" | "model" | null
+    "game" | "addGame" | "model" | "settings" | null
   >(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -127,10 +135,14 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
   const [debugChip, setDebugChip] = useState(false);
+  // The configured shortcuts (null until get_settings resolves — the copy
+  // below falls back to the shipped defaults, and the gear stays disabled).
+  const [settings, setSettings] = useState<SettingsInfo | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
   const gameChipRef = useRef<HTMLButtonElement | null>(null);
+  const settingsChipRef = useRef<HTMLButtonElement | null>(null);
   // Latest capture handler, so the mount-only hotkey listener always sees
   // current state (e.g. `busy`) instead of a stale mount-time closure.
   const requestCaptureRef = useRef<() => void>(() => {});
@@ -169,6 +181,20 @@ function App() {
         });
       })
       .catch((e) => setError(String(e)));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Load the configured shortcuts once. A failure is non-fatal: the copy
+  // falls back to the shipped defaults and the gear stays disabled.
+  useEffect(() => {
+    let active = true;
+    getSettings()
+      .then((info) => {
+        if (active) setSettings(info);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -426,11 +452,53 @@ function App() {
   }
 
   const showPlaceholder = !error && !busy && !answer;
+  // Configured shortcut copy, falling back to the shipped defaults until
+  // get_settings resolves (or if it failed).
+  const summonKeys = labelParts(
+    settings?.hotkeys.summon.accelerator ?? DEFAULT_SUMMON_LABEL,
+  );
+  const captureLabel = settings?.hotkeys.capture.label ?? DEFAULT_CAPTURE_LABEL;
 
   return (
     <div className="panel">
       <header className="panel-header">
-        <span className="brand">WikiLens</span>
+        {/* The gear rides with the brand (the game chip owns the right edge).
+            Disabled until get_settings resolves — the popover needs data. */}
+        <span className="brand-cluster">
+          <span className="brand">WikiLens</span>
+          <button
+            type="button"
+            ref={settingsChipRef}
+            className={
+              "quiet-chip settings-chip" +
+              (openMenu === "settings" ? " is-open" : "")
+            }
+            disabled={busy || !settings}
+            aria-haspopup="dialog"
+            aria-expanded={openMenu === "settings"}
+            aria-label="Shortcuts"
+            title="Shortcuts"
+            // Same closeMenu() rule as the game chip (focus contract).
+            onClick={() =>
+              openMenu === "settings" ? closeMenu() : setOpenMenu("settings")
+            }
+          >
+            <svg
+              className="settings-gear"
+              aria-hidden="true"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <circle cx="12" cy="12" r="3.5" />
+              <path d="M12 2.5v3.2M12 18.3v3.2M2.5 12h3.2M18.3 12h3.2M5.3 5.3l2.3 2.3M16.4 16.4l2.3 2.3M18.7 5.3l-2.3 2.3M7.6 16.4l-2.3 2.3" />
+            </svg>
+          </button>
+        </span>
         <GameChip
           gameName={
             games.length === 0
@@ -530,8 +598,15 @@ function App() {
         <SourceList sources={sources} />
         {showPlaceholder && (
           <div className="placeholder">
-            Press <kbd>Shift</kbd>+<kbd>C</kbd> anytime to open this panel. Ask a
-            question and WikiLens answers straight from the game's wiki.
+            Press{" "}
+            {summonKeys.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && "+"}
+                <kbd>{part}</kbd>
+              </Fragment>
+            ))}{" "}
+            anytime to open this panel. Ask a question and WikiLens answers
+            straight from the game's wiki.
           </div>
         )}
       </div>
@@ -572,7 +647,7 @@ function App() {
             disabled={busy || !vision}
             title={
               vision
-                ? "Capture a screenshot (Ctrl+Shift+C)"
+                ? `Capture a screenshot (${captureLabel})`
                 : "This model can't read images"
             }
           >
@@ -617,6 +692,14 @@ function App() {
           onAdded={handleGameAdded}
           onRemoved={handleGameRemoved}
           triggerRef={gameChipRef}
+        />
+      )}
+      {openMenu === "settings" && settings && (
+        <SettingsMenu
+          settings={settings}
+          onSaved={setSettings}
+          onClose={closeMenu}
+          triggerRef={settingsChipRef}
         />
       )}
     </div>

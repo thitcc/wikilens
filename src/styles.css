@@ -159,6 +159,18 @@ body {
   color: var(--fg);
 }
 
+/* Brand + settings gear ride together on the header's left edge; the game
+   chip keeps the right (the header is space-between with two children). */
+.brand-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.settings-chip .settings-gear {
+  display: block;
+}
+
 /* The game is a quiet identity chip (exploration 4c) — the header holds the
    brand and the chip, nothing form-shaped. The native <select> is gone: its
    OS-drawn popup was unstylable over the glass. */
@@ -589,6 +601,76 @@ body {
   white-space: pre-wrap;
 }
 
+/* Settings popover: one row per shortcut. Armed = accent border only (One
+   Signal Rule — Moonlight Blue marks the live recorder, rose stays failure). */
+.hotkey-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--pad-control);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font-size: var(--text-status);
+}
+
+.hotkey-row.is-armed {
+  border-color: var(--accent);
+}
+
+.hotkey-role {
+  color: var(--fg);
+  flex: 0 0 auto;
+}
+
+.hotkey-combo,
+.hotkey-live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--fg-muted);
+  min-width: 0;
+}
+
+.hotkey-wait {
+  color: var(--fg-muted);
+  font-size: var(--text-label);
+}
+
+.hotkey-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--space-4);
+}
+
+.hotkey-btn {
+  padding: var(--space-2) var(--space-4);
+  color: var(--fg-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  font: inherit;
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+
+.hotkey-btn:hover:not(:disabled) {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
+.hotkey-btn:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+/* Why the recorded combo was refused — failure copy under the armed row. */
+.hotkey-hint {
+  margin: 0 var(--space-6) var(--space-4);
+  color: var(--error-fg);
+  font-size: var(--text-label);
+  line-height: var(--leading-compact);
+}
+
 .custom-game-row {
   display: flex;
   align-items: center;
@@ -759,7 +841,11 @@ body {
   line-height: var(--leading-body);
 }
 
-.placeholder kbd {
+/* Shared key-cap treatment: the placeholder's summon hint and the settings
+   popover's combo chips. */
+.placeholder kbd,
+.hotkey-combo kbd,
+.hotkey-live kbd {
   padding: var(--pad-chip);
   border: 1px solid var(--border);
   border-radius: var(--radius-chip);
