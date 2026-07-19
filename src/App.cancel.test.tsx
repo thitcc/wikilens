@@ -45,6 +45,9 @@ test("Stop cancels quietly: no error box, partial answer kept, focus retained", 
   expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
   expect(questionBox().readOnly).toBe(false);
   expect(document.activeElement).toBe(questionBox());
+  // Quiet means quiet for assistive tech too: a cancelled ask never claims
+  // "Answer ready" (sources were never set).
+  expect(screen.getByRole("status").textContent).not.toContain("Answer ready");
 });
 
 test("a double Stop is safe", async () => {
