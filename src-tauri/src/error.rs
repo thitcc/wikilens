@@ -60,6 +60,15 @@ pub enum AppError {
     #[error("Couldn't save your games: {0}")]
     Storage(String),
 
+    #[error("Couldn't save your settings: {0}")]
+    Settings(String),
+
+    /// A hotkey change that can't be applied (unparseable combo, conflict with
+    /// the other shortcut, another app owns the combo). The message is already
+    /// complete user-facing text shown in the settings popover.
+    #[error("{0}")]
+    Hotkey(String),
+
     /// A response body or stream exceeded its byte cap and was abandoned
     /// (see `crate::http`). The message is already complete user-facing text.
     #[error("{0}")]

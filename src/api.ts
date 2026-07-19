@@ -10,8 +10,10 @@ import type {
   AskStatus,
   AttachmentInfo,
   GameInfo,
+  HotkeyRole,
   ModelList,
   ProviderInfo,
+  SettingsInfo,
   WikiCandidate,
 } from "./types";
 
@@ -70,6 +72,36 @@ export function debugAvailable(): Promise<boolean> {
 /** Show/hide the debug window (the footer Debug chip's action). */
 export function toggleDebugWindow(): Promise<void> {
   return invoke<void>("toggle_debug_window");
+}
+
+/** Current settings (the configured shortcuts), for the settings popover and
+ * the overlay's dynamic copy. */
+export function getSettings(): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("get_settings");
+}
+
+/** Change one shortcut to a canonical accelerator string (from
+ * `toAccelerator` in `hotkeys.ts`). Resolves with the fresh settings;
+ * rejects with a user-readable message (invalid combo, the other role's
+ * combo, or another app owns it). */
+export function setHotkey(
+  role: HotkeyRole,
+  accelerator: string,
+): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_hotkey", { role, accelerator });
+}
+
+/** Drop the OS hotkey registrations while the recorder is armed — otherwise
+ * pressing the current combo mid-recording would toggle the overlay.
+ * Idempotent. */
+export function suspendHotkeys(): Promise<void> {
+  return invoke<void>("suspend_hotkeys");
+}
+
+/** Restore the configured registrations after recording. Idempotent; rejects
+ * with a user-readable message if a combo was taken meanwhile. */
+export function resumeHotkeys(): Promise<void> {
+  return invoke<void>("resume_hotkeys");
 }
 
 /** The rejection value `ask` settles with after `cancelAsk` wins — mirrors
@@ -167,8 +199,8 @@ export function onCaptureError(
   return listen<string>("capture://error", (event) => callback(event.payload));
 }
 
-/** Fired when the Ctrl+Shift+C hotkey is pressed (routed through Rust so the
- * frontend stays the single capture entry point). */
+/** Fired when the capture shortcut (default Ctrl+Shift+C) is pressed (routed
+ * through Rust so the frontend stays the single capture entry point). */
 export function onCaptureHotkey(callback: () => void): Promise<UnlistenFn> {
   return listen("capture://hotkey", () => callback());
 }

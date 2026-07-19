@@ -11,11 +11,12 @@ use crate::capture::{self, CropRect};
 use crate::debug::DebugReport;
 use crate::error::AppError;
 use crate::models::{self, ModelInfo, ModelSource};
+use crate::settings::{HotkeyRole, SettingsStore};
 use crate::state::AppState;
 use crate::wiki::games::GameWiki;
 use crate::wiki::user::UserWikiStore;
 use crate::wiki::{fetch, games, probe, search, titles};
-use crate::{llm, providers, window};
+use crate::{hotkey, llm, providers, window};
 
 /// A supported game, as sent to the frontend game picker.
 #[derive(Debug, Clone, Serialize)]
@@ -63,6 +64,54 @@ pub struct Source {
 pub struct AskResult {
     pub answer: String,
     pub sources: Vec<Source>,
+}
+
+/// One configurable shortcut, as sent to the frontend settings popover. The
+/// default rides along so the UI can offer "Reset" with no extra command.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeyInfo {
+    /// Canonical accelerator form (`hotkey::to_accelerator`) — the identity
+    /// the recorder compares against.
+    pub accelerator: String,
+    /// Player-facing label, e.g. "Ctrl+`".
+    pub label: String,
+    pub default_accelerator: String,
+    pub default_label: String,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HotkeysInfo {
+    pub summon: HotkeyInfo,
+    pub capture: HotkeyInfo,
+}
+
+/// Extensible settings envelope — future config-panel tenants join here.
+#[derive(Debug, Clone, Serialize)]
+pub struct SettingsInfo {
+    pub hotkeys: HotkeysInfo,
+}
+
+fn hotkey_info(settings: &SettingsStore, role: HotkeyRole) -> HotkeyInfo {
+    let current = settings.shortcut(role);
+    let default = hotkey::default_for(role);
+    HotkeyInfo {
+        accelerator: hotkey::to_accelerator(&current),
+        label: hotkey::display_label(&current),
+        default_accelerator: hotkey::to_accelerator(&default),
+        default_label: hotkey::display_label(&default),
+        is_default: current == default,
+    }
+}
+
+fn settings_info(settings: &SettingsStore) -> SettingsInfo {
+    SettingsInfo {
+        hotkeys: HotkeysInfo {
+            summon: hotkey_info(settings, HotkeyRole::Summon),
+            capture: hotkey_info(settings, HotkeyRole::Capture),
+        },
+    }
 }
 
 /// List the supported games: built-ins in curated order, then user-added
@@ -276,6 +325,89 @@ pub fn debug_available() -> bool {
 #[tauri::command]
 pub fn toggle_debug_window(app: AppHandle) {
     crate::debug_window::toggle(&app);
+}
+
+/// Current settings, for the popover and the overlay's dynamic copy (prompt
+/// placeholder, capture chip title).
+#[tauri::command]
+pub fn get_settings(settings: State<'_, SettingsStore>) -> SettingsInfo {
+    settings_info(&settings)
+}
+
+/// Change one shortcut: parse, refuse the other role's combo, prove the OS
+/// will grant it, persist-then-commit, refresh the tray tooltip. Async
+/// because the plugin's register/unregister hop to the main thread.
+#[tauri::command]
+pub async fn set_hotkey(
+    app: AppHandle,
+    settings: State<'_, SettingsStore>,
+    role: HotkeyRole,
+    accelerator: String,
+) -> Result<SettingsInfo, String> {
+    let new = hotkey::parse_accelerator(&accelerator).map_err(String::from)?;
+    let current = settings.shortcut(role);
+    if new == current {
+        return Ok(settings_info(&settings));
+    }
+    let other = match role {
+        HotkeyRole::Summon => HotkeyRole::Capture,
+        HotkeyRole::Capture => HotkeyRole::Summon,
+    };
+    if new == settings.shortcut(other) {
+        let name = match other {
+            HotkeyRole::Summon => "Summon",
+            HotkeyRole::Capture => "Capture",
+        };
+        return Err(format!(
+            "That's already your {name} shortcut — pick a different combo."
+        ));
+    }
+    // Writability first: never touch a working registration for a change
+    // that can't be persisted anyway.
+    settings.writable().map_err(String::from)?;
+    if settings.is_suspended() {
+        // Recorder armed (the normal path): registrations are down, so just
+        // prove the OS will grant the combo — `resume_hotkeys` registers it.
+        hotkey::probe(&app, new).map_err(String::from)?;
+        settings.set_hotkey(role, new).map_err(String::from)?;
+    } else {
+        // Reset / non-recorder path: swap live; roll back if persist fails.
+        hotkey::apply_change(&app, current, new).map_err(String::from)?;
+        if let Err(e) = settings.set_hotkey(role, new) {
+            let _ = hotkey::apply_change(&app, new, current);
+            return Err(String::from(e));
+        }
+    }
+    crate::tray::update_summon_tooltip(&app);
+    Ok(settings_info(&settings))
+}
+
+/// Drop the OS hotkey registrations while the settings recorder is armed —
+/// otherwise pressing the current combo mid-recording would toggle the
+/// overlay. Idempotent; failures are logged Rust-side only (the frontend's
+/// `overlay://hidden` disarm path contains a leftover registration).
+#[tauri::command]
+pub async fn suspend_hotkeys(
+    app: AppHandle,
+    settings: State<'_, SettingsStore>,
+) -> Result<(), String> {
+    if !settings.suspend() {
+        hotkey::unregister_all(&app);
+    }
+    Ok(())
+}
+
+/// Restore the configured registrations after recording. Idempotent; a combo
+/// another app grabbed meanwhile surfaces as a user-readable error.
+#[tauri::command]
+pub async fn resume_hotkeys(
+    app: AppHandle,
+    settings: State<'_, SettingsStore>,
+) -> Result<(), String> {
+    if settings.resume() {
+        hotkey::register_all(&app).map_err(String::from)?;
+    }
+    Ok(())
 }
 
 /// Start a region capture: hide the panel, freeze the monitor under the cursor,

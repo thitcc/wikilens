@@ -92,6 +92,16 @@ components:
     textColor: "{colors.ink-muted}"
     rounded: "{rounded.chip}"
     padding: "1px 5px"
+  key-cap:
+    backgroundColor: "{colors.veil-raised}"
+    rounded: "{rounded.chip}"
+    padding: "1px 5px"
+  hotkey-row:
+    textColor: "{colors.moon-ink}"
+    rounded: "{rounded.control}"
+    padding: "5px 8px"
+  hotkey-row-armed:
+    borderColor: "{colors.moonlight-blue}"
 ---
 
 # Design System: WikiLens
@@ -291,6 +301,10 @@ glass, not as a form.
 - **Placement:** menus are direct children of the panel, anchored by paired
   clearance constants; geometry is measured per open, not re-measured while
   open.
+- **Key recorder (Shortcuts popover):** combos render as key-cap chips
+  (raised veil, chip radius, label size); the armed row speaks with a
+  Moonlight Blue border only — recording is an interactive state, so the One
+  Signal Rule covers it — and refusals use the rose failure voice.
 
 ### Signature: the Monogram Tile
 

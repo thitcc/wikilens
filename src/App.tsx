@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   ASK_CANCELLED,
   ask,
@@ -6,6 +6,7 @@ import {
   cancelAsk,
   clearCapture,
   debugAvailable,
+  getSettings,
   hideOverlay,
   listGames,
   listModels,
@@ -26,9 +27,15 @@ import type {
   GameInfo,
   ModelInfo,
   ProviderInfo,
+  SettingsInfo,
   Source,
   StoredModelPick,
 } from "./types";
+import {
+  DEFAULT_CAPTURE_LABEL,
+  DEFAULT_SUMMON_LABEL,
+  labelParts,
+} from "./hotkeys";
 import {
   MODEL_STORAGE_PREFIX,
   PROVIDER_STORAGE_KEY,
@@ -38,6 +45,7 @@ import {
 } from "./modelPick";
 import { AddGameMenu } from "./components/AddGameMenu";
 import { GameChip } from "./components/GameChip";
+import { SettingsMenu } from "./components/SettingsMenu";
 import { GameMenu } from "./components/GameMenu";
 import { ModelChip } from "./components/ModelChip";
 import { ModelMenu } from "./components/ModelMenu";
@@ -94,10 +102,10 @@ function isWikiBoundStatus(s: AskStatus): boolean {
 }
 
 /** A show this soon after a hide skips the select-all: an accidental hide
- * (typing a capital C fires the global Shift+C toggle) followed by a
- * re-summon must not arm a keystroke that replaces the whole draft. The full
- * fix is the configurable hotkey (roadmap); this defuses the data loss.
- * Exported for the fake-timer tests. */
+ * followed by a re-summon must not arm a keystroke that replaces the whole
+ * draft. Born as the capital-C trap fix (the old Shift+C default made typing
+ * `C` fire the toggle — resolved by the Ctrl+` default); kept because any
+ * accidental hide arms the same loss. Exported for the fake-timer tests. */
 export const SELECT_SUPPRESS_MS = 2_000;
 
 function App() {
@@ -116,7 +124,7 @@ function App() {
   // At most one popover at a time — their capture-phase Esc handlers would
   // otherwise stack, and one Esc would close both.
   const [openMenu, setOpenMenu] = useState<
-    "game" | "addGame" | "model" | null
+    "game" | "addGame" | "model" | "settings" | null
   >(null);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -127,10 +135,14 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
   const [debugChip, setDebugChip] = useState(false);
+  // The configured shortcuts (null until get_settings resolves — the copy
+  // below falls back to the shipped defaults, and the gear stays disabled).
+  const [settings, setSettings] = useState<SettingsInfo | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
   const gameChipRef = useRef<HTMLButtonElement | null>(null);
+  const settingsChipRef = useRef<HTMLButtonElement | null>(null);
   // Latest capture handler, so the mount-only hotkey listener always sees
   // current state (e.g. `busy`) instead of a stale mount-time closure.
   const requestCaptureRef = useRef<() => void>(() => {});
@@ -169,6 +181,20 @@ function App() {
         });
       })
       .catch((e) => setError(String(e)));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Load the configured shortcuts once. A failure is non-fatal: the copy
+  // falls back to the shipped defaults and the gear stays disabled.
+  useEffect(() => {
+    let active = true;
+    getSettings()
+      .then((info) => {
+        if (active) setSettings(info);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -426,11 +452,52 @@ function App() {
   }
 
   const showPlaceholder = !error && !busy && !answer;
+  // Configured shortcut copy, falling back to the shipped defaults until
+  // get_settings resolves (or if it failed).
+  const summonKeys = labelParts(
+    settings?.hotkeys.summon.accelerator ?? DEFAULT_SUMMON_LABEL,
+  );
+  const captureLabel = settings?.hotkeys.capture.label ?? DEFAULT_CAPTURE_LABEL;
 
   return (
     <div className="panel">
       <header className="panel-header">
-        <span className="brand">WikiLens</span>
+        {/* The gear rides with the brand (the game chip owns the right edge).
+            Disabled until get_settings resolves — the popover needs data. */}
+        <span className="brand-cluster">
+          <span className="brand">WikiLens</span>
+          <button
+            type="button"
+            ref={settingsChipRef}
+            className={
+              "quiet-chip settings-chip" +
+              (openMenu === "settings" ? " is-open" : "")
+            }
+            disabled={busy || !settings}
+            aria-haspopup="dialog"
+            aria-expanded={openMenu === "settings"}
+            aria-label="Shortcuts"
+            title="Shortcuts"
+            // Same closeMenu() rule as the game chip (focus contract).
+            onClick={() =>
+              openMenu === "settings" ? closeMenu() : setOpenMenu("settings")
+            }
+          >
+            {/* Filled cog silhouette (Bootstrap Icons gear-fill, MIT) — teeth
+                attached to the ring + a center hole keep it reading as a
+                gear, not a sun, at this size. */}
+            <svg
+              className="settings-gear"
+              aria-hidden="true"
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+            >
+              <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z" />
+            </svg>
+          </button>
+        </span>
         <GameChip
           gameName={
             games.length === 0
@@ -530,8 +597,15 @@ function App() {
         <SourceList sources={sources} />
         {showPlaceholder && (
           <div className="placeholder">
-            Press <kbd>Shift</kbd>+<kbd>C</kbd> anytime to open this panel. Ask a
-            question and WikiLens answers straight from the game's wiki.
+            Press{" "}
+            {summonKeys.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && "+"}
+                <kbd>{part}</kbd>
+              </Fragment>
+            ))}{" "}
+            anytime to open this panel. Ask a question and WikiLens answers
+            straight from the game's wiki.
           </div>
         )}
       </div>
@@ -572,7 +646,7 @@ function App() {
             disabled={busy || !vision}
             title={
               vision
-                ? "Capture a screenshot (Ctrl+Shift+C)"
+                ? `Capture a screenshot (${captureLabel})`
                 : "This model can't read images"
             }
           >
@@ -617,6 +691,14 @@ function App() {
           onAdded={handleGameAdded}
           onRemoved={handleGameRemoved}
           triggerRef={gameChipRef}
+        />
+      )}
+      {openMenu === "settings" && settings && (
+        <SettingsMenu
+          settings={settings}
+          onSaved={setSettings}
+          onClose={closeMenu}
+          triggerRef={settingsChipRef}
         />
       )}
     </div>

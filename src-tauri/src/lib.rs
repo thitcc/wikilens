@@ -15,6 +15,7 @@ mod http;
 mod llm;
 mod models;
 mod providers;
+mod settings;
 mod state;
 #[cfg(test)]
 mod test_support;
@@ -44,15 +45,23 @@ pub fn run() {
                     if event.state != ShortcutState::Pressed {
                         return;
                     }
-                    if hotkey::is_toggle_shortcut(shortcut) {
-                        window::toggle_overlay(app);
-                    } else if hotkey::is_capture_shortcut(shortcut) {
-                        // Route capture through the overlay webview so the
-                        // frontend stays the single entry point (where the
-                        // guardrails plan hangs its gating); it invokes
-                        // begin_capture. Delivered even while the panel is
-                        // hidden — the webview stays mounted and listening.
-                        let _ = app.emit_to(window::OVERLAY_LABEL, "capture://hotkey", ());
+                    // The live combos come from the managed store (loaded in
+                    // setup before any registration, so a routed shortcut
+                    // always finds it — try_state is belt-and-braces).
+                    let Some(settings) = app.try_state::<settings::SettingsStore>() else {
+                        return;
+                    };
+                    match settings.role_of(shortcut) {
+                        Some(settings::HotkeyRole::Summon) => window::toggle_overlay(app),
+                        Some(settings::HotkeyRole::Capture) => {
+                            // Route capture through the overlay webview so the
+                            // frontend stays the single entry point (where the
+                            // guardrails plan hangs its gating); it invokes
+                            // begin_capture. Delivered even while the panel is
+                            // hidden — the webview stays mounted and listening.
+                            let _ = app.emit_to(window::OVERLAY_LABEL, "capture://hotkey", ());
+                        }
+                        None => {}
                     }
                 })
                 .build(),
@@ -60,6 +69,11 @@ pub fn run() {
         .manage(AppState::new())
         .setup(|app| {
             let handle = app.handle();
+            // Settings load first: tray creation and hotkey registration both
+            // read the configured combos from the managed store. Stores live
+            // here (not in AppState) because the path resolver needs the handle.
+            let data_dir = app.path().app_data_dir()?;
+            app.manage(settings::SettingsStore::load(data_dir.join("settings.json")));
             tray::create(handle)?;
             hotkey::register(handle);
             // Visual debug window — exists only when WIKILENS_DEBUG is truthy
@@ -68,9 +82,7 @@ pub fn run() {
             if debug::debug_enabled() {
                 debug_window::create(handle)?;
             }
-            // User-added wikis, persisted in the app-data dir. Loaded here
-            // (not in AppState) because the path resolver needs the handle.
-            let data_dir = app.path().app_data_dir()?;
+            // User-added wikis, persisted in the app-data dir.
             app.manage(UserWikiStore::load(data_dir.join("wikis.json")));
             Ok(())
         })
@@ -99,6 +111,10 @@ pub fn run() {
             commands::show_overlay,
             commands::debug_available,
             commands::toggle_debug_window,
+            commands::get_settings,
+            commands::set_hotkey,
+            commands::suspend_hotkeys,
+            commands::resume_hotkeys,
             commands::begin_capture,
             commands::finish_capture,
             commands::cancel_capture,

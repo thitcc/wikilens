@@ -22,9 +22,9 @@ pub const PANEL_HEIGHT_FRAC: f64 = 0.70;
 const EVENT_SHOWN: &str = "overlay://shown";
 /// Event emitted after the panel is hidden. The frontend timestamps it to
 /// suppress the next show's select-all when the hide was moments ago — the
-/// guard against the capital-C trap (typing `C` fires the global Shift+C
-/// toggle; re-summon used to select the draft, so the next keystroke replaced
-/// the whole question).
+/// guard born as the capital-C trap fix (the old Shift+C default meant typing
+/// `C` fired the toggle; re-summon selected the draft, so the next keystroke
+/// replaced the whole question). Kept for any accidental hide.
 const EVENT_HIDDEN: &str = "overlay://hidden";
 
 fn overlay_window(app: &AppHandle) -> Option<WebviewWindow> {

@@ -21,16 +21,27 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 ### 1. Hotkey + tray
 
-- [ ] Shift+C over the borderless game toggles the overlay: panel slides in
-      from the right edge and the prompt takes focus; Shift+C again hides it.
-- [ ] Tray icon is present; Show/Hide works; Quit exits the app (the panel's
-      close paths only hide it).
+- [ ] **Ctrl+`** (the key left of 1) over the borderless game toggles the
+      overlay: panel slides in from the right edge and the prompt takes
+      focus; Ctrl+` again hides it.
+- [ ] Tray icon is present and its tooltip names the current summon combo;
+      Show/Hide works; Quit exits the app (the panel's close paths only hide
+      it).
 
-### 2. Hotkey swallow (expected behavior)
+### 2. Hotkey configuration
 
-- [ ] While the app runs, a capital `C` (Shift+c) cannot be typed into the
-      prompt — expected, the global hotkey swallows it system-wide. Lowercase
-      `c` types fine and search is case-insensitive.
+- [ ] A capital `C` **types into the prompt** (regression check: the old
+      Shift+C default swallowed it system-wide — that trap must stay dead).
+- [ ] Header gear → **Shortcuts** → **Change** on Summon, press a test combo
+      (e.g. Ctrl+Alt+P): the row updates, the old combo stops toggling, the
+      new one toggles — and still does after an app restart. **Reset**
+      restores Ctrl+` (and the tray tooltip follows).
+- [ ] While the recorder is armed, pressing the current summon combo does
+      **not** toggle the panel (registrations are suspended); after Esc
+      cancels, it toggles again.
+- [ ] Recording a combo another app owns (e.g. one registered by a running
+      tool) is refused with the "another app may already be using it"
+      message; the previous combo keeps working.
 
 ### 3. DPI / multi-monitor placement
 

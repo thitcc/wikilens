@@ -7,10 +7,29 @@ use tauri::{
     AppHandle, Wry,
 };
 
-use crate::{debug, debug_window, window};
+use tauri::Manager;
+
+use crate::settings::SettingsStore;
+use crate::{debug, debug_window, hotkey, window};
 
 /// Stable id so other modules (e.g. `hotkey`) can look the tray up.
 pub const TRAY_ID: &str = "main";
+
+/// Tooltip advertising the current summon combo. Derived from the managed
+/// `SettingsStore`, so it must be created after the store (setup order in
+/// `lib.rs`).
+fn summon_tooltip(app: &AppHandle) -> String {
+    let label = hotkey::display_label(&app.state::<SettingsStore>().hotkeys().summon);
+    format!("WikiLens — press {label} to open")
+}
+
+/// Point the tooltip at the current summon combo. Called after a successful
+/// hotkey change — which also clears a stale "unavailable" message.
+pub fn update_summon_tooltip(app: &AppHandle) {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(summon_tooltip(app)));
+    }
+}
 
 /// Build the tray icon + menu and attach event handlers.
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
@@ -40,7 +59,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
-        .tooltip("WikiLens — press Shift+C to open")
+        .tooltip(summon_tooltip(app))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {

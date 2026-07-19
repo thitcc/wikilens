@@ -81,6 +81,30 @@ export interface AskResult {
   sources: Source[];
 }
 
+/** Which configurable shortcut a `set_hotkey` call targets. */
+export type HotkeyRole = "summon" | "capture";
+
+/** One configurable shortcut, from `get_settings`/`set_hotkey`. The default
+ * rides along so the popover can offer "Reset" with no extra command. */
+export interface HotkeyInfo {
+  /** Canonical accelerator form (mirrors Rust `hotkey::to_accelerator`),
+   * e.g. `"Ctrl+Backquote"` — the identity the recorder compares against. */
+  accelerator: string;
+  /** Player-facing label, e.g. "Ctrl+`". */
+  label: string;
+  defaultAccelerator: string;
+  defaultLabel: string;
+  isDefault: boolean;
+}
+
+/** Extensible settings envelope — future config-panel tenants join here. */
+export interface SettingsInfo {
+  hotkeys: {
+    summon: HotkeyInfo;
+    capture: HotkeyInfo;
+  };
+}
+
 /** Progress phases emitted on the `ask://status` event, in order.
  * `understanding` only appears while the rewrite's candidate searches run;
  * `retrying` only appears when the first search found nothing. */
