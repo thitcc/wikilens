@@ -1,7 +1,7 @@
 ---
 title: Menu keyboard navigation, authored focus rings, and the answer-ready announcement
 type: plan
-status: active
+status: done
 created: 2026-07-19
 updated: 2026-07-19
 tags: [frontend, overlay]
@@ -10,7 +10,7 @@ related:
   - "[[2026-07-18_ask-lifecycle-fix-pass]]"
   - "[[2026-07-05_game-picker-owned-menu]]"
   - "[[2026-07-16_model-menu-dropdown]]"
-commit:
+commit: [d707e2f, 80194e1, f7a5574, ba98e50, ebcaaa3, 98ee888, b0fd7ca]
 ---
 
 # Menu keyboard navigation, authored focus rings, and the answer-ready announcement
@@ -102,3 +102,17 @@ The branch name `feat/menu-keyboard-nav` was pre-committed by the critique itsel
 ## Status log
 
 - 2026-07-19 — created; plan approved (plan mode), branch `feat/menu-keyboard-nav` opened.
+- 2026-07-19 — implemented in six code commits (helpers → game menu → model menu
+  → focus rings → announcement → docs). `/check` green (tsc, 114 Vitest incl.
+  ~20 new keyboard/announcement tests, clippy, 247 cargo tests). The
+  critique-fix pin (bare Enter re-picks a non-first selected model) verified
+  red on `main`, green here.
+- 2026-07-19 — `/impeccable critique the overlay panel` re-run: **32/40**
+  (trend 31 → 32 → 32), detector 0 findings. The two targeted debts are
+  confirmed resolved (answer arrival announced; keyboard model + authored
+  rings landed). Score redistributed rather than climbed: Control and Error
+  Prevention rose to 4, while Consistency dipped (AddGameMenu is now the one
+  sibling menu without the arrow contract) and Error Recovery dropped to 2
+  (missing-key dead end, raw provider bodies). New top P1s are first-run key
+  setup and the already-queued combobox-semantics follow-up (§6 roadmap).
+  Done: status set, commit list recorded.
