@@ -319,7 +319,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,
   and its menu group starts collapsed, which also defers the fetch until first
-  expand.
+  expand. Exception: when the **current selection** lives there, the group
+  opens expanded (and fetches) so the picked row isn't hidden behind a
+  collapsed header.
 - The debug window's `focusable(false)` is **load-bearing**, not cosmetic:
   tao's `show()` issues an activating `SW_SHOW`, so `focused(false)` alone
   only covers creation — a tray re-show would steal keyboard focus from the

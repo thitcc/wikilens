@@ -21,7 +21,10 @@ interface ModelMenuProps {
 }
 
 /** OpenRouter's 300+ model catalog would dominate the menu, so its group
- * starts collapsed — which also defers its fetch until first expand. */
+ * starts collapsed — which also defers its fetch until first expand. One
+ * exception, applied at mount: the group holding the *current selection*
+ * opens expanded, so the picked row is visible, centered, and highlighted
+ * instead of hidden behind a collapsed header. */
 const INITIALLY_COLLAPSED = new Set(["openrouter"]);
 
 /**
@@ -50,9 +53,13 @@ export function ModelMenu({
   chipRef,
 }: ModelMenuProps) {
   const [filter, setFilter] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(INITIALLY_COLLAPSED),
-  );
+  // The selection's own group never starts collapsed (see INITIALLY_COLLAPSED)
+  // — fresh per open, since the menu remounts every open.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    const initial = new Set(INITIALLY_COLLAPSED);
+    initial.delete(selected.providerId);
+    return initial;
+  });
   const [lists, setLists] = useState<Record<string, ModelList>>({});
   const [loading, setLoading] = useState<Set<string>>(() => new Set());
   // The keyboard highlight, as a `${providerId}:${modelId}` row key. null =

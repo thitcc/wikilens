@@ -76,6 +76,54 @@ test("collapsing the highlighted group drops the highlight; the next arrow resta
   expect(rows[0].textContent).toContain("Claude Sonnet 5");
 });
 
+test("the group holding the selection opens expanded instead of collapsed", async () => {
+  const backend = installBackend({
+    list_models: (args) =>
+      (args as { providerId: string }).providerId === "openrouter"
+        ? {
+            models: [{ id: "openrouter/auto", label: "Auto Router", vision: false }],
+            source: "live",
+          }
+        : MODELS,
+  });
+  render(
+    <ModelMenu
+      providers={[
+        ...PROVIDERS,
+        {
+          id: "openrouter",
+          name: "OpenRouter",
+          defaultModel: "openrouter/auto",
+          defaultModelLabel: "Auto Router",
+          defaultModelVision: false,
+        },
+      ]}
+      selected={{ providerId: "openrouter", modelId: "openrouter/auto" }}
+      onSelect={vi.fn()}
+      onClose={() => {}}
+      chipRef={{ current: null }}
+    />,
+  );
+
+  // The selection's group renders expanded and its fetch is NOT deferred —
+  // the picked row must be visible on open, not hidden behind a collapsed
+  // header (the pre-fix behavior).
+  const row = await screen.findByRole("button", { name: /Auto Router/ });
+  expect(
+    screen
+      .getByRole("button", { name: /OpenRouter/ })
+      .getAttribute("aria-expanded"),
+  ).toBe("true");
+  expect(
+    backend
+      .callsTo("list_models")
+      .map((a) => (a as { providerId: string }).providerId),
+  ).toContain("openrouter");
+  // And it is the initial keyboard highlight, like any selected row.
+  expect(row.classList.contains("is-highlighted")).toBe(true);
+  expect(row.getAttribute("aria-current")).toBe("true");
+});
+
 test("Enter hands the highlighted provider and model to onSelect", async () => {
   installBackend();
   const { onSelect } = renderMenu();
