@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { centerRowInList } from "../menuScroll";
+import { isNavKey, nextHighlight } from "../menuNav";
+import { centerRowInList, keepRowInView } from "../menuScroll";
 import type { GameInfo } from "../types";
 
 interface GameMenuProps {
@@ -41,6 +42,12 @@ function monogram(name: string): string {
  * closes the menu, second hides the overlay), outside-pointerdown close
  * excluding the trigger, remounted fresh on every open, and rendered as a
  * direct child of `.panel` — `.content`'s overflow would clip it.
+ *
+ * Keyboard model (shared with ModelMenu): focus stays on the filter input;
+ * Up/Down move a visible highlight through the rows (Home/End jump, no
+ * wrap), Enter picks the highlighted row — never an invisible first match —
+ * and any other key keeps filtering. The pinned footer action stays outside
+ * the arrow order (Tab reaches it).
  */
 export function GameMenu({
   games,
@@ -52,9 +59,15 @@ export function GameMenu({
   chipRef,
 }: GameMenuProps) {
   const [filter, setFilter] = useState("");
+  // The keyboard highlight, as a rendered-row key (`match-`/`recent-`/`all-`
+  // prefixed — a game can render in both sections). null = "auto": the first
+  // match while filtering, the selected row otherwise. A key survives the row
+  // set changing under it and degrades to no-highlight when its row vanishes.
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
   // Esc closes the menu only. Capture phase, because App's Esc-hides-overlay
   // listener is bubble-phase on this same window (see ModelMenu).
@@ -104,19 +117,56 @@ export function GameMenu({
     ? sorted.filter((g) => g.name.toLowerCase().includes(query))
     : null;
 
-  const firstVisible = filtered ? filtered[0] : (recent[0] ?? sorted[0]);
   const selectedInRecent = recent.some((g) => g.id === selectedId);
+
+  // The arrow-navigable rows in display order — the pinned footer action is
+  // deliberately absent (Tab reaches it; Enter always means "pick a game").
+  // Keys are section-prefixed: a game can render in both Recent and
+  // All games, and bare ids would collide.
+  const rows: Array<{ key: string; game: GameInfo }> = filtered
+    ? filtered.map((g) => ({ key: `match-${g.id}`, game: g }))
+    : [
+        ...recent.map((g) => ({ key: `recent-${g.id}`, game: g })),
+        ...sorted.map((g) => ({ key: `all-${g.id}`, game: g })),
+      ];
+
+  // Derived, never stored: a stale index can't point at the wrong row when
+  // the row set changes. Auto (null) anchors on the first match while
+  // filtering — Enter keeps its type-then-pick speed, now with a visible
+  // target — and on the selected row's first copy otherwise, so a bare Enter
+  // is a harmless re-pick instead of an invisible one.
+  const highlightIndex =
+    highlightKey !== null
+      ? rows.findIndex((r) => r.key === highlightKey)
+      : rows.length === 0
+        ? -1
+        : query
+          ? 0
+          : Math.max(
+              rows.findIndex((r) => r.game.id === selectedId),
+              0,
+            );
+  const highlightedKey = highlightIndex >= 0 ? rows[highlightIndex].key : null;
 
   function row(game: GameInfo, keyPrefix: string, withRef: boolean) {
     const isSelected = game.id === selectedId;
+    const key = `${keyPrefix}-${game.id}`;
     return (
-      // Keys are section-prefixed: a game can render in both Recent and
-      // All games, and bare ids would collide.
       <button
-        key={`${keyPrefix}-${game.id}`}
-        ref={withRef && isSelected ? selectedRowRef : undefined}
+        key={key}
+        ref={(el) => {
+          if (el) rowRefs.current.set(key, el);
+          else rowRefs.current.delete(key);
+          // Keep feeding the center-on-open ref — dropping this silently
+          // kills the scroll-to-selected (jsdom can't catch it).
+          if (withRef && isSelected) selectedRowRef.current = el;
+        }}
         type="button"
-        className={"model-row" + (isSelected ? " selected" : "")}
+        className={
+          "model-row" +
+          (isSelected ? " selected" : "") +
+          (key === highlightedKey ? " is-highlighted" : "")
+        }
         // The visual selection mark is an aria-hidden check glyph; this is
         // its assistive-tech counterpart.
         aria-current={isSelected ? "true" : undefined}
@@ -149,11 +199,34 @@ export function GameMenu({
           placeholder="Filter games…"
           aria-label="Filter games"
           autoFocus
-          onChange={(e) => setFilter(e.currentTarget.value)}
+          onChange={(e) => {
+            setFilter(e.currentTarget.value);
+            // Re-anchor on the first match — and scroll to the top so the
+            // auto-highlight is actually visible (a highlighted-but-scrolled-
+            // away row would recreate the invisible-pick bug).
+            setHighlightKey(null);
+            if (listRef.current) listRef.current.scrollTop = 0;
+          }}
           onKeyDown={(e) => {
+            // Esc stays with the capture-phase window listener above — the
+            // menu/overlay layering must not gain a third handler here.
+            if (isNavKey(e.key)) {
+              e.preventDefault(); // the caret would jump to the input's ends
+              const next = nextHighlight(highlightIndex, rows.length, e.key);
+              if (next >= 0) {
+                const target = rows[next];
+                setHighlightKey(target.key);
+                keepRowInView(
+                  listRef.current,
+                  rowRefs.current.get(target.key) ?? null,
+                );
+              }
+              return;
+            }
             if (e.key === "Enter") {
               e.preventDefault();
-              if (firstVisible) onSelect(firstVisible.id);
+              const target = rows[highlightIndex];
+              if (target) onSelect(target.game.id);
             }
           }}
         />

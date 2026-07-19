@@ -420,6 +420,12 @@ body {
   background: var(--surface-control);
 }
 
+/* Arrow-key highlight — the keyboard's hover, same veil voice. Independent of
+   :hover (the mouse never moves it) and of .selected (the accent check). */
+.model-row.is-highlighted {
+  background: var(--surface-control);
+}
+
 .model-row .check {
   color: var(--accent);
   opacity: 0;
