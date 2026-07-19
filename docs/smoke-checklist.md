@@ -59,6 +59,17 @@ Copy the boxes into the release notes/log and tick them as you go.
       a time.
 - [ ] With a menu open, the first Esc closes the menu (panel stays); the
       second Esc hides the panel.
+- [ ] Opening a menu highlights the selected row (veil fill); Up/Down move
+      the highlight, Home/End jump to the ends, and Enter picks the
+      highlighted row — typing meanwhile keeps filtering, with the highlight
+      re-anchoring on the first match.
+- [ ] In a long model list (expand OpenRouter), holding ArrowDown scrolls the
+      highlight into view (nearest-edge, no recentring) — and reopening the
+      menu still centers the selected row (the center-on-open regression
+      jsdom can't catch).
+- [ ] Tab walks the chips, menu rows, and group headers with the authored
+      1px Moonlight Blue focus ring (no UA default ring anywhere over the
+      glass); pointer clicks never show the ring.
 
 ### 6. Ask round-trip
 
@@ -67,6 +78,9 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] Clicking a source opens it in the system browser (not inside the panel).
 - [ ] Screenshot attach works on a vision-capable model, and is blocked with a
       clear message on a text-only model.
+- [ ] With Narrator or NVDA running, the phases are spoken and the resolve
+      announces "Answer ready — N sources" once; a cancelled (Stop) or failed
+      ask announces no answer-ready.
 
 ### 7. Exclusive fullscreen (expected failure)
 
