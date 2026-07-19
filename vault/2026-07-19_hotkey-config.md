@@ -6,7 +6,7 @@ created: 2026-07-19
 updated: 2026-07-19
 tags: [hotkey, frontend, rust, overlay]
 related: ["[[2026-07-18_ask-lifecycle-fix-pass]]", "[[2026-07-02_scaffold]]"]
-commit: [e48eeb7, bed760a, 531eae6, 592dc6a, 54a2112]
+commit: [e48eeb7, bed760a, 531eae6, 592dc6a, 54a2112, 77f98ab]
 ---
 
 # Hotkey config — the first settings surface
@@ -111,3 +111,6 @@ default summon key moved off the Shift+letter class entirely.
   smoke for the human pass: recorder round-trip in the real popover,
   restart persistence, the collision-refusal message, and an in-game run
   (smoke checklist §1–§2).
+- 2026-07-19 — follow-up on the PR branch before merge (77f98ab): the gear
+  icon read as a sun (detached spokes); replaced with the Bootstrap Icons
+  gear-fill cog. Shipped in the same merge (PR #36).
