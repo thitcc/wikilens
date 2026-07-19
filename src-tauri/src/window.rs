@@ -20,6 +20,12 @@ pub const PANEL_HEIGHT_FRAC: f64 = 0.70;
 
 /// Event emitted after the panel is shown so the frontend can focus the input.
 const EVENT_SHOWN: &str = "overlay://shown";
+/// Event emitted after the panel is hidden. The frontend timestamps it to
+/// suppress the next show's select-all when the hide was moments ago — the
+/// guard against the capital-C trap (typing `C` fires the global Shift+C
+/// toggle; re-summon used to select the draft, so the next keystroke replaced
+/// the whole question).
+const EVENT_HIDDEN: &str = "overlay://hidden";
 
 fn overlay_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(OVERLAY_LABEL)
@@ -34,7 +40,7 @@ pub fn toggle_overlay(app: &AppHandle) {
     };
 
     if win.is_visible().unwrap_or(false) {
-        let _ = win.hide();
+        hide_overlay(app);
     } else {
         show_overlay(app);
     }
@@ -73,11 +79,14 @@ pub fn show_overlay_if_hidden(app: &AppHandle) {
     }
 }
 
-/// Hide the overlay. Used by the `Esc` handler (via the `hide_overlay` command)
-/// and the tray menu.
+/// Hide the overlay and notify the frontend. Every hide path routes through
+/// here (`Esc` via the `hide_overlay` command, the hotkey toggle, the tray,
+/// Alt+F4, the capture flow) so `overlay://hidden` always fires — the
+/// webview stays mounted while hidden and keeps listening.
 pub fn hide_overlay(app: &AppHandle) {
     if let Some(win) = overlay_window(app) {
         let _ = win.hide();
+        let _ = win.emit(EVENT_HIDDEN, ());
     }
 }
 

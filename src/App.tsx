@@ -15,6 +15,7 @@ import {
   onCaptureAttached,
   onCaptureError,
   onCaptureHotkey,
+  onOverlayHidden,
   onOverlayShown,
   showOverlay,
   toggleDebugWindow,
@@ -92,6 +93,13 @@ function isWikiBoundStatus(s: AskStatus): boolean {
   return s !== "answering";
 }
 
+/** A show this soon after a hide skips the select-all: an accidental hide
+ * (typing a capital C fires the global Shift+C toggle) followed by a
+ * re-summon must not arm a keystroke that replaces the whole draft. The full
+ * fix is the configurable hotkey (roadmap); this defuses the data loss.
+ * Exported for the fake-timer tests. */
+export const SELECT_SUPPRESS_MS = 2_000;
+
 function App() {
   const [games, setGames] = useState<GameInfo[]>([]);
   const [selectedGame, setSelectedGame] = useState<string>(
@@ -126,6 +134,9 @@ function App() {
   // Latest capture handler, so the mount-only hotkey listener always sees
   // current state (e.g. `busy`) instead of a stale mount-time closure.
   const requestCaptureRef = useRef<() => void>(() => {});
+  // When the overlay last hid (overlay://hidden), for the select-all
+  // suppression below. 0 = never, so the first show always selects.
+  const lastHiddenAtRef = useRef(0);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -232,7 +243,15 @@ function App() {
     void onOverlayShown(() => {
       setOpenMenu(null);
       inputRef.current?.focus();
-      inputRef.current?.select();
+      // Select the old question so the first keystroke starts the new one —
+      // unless the panel was hidden moments ago, where "the old question" is
+      // really a live draft the player is mid-typing (see SELECT_SUPPRESS_MS).
+      if (Date.now() - lastHiddenAtRef.current > SELECT_SUPPRESS_MS) {
+        inputRef.current?.select();
+      }
+    }).then(register);
+    void onOverlayHidden(() => {
+      lastHiddenAtRef.current = Date.now();
     }).then(register);
     void onAskStatus((s) => setStatus(s)).then(register);
     void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);

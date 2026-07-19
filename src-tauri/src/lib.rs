@@ -76,10 +76,16 @@ pub fn run() {
         })
         .on_window_event(|win, event| {
             // Closing the window (e.g. Alt+F4) hides it instead of quitting; the
-            // app only exits via the tray's Quit item.
+            // app only exits via the tray's Quit item. The overlay routes
+            // through window::hide_overlay so this path fires overlay://hidden
+            // like every other hide.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = win.hide();
+                if win.label() == window::OVERLAY_LABEL {
+                    window::hide_overlay(win.app_handle());
+                } else {
+                    let _ = win.hide();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![

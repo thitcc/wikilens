@@ -130,6 +130,13 @@ export function onOverlayShown(callback: () => void): Promise<UnlistenFn> {
   return listen("overlay://shown", () => callback());
 }
 
+/** Fired after the overlay is hidden (Esc, hotkey toggle, tray, Alt+F4, the
+ * capture flow). The hidden webview stays mounted and hears it; the frontend
+ * timestamps it to keep a quick re-summon from select-alling the draft. */
+export function onOverlayHidden(callback: () => void): Promise<UnlistenFn> {
+  return listen("overlay://hidden", () => callback());
+}
+
 /** Fired as the `ask` command advances through its phases. */
 export function onAskStatus(
   callback: (status: AskStatus) => void,

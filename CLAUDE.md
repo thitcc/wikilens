@@ -119,7 +119,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Commands return `Result<T, String>`** with user-readable messages; internal
   fallible code uses `AppError` (`error.rs`), converted to `String` at the boundary.
 - **Namespaced events** (payloads):
-  - `overlay://shown` — `()`; frontend focuses the prompt input.
+  - `overlay://shown` — `()`; frontend focuses the prompt input and selects
+    the old question — unless the panel hid <2s ago (see `overlay://hidden`).
+  - `overlay://hidden` — `()`; fired by every hide path (Esc, hotkey toggle,
+    tray, Alt+F4, capture). The frontend timestamps it and skips the next
+    show's select-all within 2s, so an accidental capital-C hide can't arm a
+    draft-replacing keystroke.
   - `ask://status` —
     `"searching" | "understanding" | "retrying" | "reading" | "answering"`
     (`understanding` only while the rewrite's candidate searches run;
