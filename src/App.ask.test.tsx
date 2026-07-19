@@ -82,6 +82,26 @@ test("a rejected ask shows the error, keeps the attachment, re-enables input", a
   expect(backend.callsTo("ask")).toHaveLength(1);
 });
 
+test("a mid-stream error keeps the partial answer visible", async () => {
+  const backend = installBackend();
+  const gate = deferred<AskResult>();
+  backend.onCommand("ask", () => gate.promise);
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.type(questionBox(), "how do I fish{Enter}");
+  await fireBackendEvent("ask://delta", "Cast the ");
+  await fireBackendEvent("ask://delta", "fishing rod");
+
+  await act(async () => {
+    gate.reject(new Error("provider exploded"));
+  });
+
+  // Both render: the error explains, the partial isn't thrown away.
+  expect(screen.getByText(/provider exploded/)).toBeTruthy();
+  expect(screen.getByText("Cast the fishing rod")).toBeTruthy();
+});
+
 test("a successful ask clears the attachment and echoes its id", async () => {
   const backend = installBackend();
   const user = userEvent.setup();

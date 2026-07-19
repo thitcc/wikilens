@@ -483,8 +483,12 @@ function App() {
             )}
           </div>
         )}
-        {!error && answer && <AnswerView markdown={answer} />}
-        {!error && <SourceList sources={sources} />}
+        {/* Not gated on error: a mid-stream failure keeps the partial that
+            already streamed (submit cleared `answer`, so it's this ask's own
+            text). Sources are cleared on submit and set only on success, so
+            the list self-hides under an error. */}
+        {answer && <AnswerView markdown={answer} />}
+        <SourceList sources={sources} />
         {showPlaceholder && (
           <div className="placeholder">
             Press <kbd>Shift</kbd>+<kbd>C</kbd> anytime to open this panel. Ask a
