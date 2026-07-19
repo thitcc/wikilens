@@ -7,7 +7,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { installBackend } from "./test/backend";
+import { MODEL_STORAGE_PREFIX } from "./modelPick";
+import { MODELS, PROVIDERS, installBackend } from "./test/backend";
 import { renderApp } from "./test/harness";
 
 function questionBox(): HTMLTextAreaElement {
@@ -112,6 +113,78 @@ test("game menu: Enter on a no-match filter is a no-op and the menu stays open",
   await user.keyboard("zzz{Enter}");
   expect(screen.getByRole("dialog", { name: "Choose a game" })).toBeTruthy();
   expect(screen.getByRole("button", { name: /^Game: Terraria/ })).toBeTruthy();
+});
+
+test("model menu: bare Enter re-picks the selected model, not the invisible first match", async () => {
+  // The 2026-07-19 critique's heuristic-5 pin. Seed a stored pick for the
+  // fixture's SECOND model so selected ≠ first: on main, Enter silently
+  // picked the first match (Sonnet) — this test fails there and passes now.
+  localStorage.setItem(
+    MODEL_STORAGE_PREFIX + "anthropic",
+    JSON.stringify({ id: "claude-haiku-4-5", label: "Claude Haiku 4.5", vision: true }),
+  );
+  installBackend();
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.click(screen.getByRole("button", { name: /^Model: / }));
+  const dialog = screen.getByRole("dialog", { name: "Choose a model" });
+  await screen.findAllByRole("button", { name: /Claude Haiku 4\.5/ });
+
+  const rows = highlighted(dialog);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].textContent).toContain("Claude Haiku 4.5");
+
+  await user.keyboard("{Enter}");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: /^Model: .*Claude Haiku 4\.5/ }),
+  ).toBeTruthy();
+});
+
+test("model menu: arrows skip a collapsed group and never land on a header", async () => {
+  const DEEPSEEK_MODELS = {
+    models: [{ id: "deepseek-chat", label: "DeepSeek Chat", vision: false }],
+    source: "live",
+  };
+  const backend = installBackend({
+    // OpenRouter sits mid-list and starts collapsed — the arrow order must
+    // jump straight from Anthropic's last row to DeepSeek's first.
+    list_providers: () => [
+      PROVIDERS[0],
+      {
+        id: "openrouter",
+        name: "OpenRouter",
+        defaultModel: "openrouter/auto",
+        defaultModelLabel: "Auto Router",
+        defaultModelVision: false,
+      },
+      PROVIDERS[1],
+    ],
+    list_models: (args) =>
+      (args as { providerId: string }).providerId === "anthropic"
+        ? MODELS
+        : DEEPSEEK_MODELS,
+  });
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.click(screen.getByRole("button", { name: /^Model: / }));
+  const dialog = screen.getByRole("dialog", { name: "Choose a model" });
+  await screen.findByRole("button", { name: /DeepSeek Chat/ });
+
+  // Selected (Sonnet) opens highlighted; two ArrowDowns cross the collapsed
+  // OpenRouter group without stopping.
+  await user.keyboard("{ArrowDown}{ArrowDown}");
+  const rows = highlighted(dialog);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].textContent).toContain("DeepSeek Chat");
+  // The collapsed group's models were never fetched, let alone traversed.
+  expect(
+    backend
+      .callsTo("list_models")
+      .map((a) => (a as { providerId: string }).providerId),
+  ).not.toContain("openrouter");
 });
 
 test("Esc layering is untouched by a moved highlight", async () => {
