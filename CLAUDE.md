@@ -80,14 +80,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Dev app: `npm run tauri dev`
 - Frontend build: `npm run build` · Type-check: `npx tsc --noEmit` ·
   Tests: `npm test` (Vitest; `npm run test:watch` while developing)
+- Tooling tests: `npm run test:node` — unit tests for the Node scripts under
+  `.claude/skills/` (vault-lint, sync-agents), on Node's built-in runner.
+  Vitest's `include` is `src/**` only, so these need their own step
 - Rust: `cd src-tauri && cargo check` · `cargo test` ·
   lint: `cargo clippy --all-targets -- -D warnings`
 - Live wiki/API suites: `cargo test -- --ignored` (from `src-tauri/`) — the
   network-hitting `#[ignore]`d tests. Cadence: before each release, when
   adding/changing a game or provider, ~monthly otherwise
   (see `docs/smoke-checklist.md`)
-- Verify all: `/check` bundles the type-check + `npm test` + clippy +
-  `cargo test` — the code gates CI runs (`.github/workflows/ci.yml`, every PR
+- Verify all: `/check` bundles the type-check + `npm test` + `npm run test:node`
+  + clippy + `cargo test` — the code gates CI runs (`.github/workflows/ci.yml`, every PR
   and push to main). CI additionally audits dependencies (`cargo audit`,
   `npm audit --audit-level=high`) — CI-only, since they depend on the network
   and advisory databases
