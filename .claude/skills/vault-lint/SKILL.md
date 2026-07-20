@@ -44,3 +44,10 @@ registry; a `related` `[[slug]]` with no matching file, or an unquoted wikilink.
 
 **Warnings** (don't gate): `done` with no `commit`; `done` with no tags and no related;
 an unquoted all-digit `commit` hash; a doc unreferenced in `index.md`.
+
+Frontmatter lists are read in **both** YAML forms — inline (`related: ["[[a]]"]`) and
+block (`related:` then indented `- "[[a]]"` lines). They lint identically.
+
+## Tests
+`npm run test:node` runs the tooling unit tests, including this linter's
+(`.claude/skills/vault-lint/lint.test.mjs`, Node's built-in runner, no dependencies).
