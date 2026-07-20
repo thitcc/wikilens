@@ -66,7 +66,7 @@ SORT updated DESC
 
 ## Index (manual fallback — grep `status:` if this drifts)
 
-- **Active / blocked:** (none)
+- **Active / blocked:** [[2026-07-19_remove-graphify]]
 - **Todo:** [[2026-07-15_rewrite-bare-entity-candidate]]
 - **Todo (rewrite-review findings, in execution order):** [[2026-07-10_retrieval-path-timeouts]] · [[2026-07-10_rewrite-circuit-breaker]] · [[2026-07-10_reasoning-skip-and-capability-tags]] · [[2026-07-10_merge-raw-hit-guarantee]] · [[2026-07-10_rewrite-prompt-reword]] · [[2026-07-10_concurrent-candidate-searches-and-status]] · [[2026-07-10_retrieval-env-var-docs]]
 - **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-07_llm-query-rewrite-in-retrieval]] · [[2026-07-13_pr-delivery-workflow]] · [[2026-07-16_codex-direct-claude-md-fallback]] · [[2026-07-18_impeccable-design-context]]
