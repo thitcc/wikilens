@@ -29,9 +29,8 @@ Steps:
      valid on `main`.
 4. Fill **Context / Goal / Approach** from what we discussed; leave the remaining
    sections as the template's prompts.
-5. Add the doc to the manual index list in `vault/index.md` under **Active / blocked**
-   (or the matching section if status isn't active).
-6. Report the created path and its frontmatter.
+5. Report the created path and its frontmatter. There is no index list to update —
+   `vault/index.md`'s dashboards derive themselves from frontmatter.
 
 Reminder for while we work: if a real fork shows up — a choice with an alternative
 we're deliberately rejecting — split it into a decision doc with `/decision-doc` and

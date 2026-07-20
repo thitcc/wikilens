@@ -31,6 +31,5 @@ Steps:
 4. Fill **Context / Decision / Consequences / Alternatives considered** from what we
    discussed. The **Alternatives considered** section is the point of a decision doc:
    name what we rejected and why.
-5. Add the doc to the manual index list in `vault/index.md` under **Decisions** (and
-   also **Active / blocked** while `status: active`).
-6. Report the created path and its frontmatter.
+5. Report the created path and its frontmatter. There is no index list to update —
+   `vault/index.md`'s dashboards derive themselves from frontmatter.

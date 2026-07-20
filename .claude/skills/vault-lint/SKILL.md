@@ -30,8 +30,8 @@ It prints `vault-lint: N docs checked — X errors, Y warnings`, then per-file `
 ## Acting on results
 - Report the grouped results.
 - Offer to fix the **mechanical** issues on confirmation — never rewrite frontmatter
-  silently: a `status`/`type` typo, a missing/should-bump `updated`, an unquoted
-  all-digit `commit` hash, or a doc missing from the `index.md` list.
+  silently: a `status`/`type` typo, a missing/should-bump `updated`, or an unquoted
+  all-digit `commit` hash.
 - Leave **judgment** issues to the human: which tag really applies, a wrong `related`
   target, whether a `done` doc should carry a `commit`.
 - Re-run after fixing to confirm a clean pass.
@@ -43,4 +43,11 @@ filename ≠ `YYYY-MM-DD_<kebab>.md` or its date prefix ≠ `created`; a tag out
 registry; a `related` `[[slug]]` with no matching file, or an unquoted wikilink.
 
 **Warnings** (don't gate): `done` with no `commit`; `done` with no tags and no related;
-an unquoted all-digit `commit` hash; a doc unreferenced in `index.md`.
+an unquoted all-digit `commit` hash.
+
+Frontmatter lists are read in **both** YAML forms — inline (`related: ["[[a]]"]`) and
+block (`related:` then indented `- "[[a]]"` lines). They lint identically.
+
+## Tests
+`npm run test:node` runs the tooling unit tests, including this linter's
+(`.claude/skills/vault-lint/lint.test.mjs`, Node's built-in runner, no dependencies).
