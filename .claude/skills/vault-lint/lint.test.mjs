@@ -24,8 +24,6 @@ related: []
 
 # Vault index
 
-- **Done:** {{LINKS}}
-
 ## Tag registry (closed — add a tag here before using it)
 
 \`vault\` · \`testing\` · \`frontend\`
@@ -39,8 +37,7 @@ function makeVault(t, docs = {}, { index = INDEX } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'vault-lint-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'vault'), { recursive: true });
-  const links = Object.keys(docs).map((n) => `[[${n}]]`).join(' · ');
-  writeFileSync(join(root, 'vault', 'index.md'), index.replace('{{LINKS}}', links));
+  writeFileSync(join(root, 'vault', 'index.md'), index);
   for (const [name, content] of Object.entries(docs)) {
     writeFileSync(join(root, 'vault', `${name}.md`), content);
   }

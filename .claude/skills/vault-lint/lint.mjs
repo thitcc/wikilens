@@ -23,7 +23,7 @@ const STATUSES = ['idea', 'todo', 'active', 'blocked', 'done', 'dropped'];
 const REQUIRED = ['title', 'type', 'status', 'created', 'updated'];
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const FILENAME = /^\d{4}-\d{2}-\d{2}_[a-z0-9-]+\.md$/;
-const EXEMPT = new Set(['index.md']); // exempt from filename + index-reference rules
+const EXEMPT = new Set(['index.md']); // exempt from the filename rule
 
 // ---------- helpers ----------
 
@@ -157,11 +157,7 @@ export function runLint(root = DEFAULT_ROOT) {
     throw new LintError(`could not find the vault at ${relative(process.cwd(), VAULT)} (run from the wikilens repo).`);
   }
 
-  const indexText = readFileSync(INDEX, 'utf8');
-  const registry = loadRegistry(indexText);
-  const indexLinks = new Set(
-    [...indexText.matchAll(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g)].map((m) => m[1].trim()),
-  );
+  const registry = loadRegistry(readFileSync(INDEX, 'utf8'));
 
   const files = walk(VAULT);
   const existingSlugs = new Set(files.map((f) => basename(f, '.md')));
@@ -255,11 +251,6 @@ export function runLint(root = DEFAULT_ROOT) {
       if (tags.length === 0 && related.length === 0) push(rel, 'WARN', 'status is done but has no tags and no related links');
     }
 
-    // index drift
-    if (!EXEMPT.has(name) && !rel.includes('/archive/')) {
-      const slug = basename(name, '.md');
-      if (!indexLinks.has(slug)) push(rel, 'WARN', `not referenced anywhere in index.md ([[${slug}]])`);
-    }
   }
 
   return {

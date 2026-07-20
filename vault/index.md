@@ -32,8 +32,9 @@ the Obsidian vault** (not the repo root — that would index `node_modules`).
 | `related`             | quoted wikilinks, e.g. `"[[2026-07-02_scaffold]]"`                                                                                                                               |
 | `commit`              | the code this doc tracks — a single hash `85aca6c`, or a list `[a1b2c3d, e4f5g6h]` when it spans several commits. Optional. (Quote an all-digit hash so YAML keeps it a string.) |
 
-> The dashboards below use [Dataview](https://github.com/blacksmithgu/obsidian-dataview).
-> Without it they render as inert code blocks — the manual index and `grep` still work.
+> The dashboards below use [Dataview](https://github.com/blacksmithgu/obsidian-dataview),
+> which derives them from frontmatter — there is no hand-maintained doc list to keep in
+> sync. Without the plugin they render as inert code blocks; `grep` still works.
 
 ## Active board
 
@@ -64,15 +65,9 @@ SORT updated DESC
 
 ---
 
-## Index (manual fallback — grep `status:` if this drifts)
+## Without Obsidian
 
-- **Active / blocked:** (none)
-- **Todo:** [[2026-07-15_rewrite-bare-entity-candidate]]
-- **Todo (rewrite-review findings, in execution order):** [[2026-07-10_retrieval-path-timeouts]] · [[2026-07-10_rewrite-circuit-breaker]] · [[2026-07-10_reasoning-skip-and-capability-tags]] · [[2026-07-10_merge-raw-hit-guarantee]] · [[2026-07-10_rewrite-prompt-reword]] · [[2026-07-10_concurrent-candidate-searches-and-status]] · [[2026-07-10_retrieval-env-var-docs]]
-- **Decisions:** [[2026-07-02_wikitext-extraction]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-07_llm-query-rewrite-in-retrieval]] · [[2026-07-13_pr-delivery-workflow]] · [[2026-07-16_codex-direct-claude-md-fallback]] · [[2026-07-18_impeccable-design-context]]
-- **Done:** [[2026-07-02_scaffold]] · [[2026-07-02_multi-provider-llm]] · [[2026-07-02_wikitext-extraction]] · [[2026-07-03_commit-field-forms]] · [[2026-07-03_retrieval-integration-test]] · [[2026-07-04_search-srwhat-text]] · [[2026-07-04_query-preprocessing-zero-hit-retry]] · [[2026-07-04_golden-query-retrieval-tests]] · [[2026-07-04_rendered-html-extraction]] · [[2026-07-04_rendered-html-fetch-strategy]] · [[2026-07-05_model-list-sourcing]] · [[2026-07-05_model-picker-menu]] · [[2026-07-05_builtin-game-registry-expansion]] · [[2026-07-05_user-added-game-wikis]] · [[2026-07-05_game-picker-owned-menu]] · [[2026-07-05_design-tokens-claude-design-sync]] · [[2026-07-06_screenshot-capture-to-prompt]] · [[2026-07-06_model-vision-badges]] · [[2026-07-06_image-attach-guardrails]] · [[2026-07-07_retrieval-quality-improvements]] · [[2026-07-07_llm-query-rewrite-in-retrieval]] · [[2026-07-10_ask-debug-instrumentation]] · [[2026-07-13_testing-audit]] · [[2026-07-13_ci-pipeline-github-actions]] · [[2026-07-13_pr-delivery-workflow]] · [[2026-07-13_frontend-test-harness]] · [[2026-07-13_rust-http-mock-integration-tests]] · [[2026-07-13_parser-snapshot-property-tests]] · [[2026-07-13_dependency-audit-lint-gates]] · [[2026-07-13_manual-smoke-checklist-live-cadence]] · [[2026-07-13_wiki-fetch-hardening]] · [[2026-07-14_post-merge-dead-code-cleanup]] · [[2026-07-14_pr-description-anatomy]] · [[2026-07-15_cargo-manifest-eol-churn]] · [[2026-07-15_slow-wiki-status-hint]] · [[2026-07-16_wiki-403-friendly-error]] · [[2026-07-16_codex-config-mirror-skill]] · [[2026-07-16_codex-direct-claude-md-fallback]] · [[2026-07-16_model-menu-dropdown]] · [[2026-07-17_graphify-findings-review]] · [[2026-07-17_claude-md-capture-catchup]] · [[2026-07-18_visual-debug-window]] · [[2026-07-18_impeccable-design-context]] · [[2026-07-18_ask-lifecycle-fix-pass]] · [[2026-07-19_hotkey-config]] · [[2026-07-19_menu-keyboard-nav]] · [[2026-07-19_remove-graphify]] · [[2026-07-19_vault-lint-block-lists]]
-
-Pure-grep, no Obsidian:
+Frontmatter is the source of truth; these read it directly:
 `grep -rl 'status: active' .` · `grep -rl 'type: decision' .`
 
 ## Tag registry (closed — add a tag here before using it)
