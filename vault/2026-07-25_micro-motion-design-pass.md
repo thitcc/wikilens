@@ -94,8 +94,35 @@ PR with a real "⚠️ Behavior changes" section (visible motion is
 player-facing), close this doc, `/vault-lint`.
 
 ## Decisions & trade-offs
-Anything worth remembering. A real fork (a rejected alternative) → split into a
-decision doc (`/decision-doc`) and link it in `related:`.
+- **The Motion Voice: Quiet Directional** (user addition, codified in
+  DESIGN.md §6): every accepted variant was `.1` — a fade plus a small
+  directional travel (4px in-panel, ~12px for the panel), plain ease-out,
+  120–150ms. Rejected on both flanks: travel-less pure fades (answer
+  "something appeared", not "from where") and pronounced slides/scale/tails
+  (answer louder than asked). The rule decides whether a motion exists; the
+  voice governs how it moves.
+- **A-01 is a class toggle, not a remount**: `panel--summoning` armed per
+  `overlay://shown`, cleared on a name-filtered `animationend` (child
+  animation ends bubble to the panel) and on hide (reduced-motion never
+  fires animationend). A `key` bump would replay too — but remounting the
+  panel destroys the draft, focus, and scroll state.
+- **The live test ran as a hybrid**: impeccable live for the session frame,
+  but A-01/A-04 variants switched via an uncommitted stylesheet + shim keys —
+  live-wrap's 3× markup duplication on stateful roots (panel, menus) breaks
+  the focus/keyboard pins under judgment. Two lab-shim bugs mattered: plain
+  keys die once the prompt takes focus (the summon replay itself focuses
+  it), and legend clicks closed the menus being judged
+  (outside-pointerdown) — fixed with a focus-preserving, propagation-stopped
+  legend. Variant trios also need a categorical axis (fade vs travel), not
+  just ms/px steps, to be judgeable over a busy game frame.
+- **A-02 excludes `.is-open` on the way in, and carries the inventory's
+  one named deviation**: hover and open fills apply as hard cuts, but CSS
+  destination-state semantics make every release fade — pointer-leave and
+  menu-close alike (a hard-cut close-release would need a JS suppression
+  class; not worth it). And the fade paints background/ink rather than
+  transform/opacity — strict compliance would need a pseudo-element veil
+  plus an ink snap, altering the accepted variant A-02.1. Documented in
+  the inventory rather than fudged (the shimmer set the precedent).
 
 ## Status log
 - 2026-07-25 — created.
@@ -103,3 +130,13 @@ decision doc (`/decision-doc`) and link it in `related:`.
   Named-Question Rule plus the admitted inventory, with the debug shimmer
   grandfathered ("predates the rule; its bounds and paperwork apply to
   motions admitted through it") — mirrored in `.impeccable/design.json`.
+- 2026-07-25 — step 2 done: live test over real GW2 backdrops (browser
+  motion lab: fake-IPC backend + backdrop shim in gitignored `dev.local/`,
+  plus an impeccable live session). Verdicts by ID: **A-01.1, A-02.1,
+  A-03.1, A-04.1 accepted** — all `.1`, the quietest variant that still
+  answered its question. Nothing committed; teardown left the tree clean.
+- 2026-07-25 — step 3 landed: the four accepted motions in
+  `src/styles.css` (one reduced-motion-gated ledger, ID + question comment
+  each), the A-01 class hook in `App.tsx` (+ summon-contract test),
+  DESIGN.md §6 inventory at five entries plus the new "Motion Voice:
+  Quiet Directional" section, all mirrored in `.impeccable/design.json`.
