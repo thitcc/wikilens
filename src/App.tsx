@@ -117,6 +117,11 @@ function isWikiBoundStatus(s: AskStatus): boolean {
  * accidental hide arms the same loss. Exported for the fake-timer tests. */
 export const SELECT_SUPPRESS_MS = 2_000;
 
+/** Backstop for the frame-synced summon arm: if the double-rAF wait somehow
+ * never fires, this timer arms the entrance anyway so the pre-summon hold
+ * can't leave the panel invisible. Exported for the fake-timer tests. */
+export const SUMMON_ARM_FALLBACK_MS = 100;
+
 function App() {
   const [games, setGames] = useState<GameInfo[]>([]);
   const [selectedGame, setSelectedGame] = useState<string>(
@@ -149,10 +154,17 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
   const [debugChip, setDebugChip] = useState(false);
-  // A-01 (DESIGN.md §6): armed per overlay://shown, dropped on the summon
-  // animation's end (name-filtered — child animationends bubble here) and
-  // on hide. Paint-only: focus never waits on it.
+  // A-01 (DESIGN.md §6): the webview resumes presenting frames a beat after
+  // win.show(), so arming on overlay://shown lets the 120ms clock run before
+  // anything reaches the screen — the entrance degrades to a pop-in with an
+  // end wobble on every summon after the first. preSummon holds the panel in
+  // the keyframe's "from" state from hide (and mount — the window starts
+  // hidden) until the frame-synced arm below; summoning then plays the
+  // entrance, dropped on the animation's end (name-filtered — child
+  // animationends bubble here) and on hide. Paint-only: focus never waits
+  // on either.
   const [summoning, setSummoning] = useState(false);
+  const [preSummon, setPreSummon] = useState(true);
   // The configured shortcuts (null until get_settings resolves — the copy
   // below falls back to the shipped defaults, and the gear stays disabled).
   const [settings, setSettings] = useState<SettingsInfo | null>(null);
@@ -167,6 +179,10 @@ function App() {
   // When the overlay last hid (overlay://hidden), for the select-all
   // suppression below. 0 = never, so the first show always selects.
   const lastHiddenAtRef = useRef(0);
+  // Token for the pending summon arm: bumped on hide to cancel a wait still
+  // in flight, and by the arm itself so the slower of its two paths
+  // (double-rAF vs the backstop timer) no-ops.
+  const summonArmRef = useRef(0);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -284,9 +300,38 @@ function App() {
       else cleanups.push(unlisten);
     };
 
+    // A-01 arm: wait two rAFs after overlay://shown — the first presented
+    // frame proves the resumed webview is actually on screen — then start
+    // the entrance from its held "from" state. The backstop timer covers a
+    // webview that never pumps rAF; whichever fires first consumes the
+    // token, and a hide mid-wait cancels both.
+    const armSummon = () => {
+      const token = ++summonArmRef.current;
+      // Re-assert the hold (a no-op on the normal hide→show path): the wait
+      // must never present the at-rest panel.
+      setPreSummon(true);
+      setSummoning(false);
+      const arm = () => {
+        if (summonArmRef.current !== token) return;
+        summonArmRef.current += 1;
+        setPreSummon(false);
+        setSummoning(true);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(arm));
+      window.setTimeout(arm, SUMMON_ARM_FALLBACK_MS);
+    };
+
+    // Dev-serve only: an HMR reload while the window is visible gets no
+    // overlay://shown, and the mount-time hold would keep the panel
+    // invisible until the next hide+show. Arm now instead. (import.meta.hot
+    // is undefined in production builds and under Vitest.)
+    if (import.meta.hot && document.visibilityState === "visible") {
+      armSummon();
+    }
+
     void onOverlayShown(() => {
       setOpenMenu(null);
-      setSummoning(true);
+      armSummon();
       inputRef.current?.focus();
       // Select the old question so the first keystroke starts the new one —
       // unless the panel was hidden moments ago, where "the old question" is
@@ -297,9 +342,12 @@ function App() {
     }).then(register);
     void onOverlayHidden(() => {
       lastHiddenAtRef.current = Date.now();
+      // Cancel a pending arm and re-hold the panel for the next entrance.
       // Reduced-motion never fires animationend; a mid-animation hide
       // shouldn't leave the class armed either.
+      summonArmRef.current += 1;
       setSummoning(false);
+      setPreSummon(true);
     }).then(register);
     void onAskStatus((s) => setStatus(s)).then(register);
     void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);
@@ -488,7 +536,11 @@ function App() {
 
   return (
     <div
-      className={"panel" + (summoning ? " panel--summoning" : "")}
+      className={
+        "panel" +
+        (preSummon ? " panel--pre-summon" : "") +
+        (summoning ? " panel--summoning" : "")
+      }
       onAnimationEnd={(e) => {
         if (e.animationName === "panel-summon") setSummoning(false);
       }}
