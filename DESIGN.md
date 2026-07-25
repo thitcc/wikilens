@@ -116,8 +116,8 @@ visual system serves that gesture. The surface is a single sheet of smoked
 glass (near-opaque so text survives any game backdrop) docked at the screen's
 right edge, hugging its content; everything on it is ink first and chrome
 never. The interface's personality — quiet, precise, instant — comes from what
-it refuses to do: no decoration, no entrance choreography, no color that isn't
-information.
+it refuses to do: no decoration, no motion without a question to answer, no
+color that isn't information.
 
 The system explicitly rejects Overwolf-style gamer overlay bloat (neon RGB,
 widget clusters, aggressive branding) and generic AI chatbot styling (chat
@@ -133,8 +133,9 @@ game is the main character; WikiLens borrows the screen and gives it back.
 - A 14px type ceiling: hierarchy by weight and ink strength, never by size.
 - Controls are quiet until touched — bare ink at rest, a faint veil on hover.
 - Two altitudes exactly: the panel above the game, menus above the panel.
-- State changes are instant; the only animation in the product is a
-  reduced-motion-gated progress shimmer in the debug window.
+- State changes are instant; motion is governed by the Named-Question Rule
+  and speaks the Quiet Directional voice (see Motion) — five admitted
+  motions: four on the overlay and the debug window's shimmer.
 
 ## 2. Colors
 
@@ -327,7 +328,67 @@ A 20×20 rounded tile bearing a 10px mono monogram ("SV", "CE") — the scan
 anchor for a growing game list. Raised-veil fill, muted ink promoting to full
 ink on hover/selection. The system's only "icon", and it's typography.
 
-## 6. Do's and Don'ts
+## 6. Motion
+
+The default is stillness: state changes — hover, focus, open — apply
+instantly, and the glass never moves to be noticed. New motion enters one
+animation at a time through the Named-Question Rule below, proven over real
+game backdrops before it ships; the admitted inventory lives here and is
+updated in the same PR as any admission.
+
+### Admitted inventory
+
+- **A-01 · panel-summon** — the panel's 12px slide-in from the right with a
+  fade on summon (120ms ease-out; armed per `overlay://shown`, dropped on
+  `animationend` and on hide — hiding stays instant). Its question: "the
+  panel came from the right edge."
+- **A-02 · hover-release** — quiet chips light instantly on hover and open
+  (the on-path is always a hard cut), and release with a 120ms fade of veil
+  and ink — on pointer-leave and on menu-close alike. Its question: "the
+  control heard you." The inventory's one named deviation: the release
+  fades background and ink (a chip-sized repaint, not transform/opacity),
+  accepted as-is in the live test.
+- **A-03 · attach-confirm** — the capture attachment block mounts with a
+  4px rise and fade (150ms ease-out); removal unmounts — instant. Its
+  question: "your grab landed."
+- **A-04 · menu-arrive** — menus mount with a 4px arrival from their anchor
+  chip, direction-aware (120ms ease-out); closing unmounts — instant. Its
+  question: "this came from that chip."
+- **debug-shimmer** — the debug window's indeterminate progress shimmer (a
+  1.2s translateX loop), gated behind `prefers-reduced-motion` with a static
+  accent-strip fallback. Its question: "is this ask still running?"
+  Predates the rule (carried over from the instant-states doctrine); the
+  rule's bounds and paperwork apply to motions admitted through it.
+
+### The Motion Voice: Quiet Directional
+
+The rule decides whether a motion exists; the voice governs how it moves.
+Every admitted motion carries one bit of spatial information — where the
+thing came from — at whisper amplitude: a fade plus a small directional
+travel (4px for elements inside the panel, ~12px for the panel itself),
+plain ease-out, 120–150ms. Both extremes fail the same way: a travel-less
+fade answers "something appeared" but not "from where", and a pronounced
+slide, a scale, or a lingering tail answers louder than the player asked.
+The live test that set this voice (2026-07-25, over real game backdrops)
+picked the quietest variant that still answered its question — every time.
+
+### Named Rules
+
+**The Named-Question Rule.** Motion may exist only to answer a question the
+player already has — "did my keypress register?", "where did this come
+from?", "did that attach?" — and only when it answers faster than a hard cut
+would. Every animation names its question, in a stylesheet comment and in its
+PR; a motion whose question can't be named is decoration, and this register
+rejects decoration. Motions that pass are still bound: transform/opacity only
+(the glass floats over a GPU-saturated game — compositor work, never
+repaint); ≤200ms; ease-out on entry; exits are instant — leaving is the
+product; input readiness is never delayed (animation is paint, not gate); and
+everything sits behind prefers-reduced-motion with a static fallback. The
+answer stream and focus indicators never animate. Candidates enter through a
+live test over real game backdrops; admission updates this inventory in the
+same PR.
+
+## 7. Do's and Don'ts
 
 ### Do:
 
@@ -340,8 +401,10 @@ ink on hover/selection. The system's only "icon", and it's typography.
   focused (the One Signal Rule) — answers and data stay ink.
 - **Do** build every picker as an owned menu on Menu Glass, and keep menus
   direct children of `.panel` so `.content`'s overflow can't clip them.
-- **Do** keep state changes instant, and gate any animation behind
-  `prefers-reduced-motion` (the debug shimmer is the template).
+- **Do** keep state changes instant unless a motion has passed the
+  Named-Question Rule, and gate every admitted animation behind
+  `prefers-reduced-motion` with a static fallback (the debug shimmer is the
+  template).
 - **Do** retune paired constants together — `styles.css` margins ↔
   `window.rs` floats, `--menu-clearance*` ↔ `menuPlacement.ts` — whenever
   geometry tokens change.
@@ -361,6 +424,7 @@ ink on hover/selection. The system's only "icon", and it's typography.
   the inks, and the rose error trio.
 - **Don't** scale type past 14px for emphasis — promote weight or ink instead
   (the Fourteen-Pixel Ceiling).
-- **Don't** add entrance choreography or animate the answer stream; the
+- **Don't** ship a motion that can't name its question (the Named-Question
+  Rule) — and never animate the answer stream or focus indicators; the
   player is mid-game and the audit test is: *if you notice the panel while
   not asking it something, it's too loud.*

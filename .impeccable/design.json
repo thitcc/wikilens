@@ -59,8 +59,12 @@
       { "name": "menu-float", "value": "0 16px 40px rgba(0, 0, 0, 0.45)", "purpose": "The second altitude: menus standing on the panel. No third shadow exists." }
     ],
     "motion": [
-      { "name": "instant-state", "value": "none", "purpose": "State changes (hover, focus, open) apply instantly — the player is mid-game; no transitions, no entrance choreography." },
-      { "name": "debug-shimmer", "value": "debug-shimmer 1.2s ease-in-out infinite (translateX -100% → 250%)", "purpose": "The product's only animation: an indeterminate progress shimmer in the debug window, gated behind prefers-reduced-motion with a static accent-strip fallback." }
+      { "name": "instant-state", "value": "none", "purpose": "State changes (hover, focus, open) apply instantly — the player is mid-game; new motion enters only through Named-Question-Rule admission." },
+      { "name": "panel-summon", "value": "A-01 — panel-summon 120ms ease-out (translateX 12px → 0 + fade), armed per overlay://shown, dropped on animationend and on hide", "purpose": "Its question: \"the panel came from the right edge.\" Hiding stays instant." },
+      { "name": "hover-release", "value": "A-02 — background-color/color 120ms ease-out transition on release only (:hover and .is-open cut to none)", "purpose": "Its question: \"the control heard you.\" The on-path (hover and open) is a hard cut; the release fades on pointer-leave and menu-close alike — the inventory's one named deviation from the transform/opacity bound (a chip-sized repaint), accepted as-is in the live test." },
+      { "name": "attach-confirm", "value": "A-03 — attach-confirm 150ms ease-out (translateY 4px → 0 + fade) on mount", "purpose": "Its question: \"your grab landed.\" Removal unmounts — instant exit." },
+      { "name": "menu-arrive", "value": "A-04 — menu-arrive-up/-down 120ms ease-out (translateY ±4px → 0 + fade) on mount, direction-aware per anchor chip", "purpose": "Its question: \"this came from that chip.\" Closing unmounts — instant exit." },
+      { "name": "debug-shimmer", "value": "debug-shimmer 1.2s ease-in-out infinite (translateX -100% → 250%)", "purpose": "The debug window's admitted motion: an indeterminate progress shimmer, gated behind prefers-reduced-motion with a static accent-strip fallback. Its question: \"is this ask still running?\" Predates the rule (carried over from the instant-states doctrine); the rule's bounds and paperwork apply to motions admitted through it." }
     ]
   },
   "components": [
@@ -115,26 +119,28 @@
   ],
   "narrative": {
     "northStar": "The Field Guide",
-    "overview": "WikiLens is a field guide flipped open mid-hike: you summon it over the running game, read one terse, sourced entry, and pocket it again in seconds. The whole visual system serves that gesture. The surface is a single sheet of smoked glass (near-opaque so text survives any game backdrop) docked at the screen's right edge, hugging its content; everything on it is ink first and chrome never. The interface's personality — quiet, precise, instant — comes from what it refuses to do: no decoration, no entrance choreography, no color that isn't information.\n\nThe system explicitly rejects Overwolf-style gamer overlay bloat (neon RGB, widget clusters, aggressive branding) and generic AI chatbot styling (chat bubbles, bot avatars, sparkle-emoji \"AI\" decoration, typing indicators). The game is the main character; WikiLens borrows the screen and gives it back.",
+    "overview": "WikiLens is a field guide flipped open mid-hike: you summon it over the running game, read one terse, sourced entry, and pocket it again in seconds. The whole visual system serves that gesture. The surface is a single sheet of smoked glass (near-opaque so text survives any game backdrop) docked at the screen's right edge, hugging its content; everything on it is ink first and chrome never. The interface's personality — quiet, precise, instant — comes from what it refuses to do: no decoration, no motion without a question to answer, no color that isn't information.\n\nThe system explicitly rejects Overwolf-style gamer overlay bloat (neon RGB, widget clusters, aggressive branding) and generic AI chatbot styling (chat bubbles, bot avatars, sparkle-emoji \"AI\" decoration, typing indicators). The game is the main character; WikiLens borrows the screen and gives it back.",
     "keyCharacteristics": [
       "One smoked-glass sheet over the game; content-hugging, right-docked, gone when dismissed.",
       "One accent hue (Moonlight Blue) that only ever marks the interactive, the selected, and the focused; a rose trio that only ever marks failure.",
       "A 14px type ceiling: hierarchy by weight and ink strength, never by size.",
       "Controls are quiet until touched — bare ink at rest, a faint veil on hover.",
       "Two altitudes exactly: the panel above the game, menus above the panel.",
-      "State changes are instant; the only animation in the product is a reduced-motion-gated progress shimmer in the debug window."
+      "State changes are instant; motion is governed by the Named-Question Rule and speaks the Quiet Directional voice (see Motion) — five admitted motions: four on the overlay and the debug window's shimmer."
     ],
     "rules": [
       { "name": "The One Signal Rule", "body": "Moonlight Blue is the interface's only voice of color. If an element is not interactive, selected, or focused, it stays ink. The rose trio speaks only on failure. There is no third hue, and there are no gradients.", "section": "colors" },
       { "name": "The Fourteen-Pixel Ceiling", "body": "14px is the largest type in the product. Nothing displays, headlines, or shouts; hierarchy is carried by weight, ink strength (muted → ink → strong), tracking, and case. If a design wants a bigger font, it wants attention the game should keep.", "section": "typography" },
-      { "name": "The Two Altitudes Rule", "body": "Exactly two things float: the panel above the game, and menus above the panel. There is no third level — no raised cards, no hovering toasts, no shadowed buttons. If a new element wants a shadow, it is claiming to be a window, and it almost certainly isn't one.", "section": "elevation" }
+      { "name": "The Two Altitudes Rule", "body": "Exactly two things float: the panel above the game, and menus above the panel. There is no third level — no raised cards, no hovering toasts, no shadowed buttons. If a new element wants a shadow, it is claiming to be a window, and it almost certainly isn't one.", "section": "elevation" },
+      { "name": "The Named-Question Rule", "body": "Motion may exist only to answer a question the player already has — \"did my keypress register?\", \"where did this come from?\", \"did that attach?\" — and only when it answers faster than a hard cut would. Every animation names its question, in a stylesheet comment and in its PR; a motion whose question can't be named is decoration, and this register rejects decoration. Motions that pass are still bound: transform/opacity only (the glass floats over a GPU-saturated game — compositor work, never repaint); ≤200ms; ease-out on entry; exits are instant — leaving is the product; input readiness is never delayed (animation is paint, not gate); and everything sits behind prefers-reduced-motion with a static fallback. The answer stream and focus indicators never animate. Candidates enter through a live test over real game backdrops; admission updates this inventory in the same PR.", "section": "motion" }
     ],
+    "motionVoice": "The rule decides whether a motion exists; the voice governs how it moves. Every admitted motion carries one bit of spatial information — where the thing came from — at whisper amplitude: a fade plus a small directional travel (4px for elements inside the panel, ~12px for the panel itself), plain ease-out, 120–150ms. Both extremes fail the same way: a travel-less fade answers \"something appeared\" but not \"from where\", and a pronounced slide, a scale, or a lingering tail answers louder than the player asked. The live test that set this voice (2026-07-25, over real game backdrops) picked the quietest variant that still answered its question — every time.",
     "dos": [
       "Do keep html, body transparent in every window's stylesheet — the webview paints a black rectangle without it.",
       "Do draw controls as bare ink at rest and reveal the veil fill only on hover/open and the keyboard highlight (\"quiet until touched\"); keyboard focus speaks with the Moonlight Blue outline, never a fill.",
       "Do reserve Moonlight Blue for the interactive, the selected, and the focused (the One Signal Rule) — answers and data stay ink.",
       "Do build every picker as an owned menu on Menu Glass, and keep menus direct children of .panel so .content's overflow can't clip them.",
-      "Do keep state changes instant, and gate any animation behind prefers-reduced-motion (the debug shimmer is the template).",
+      "Do keep state changes instant unless a motion has passed the Named-Question Rule, and gate every admitted animation behind prefers-reduced-motion with a static fallback (the debug shimmer is the template).",
       "Do retune paired constants together — styles.css margins ↔ window.rs floats, --menu-clearance* ↔ menuPlacement.ts — whenever geometry tokens change."
     ],
     "donts": [
@@ -144,7 +150,7 @@
       "Don't add a third elevation — no shadowed buttons, raised cards, or toasts (the Two Altitudes Rule).",
       "Don't introduce a new hue or gradient; the palette is Moonlight Blue, the inks, and the rose error trio.",
       "Don't scale type past 14px for emphasis — promote weight or ink instead (the Fourteen-Pixel Ceiling).",
-      "Don't add entrance choreography or animate the answer stream; the player is mid-game and the audit test is: if you notice the panel while not asking it something, it's too loud."
+      "Don't ship a motion that can't name its question (the Named-Question Rule) — and never animate the answer stream or focus indicators; the player is mid-game and the audit test is: if you notice the panel while not asking it something, it's too loud."
     ]
   }
 }
