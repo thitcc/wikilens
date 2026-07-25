@@ -343,8 +343,11 @@ updated in the same PR as any admission.
   keyframe's "from" state while hidden, and `overlay://shown` arms the
   entrance frame-synced — double rAF, timer backstop — so the resuming
   webview can't burn the 120ms clock before it presents a frame; dropped on
-  `animationend` and on hide — hiding stays instant). Its question: "the
-  panel came from the right edge."
+  `animationend` and on hide — hiding stays instant). Rust force-disables
+  DWM's own window transitions (`DWMWA_TRANSITIONS_FORCEDISABLED`,
+  `window.rs`) so the OS's one-time first-show fade + rise can't layer over
+  the entrance — without it the first summon after launch moves bottom-up.
+  Its question: "the panel came from the right edge."
 - **A-02 · hover-release** — quiet chips light instantly on hover and open
   (the on-path is always a hard cut), and release with a 120ms fade of veil
   and ink — on pointer-leave and on menu-close alike. Its question: "the

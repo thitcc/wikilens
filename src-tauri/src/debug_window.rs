@@ -75,6 +75,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .focused(false)
         .focusable(false)
         .build()?;
+    // Created hidden like the config windows, so the first tray/chip show
+    // would get DWM's one-time open transition — suppress it here too.
+    crate::window::disable_os_open_transition(&win);
     if let Err(e) = position_top_left(&win) {
         eprintln!("[wikilens] failed to position debug window: {e}");
     }

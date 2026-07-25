@@ -253,6 +253,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   shown (Tauri transparent windows aren't click-through) — kept small on
   purpose.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
+- Windows plays its **own one-time open transition** (fade + short rise) the
+  first time an HWND is presented — on our hidden-created windows that lands
+  on the first summon/show and layers OS motion over the app's entrance.
+  `window::disable_os_open_transition` (`DWMWA_TRANSITIONS_FORCEDISABLED`)
+  runs for all three windows before any show; give any **new** window the
+  same call or its first show animates differently from the rest.
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
   fetches are **sequential** (one `action=parse` request per page, 12s timeout) —
   don't parallelize them. Failures fall back to a single batched `prop=revisions`

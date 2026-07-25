@@ -24,6 +24,10 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] **Ctrl+`** (the key left of 1) over the borderless game toggles the
       overlay: panel slides in from the right edge and the prompt takes
       focus; Ctrl+` again hides it.
+- [ ] The **first** summon after a fresh app launch plays that same
+      right-edge slide — no extra fade + upward rise layered over it (that
+      would be Windows' one-time window-open transition, force-disabled in
+      `window.rs`).
 - [ ] Tray icon is present and its tooltip names the current summon combo;
       Show/Hide works; Quit exits the app (the panel's close paths only hide
       it).
