@@ -339,7 +339,10 @@ updated in the same PR as any admission.
 ### Admitted inventory
 
 - **A-01 · panel-summon** — the panel's 12px slide-in from the right with a
-  fade on summon (120ms ease-out; armed per `overlay://shown`, dropped on
+  fade on summon (120ms ease-out; a pre-summon hold keeps the panel in the
+  keyframe's "from" state while hidden, and `overlay://shown` arms the
+  entrance frame-synced — double rAF, timer backstop — so the resuming
+  webview can't burn the 120ms clock before it presents a frame; dropped on
   `animationend` and on hide — hiding stays instant). Its question: "the
   panel came from the right edge."
 - **A-02 · hover-release** — quiet chips light instantly on hover and open

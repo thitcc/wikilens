@@ -183,6 +183,10 @@ body {
   border-radius: var(--radius-panel);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-panel);
+  /* Keep the panel composited at rest: when the A-01 summon animation ends,
+     dropping its layer would re-rasterize the glass + text (AA snap) — the
+     end-of-summon tremble. */
+  will-change: transform;
 }
 
 .panel-header {
@@ -1009,10 +1013,19 @@ body {
 
 @media (prefers-reduced-motion: no-preference) {
   /* A-01 — "the panel came from the right edge": the summon entrance.
-     Armed per overlay://shown, dropped on animationend (and on hide),
-     so every summon replays; hiding stays instant. */
+     Armed frame-synced after overlay://shown (App.tsx: double-rAF, so the
+     120ms clock can't run before the resumed webview presents a frame),
+     dropped on animationend (and on hide), so every summon replays;
+     hiding stays instant. */
   .panel--summoning {
     animation: panel-summon 120ms ease-out;
+  }
+
+  /* A-01's hold: from hide (and mount) until the frame-synced arm, the
+     panel waits in the keyframe's "from" state so the re-shown window
+     can't present the at-rest panel before the entrance replays. */
+  .panel--pre-summon {
+    opacity: 0;
   }
 
   @keyframes panel-summon {
