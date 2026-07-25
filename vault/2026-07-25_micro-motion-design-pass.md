@@ -1,12 +1,12 @@
 ---
 title: Micro-motion design pass on the overlay
 type: plan
-status: active
+status: done
 created: 2026-07-25
 updated: 2026-07-25
 tags: [frontend, overlay]
 related: ["[[2026-07-18_impeccable-design-context]]", "[[2026-07-05_design-tokens-claude-design-sync]]"]
-commit:
+commit: [fe61a13, 7b14457, caa95ab, 4a4302f]
 ---
 
 # Micro-motion design pass on the overlay
@@ -140,3 +140,7 @@ player-facing), close this doc, `/vault-lint`.
   each), the A-01 class hook in `App.tsx` (+ summon-contract test),
   DESIGN.md §6 inventory at five entries plus the new "Motion Voice:
   Quiet Directional" section, all mirrored in `.impeccable/design.json`.
+- 2026-07-25 — step 4: `/check` green, branch pushed, PR opened; closing
+  this doc in the same PR. Manual smoke over a real game pending before
+  merge — the checkpoint is A-01's show-then-animate timing on the real
+  Tauri window (fallback if it flashes: reorder emit/show in `window.rs`).
