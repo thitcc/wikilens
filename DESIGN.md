@@ -116,8 +116,8 @@ visual system serves that gesture. The surface is a single sheet of smoked
 glass (near-opaque so text survives any game backdrop) docked at the screen's
 right edge, hugging its content; everything on it is ink first and chrome
 never. The interface's personality — quiet, precise, instant — comes from what
-it refuses to do: no decoration, no entrance choreography, no color that isn't
-information.
+it refuses to do: no decoration, no motion without a question to answer, no
+color that isn't information.
 
 The system explicitly rejects Overwolf-style gamer overlay bloat (neon RGB,
 widget clusters, aggressive branding) and generic AI chatbot styling (chat
@@ -133,7 +133,8 @@ game is the main character; WikiLens borrows the screen and gives it back.
 - A 14px type ceiling: hierarchy by weight and ink strength, never by size.
 - Controls are quiet until touched — bare ink at rest, a faint veil on hover.
 - Two altitudes exactly: the panel above the game, menus above the panel.
-- State changes are instant; the only animation in the product is a
+- State changes are instant; motion is governed by the Named-Question Rule
+  (see Motion), and the admitted inventory holds one entry — the
   reduced-motion-gated progress shimmer in the debug window.
 
 ## 2. Colors
@@ -327,7 +328,40 @@ A 20×20 rounded tile bearing a 10px mono monogram ("SV", "CE") — the scan
 anchor for a growing game list. Raised-veil fill, muted ink promoting to full
 ink on hover/selection. The system's only "icon", and it's typography.
 
-## 6. Do's and Don'ts
+## 6. Motion
+
+The default is stillness: state changes — hover, focus, open — apply
+instantly, and the glass never moves to be noticed. New motion enters one
+animation at a time through the Named-Question Rule below, proven over real
+game backdrops before it ships; the admitted inventory lives here and is
+updated in the same PR as any admission.
+
+### Admitted inventory
+
+- **debug-shimmer** — the debug window's indeterminate progress shimmer (a
+  1.2s translateX loop), gated behind `prefers-reduced-motion` with a static
+  accent-strip fallback. Its question: "is this ask still running?"
+  Predates the rule (carried over from the instant-states doctrine); the
+  rule's bounds and paperwork apply to motions admitted through it.
+  Currently the only admitted motion.
+
+### Named Rules
+
+**The Named-Question Rule.** Motion may exist only to answer a question the
+player already has — "did my keypress register?", "where did this come
+from?", "did that attach?" — and only when it answers faster than a hard cut
+would. Every animation names its question, in a stylesheet comment and in its
+PR; a motion whose question can't be named is decoration, and this register
+rejects decoration. Motions that pass are still bound: transform/opacity only
+(the glass floats over a GPU-saturated game — compositor work, never
+repaint); ≤200ms; ease-out on entry; exits are instant — leaving is the
+product; input readiness is never delayed (animation is paint, not gate); and
+everything sits behind prefers-reduced-motion with a static fallback. The
+answer stream and focus indicators never animate. Candidates enter through a
+live test over real game backdrops; admission updates this inventory in the
+same PR.
+
+## 7. Do's and Don'ts
 
 ### Do:
 
@@ -340,8 +374,10 @@ ink on hover/selection. The system's only "icon", and it's typography.
   focused (the One Signal Rule) — answers and data stay ink.
 - **Do** build every picker as an owned menu on Menu Glass, and keep menus
   direct children of `.panel` so `.content`'s overflow can't clip them.
-- **Do** keep state changes instant, and gate any animation behind
-  `prefers-reduced-motion` (the debug shimmer is the template).
+- **Do** keep state changes instant unless a motion has passed the
+  Named-Question Rule, and gate every admitted animation behind
+  `prefers-reduced-motion` with a static fallback (the debug shimmer is the
+  template).
 - **Do** retune paired constants together — `styles.css` margins ↔
   `window.rs` floats, `--menu-clearance*` ↔ `menuPlacement.ts` — whenever
   geometry tokens change.
@@ -361,6 +397,7 @@ ink on hover/selection. The system's only "icon", and it's typography.
   the inks, and the rose error trio.
 - **Don't** scale type past 14px for emphasis — promote weight or ink instead
   (the Fourteen-Pixel Ceiling).
-- **Don't** add entrance choreography or animate the answer stream; the
+- **Don't** ship a motion that can't name its question (the Named-Question
+  Rule) — and never animate the answer stream or focus indicators; the
   player is mid-game and the audit test is: *if you notice the panel while
   not asking it something, it's too loud.*
