@@ -149,6 +149,10 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [attachment, setAttachment] = useState<AttachmentInfo | null>(null);
   const [debugChip, setDebugChip] = useState(false);
+  // A-01 (DESIGN.md §6): armed per overlay://shown, dropped on the summon
+  // animation's end (name-filtered — child animationends bubble here) and
+  // on hide. Paint-only: focus never waits on it.
+  const [summoning, setSummoning] = useState(false);
   // The configured shortcuts (null until get_settings resolves — the copy
   // below falls back to the shipped defaults, and the gear stays disabled).
   const [settings, setSettings] = useState<SettingsInfo | null>(null);
@@ -282,6 +286,7 @@ function App() {
 
     void onOverlayShown(() => {
       setOpenMenu(null);
+      setSummoning(true);
       inputRef.current?.focus();
       // Select the old question so the first keystroke starts the new one —
       // unless the panel was hidden moments ago, where "the old question" is
@@ -292,6 +297,9 @@ function App() {
     }).then(register);
     void onOverlayHidden(() => {
       lastHiddenAtRef.current = Date.now();
+      // Reduced-motion never fires animationend; a mid-animation hide
+      // shouldn't leave the class armed either.
+      setSummoning(false);
     }).then(register);
     void onAskStatus((s) => setStatus(s)).then(register);
     void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);
@@ -479,7 +487,12 @@ function App() {
   const captureLabel = settings?.hotkeys.capture.label ?? DEFAULT_CAPTURE_LABEL;
 
   return (
-    <div className="panel">
+    <div
+      className={"panel" + (summoning ? " panel--summoning" : "")}
+      onAnimationEnd={(e) => {
+        if (e.animationName === "panel-summon") setSummoning(false);
+      }}
+    >
       <header className="panel-header">
         {/* The gear rides with the brand (the game chip owns the right edge).
             Disabled until get_settings resolves — the popover needs data. */}

@@ -999,3 +999,82 @@ body {
 .source-link:hover {
   text-decoration: underline;
 }
+
+/* ---- Motion — Named-Question Rule admissions (DESIGN.md §6) ----------
+   The admitted inventory, in one place. Transform/opacity only, ≤200ms,
+   ease-out entries, instant exits; the static state outside this media
+   query is the reduced-motion fallback (the debug shimmer's template).
+   The voice is Quiet Directional: a fade plus a small travel that says
+   where the thing came from — never louder than the question. */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* A-01 — "the panel came from the right edge": the summon entrance.
+     Armed per overlay://shown, dropped on animationend (and on hide),
+     so every summon replays; hiding stays instant. */
+  .panel--summoning {
+    animation: panel-summon 120ms ease-out;
+  }
+
+  @keyframes panel-summon {
+    from {
+      transform: translateX(12px);
+      opacity: 0;
+    }
+  }
+
+  /* A-02 — "the control heard you": quiet chips light instantly on
+     hover and open (the on-path stays a hard cut) and release with a
+     fade — on pointer-leave and menu-close alike. The inventory's one
+     named deviation: this fades background and ink (a chip-sized
+     repaint, not transform/opacity); focus outlines never animate. */
+  .quiet-chip:not(.is-open) {
+    transition:
+      background-color 120ms ease-out,
+      color 120ms ease-out;
+  }
+
+  .quiet-chip:hover,
+  .quiet-chip.is-open {
+    transition: none;
+  }
+
+  /* A-03 — "your grab landed": the attachment block rises 4px as it
+     mounts, once per capture; removal unmounts it — instant. */
+  .attachment {
+    animation: attach-confirm 150ms ease-out;
+  }
+
+  @keyframes attach-confirm {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  /* A-04 — "this came from that chip": menus arrive 4px from their
+     anchor chip. Bottom-anchored menus stand on a footer chip and
+     rise; top-anchored and below-panel menus hang from their chip and
+     drop. Closing unmounts — instant. */
+  .menu {
+    animation: menu-arrive-up 120ms ease-out;
+  }
+
+  .menu--top,
+  .menu--down {
+    animation: menu-arrive-down 120ms ease-out;
+  }
+
+  @keyframes menu-arrive-up {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  @keyframes menu-arrive-down {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+}

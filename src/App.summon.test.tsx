@@ -5,7 +5,7 @@
 // `C` fire the toggle); kept because any accidental hide arms the same loss.
 // Own file: this is a fake-timer regime, same rules as App.slowHint.test.tsx.
 
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { SELECT_SUPPRESS_MS } from "./App";
@@ -58,4 +58,41 @@ test("a re-summon after the window selects the old question as always", async ()
   // starts the new one.
   await user.keyboard("?");
   expect(questionBox().value).toBe("?");
+});
+
+/** jsdom has no real AnimationEvent: build a bubbling native event and pin
+ *  animationName on it — React's synthetic event reads it straight off.
+ *  Without window.AnimationEvent, React delegates the webkit-prefixed type
+ *  instead of "animationend", so fire both (the second is a no-op). */
+function fireAnimationEnd(el: Element, animationName: string) {
+  for (const type of ["animationend", "webkitAnimationEnd"]) {
+    const ev = new Event(type, { bubbles: true });
+    Object.assign(ev, { animationName });
+    fireEvent(el, ev);
+  }
+}
+
+test("summon arms the A-01 entrance class; animationend and hide clear it", async () => {
+  installBackend();
+  await renderApp();
+  const panel = document.querySelector(".panel");
+  if (!panel) throw new Error("panel not rendered");
+
+  expect(panel.classList.contains("panel--summoning")).toBe(false);
+
+  await fireBackendEvent("overlay://shown");
+  expect(panel.classList.contains("panel--summoning")).toBe(true);
+
+  // The clear is name-filtered: a child animation's end bubbles up to the
+  // panel and must not disarm the summon entrance.
+  fireAnimationEnd(panel, "attach-confirm");
+  expect(panel.classList.contains("panel--summoning")).toBe(true);
+
+  fireAnimationEnd(panel, "panel-summon");
+  expect(panel.classList.contains("panel--summoning")).toBe(false);
+
+  // Reduced-motion path: animationend never fires — hide clears instead.
+  await fireBackendEvent("overlay://shown");
+  await fireBackendEvent("overlay://hidden");
+  expect(panel.classList.contains("panel--summoning")).toBe(false);
 });
