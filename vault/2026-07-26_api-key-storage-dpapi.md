@@ -1,12 +1,12 @@
 ---
 title: Store panel-entered API keys as DPAPI-encrypted blobs in app-data
 type: decision
-status: active
+status: done
 created: 2026-07-26
 updated: 2026-07-26
 tags: [security, rust]
 related: ["[[2026-07-26_default-mode-and-byo-api-keys]]"]
-commit:
+commit: "346f81d"
 ---
 
 # Store panel-entered API keys as DPAPI-encrypted blobs in app-data
@@ -33,8 +33,9 @@ trait in `keys.rs`.
 - Store discipline copied from `settings.rs`/`UserWikiStore`: tmp+rename atomic writes,
   corrupt file → `.bak` sideways, unreadable-at-startup → refuse mutations,
   persist-then-commit, poison-tolerant locks. Managed state created in `.setup()`.
-- Implementation: `windows-sys` feature additions only (`Win32_Security_Cryptography`, plus
-  `Win32_System_Memory` for `LocalFree`) — no new crate.
+- Implementation: one `windows-sys` feature addition (`Win32_Security_Cryptography`); the
+  `LocalFree` its blobs need lives in `Win32_Foundation`, already enabled (verified against the
+  vendored windows-sys 0.61.2 — the plan draft expected `Win32_System_Memory`) — no new crate.
 - A `CryptUnprotectData` failure (user-profile or machine migration, corrupted blob) is
   treated as "no key": the panel shows that provider's empty state again and the user
   re-pastes. Never surfaced as a crash or a cryptic vendor error.

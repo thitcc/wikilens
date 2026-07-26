@@ -196,3 +196,7 @@ never a stuck status.
 
 - 2026-07-26 — created after the research + design pass; four forks settled with the owner
   (DPAPI storage, resolved-target layer, `WIKILENS_DEFAULT_*` naming, one sectioned panel).
+- 2026-07-26 — phase 1 (Rust stores) landed (346f81d): `keys.rs` KeyStore trait + DPAPI store,
+  `mode` persisted in `SettingsStore` behind one combined lock, no-cleartext/schema pins.
+  Behaviorally inert as planned. The ADR closed with one factual correction: `LocalFree` is in
+  `Win32_Foundation` (already enabled), not `Win32_System_Memory`.
