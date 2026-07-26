@@ -31,6 +31,55 @@ fn overlay_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(OVERLAY_LABEL)
 }
 
+/// Disable DWM's own transitions for this window
+/// (`DWMWA_TRANSITIONS_FORCEDISABLED`). Windows plays a one-time fade + short
+/// upward rise when an HWND is presented for the first time — our windows are
+/// created hidden, so that lands on the first summon and layers OS motion
+/// over A-01's right-edge slide; later hide/show cycles of the same HWND
+/// never replay it, which is why only the first entrance looked different.
+/// Must run before the window is first shown; called from `.setup()` for the
+/// config windows and from `debug_window::create`. Best-effort: on failure
+/// the cosmetic OS transition simply plays, so log-and-continue.
+#[cfg(windows)]
+pub fn disable_os_open_transition(win: &WebviewWindow) {
+    use windows_sys::Win32::Foundation::TRUE;
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_TRANSITIONS_FORCEDISABLED,
+    };
+
+    let hwnd = match win.hwnd() {
+        Ok(h) => h.0,
+        Err(e) => {
+            eprintln!(
+                "[wikilens] no HWND for '{}', OS open transition stays on: {e}",
+                win.label()
+            );
+            return;
+        }
+    };
+    // Win32 BOOL is a plain i32 in windows-sys; the attribute id is typed
+    // DWMWINDOWATTRIBUTE (i32) but the raw call takes u32.
+    let disable: i32 = TRUE;
+    let hr = unsafe {
+        DwmSetWindowAttribute(
+            hwnd as _,
+            DWMWA_TRANSITIONS_FORCEDISABLED as u32,
+            &disable as *const i32 as *const _,
+            std::mem::size_of::<i32>() as u32,
+        )
+    };
+    if hr != 0 {
+        eprintln!(
+            "[wikilens] DWM transition suppression failed for '{}': 0x{:08X}",
+            win.label(),
+            hr as u32
+        );
+    }
+}
+
+#[cfg(not(windows))]
+pub fn disable_os_open_transition(_win: &WebviewWindow) {}
+
 /// Toggle the overlay: hide if visible, otherwise dock it to the right edge,
 /// show it, take focus, and notify the frontend.
 pub fn toggle_overlay(app: &AppHandle) {

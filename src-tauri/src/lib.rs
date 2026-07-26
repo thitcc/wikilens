@@ -76,6 +76,16 @@ pub fn run() {
             app.manage(settings::SettingsStore::load(data_dir.join("settings.json")));
             tray::create(handle)?;
             hotkey::register(handle);
+            // The config windows are created hidden; without this their first
+            // show gets DWM's one-time open transition (fade + rise) layered
+            // over the app's own entrance — the first summon after launch
+            // animated differently from every later one. The debug window
+            // does the same in its create().
+            for label in [window::OVERLAY_LABEL, capture::CAPTURE_LABEL] {
+                if let Some(win) = app.get_webview_window(label) {
+                    window::disable_os_open_transition(&win);
+                }
+            }
             // Visual debug window — exists only when WIKILENS_DEBUG is truthy
             // at startup (env can't change mid-process, so existence always
             // agrees with the per-ask flag read in debug.rs).

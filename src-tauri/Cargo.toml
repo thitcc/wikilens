@@ -42,6 +42,13 @@ tokio = { version = "1", features = ["time"] }
 # extra tokio features. Already in the tree transitively.
 tokio-util = "0.7"
 
+# DwmSetWindowAttribute(DWMWA_TRANSITIONS_FORCEDISABLED): suppress the OS's
+# one-time window-open transition so a first show plays only the app's own
+# entrance (window.rs::disable_os_open_transition). Already in the tree
+# transitively at this version.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm"] }
+
 [dev-dependencies]
 # For #[tokio::test] in the ignored live-wiki integration test (wiki/mod.rs).
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
