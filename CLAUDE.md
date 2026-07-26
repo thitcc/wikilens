@@ -52,7 +52,8 @@ wikilens/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
-        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys; loaded in setup before registration
+        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys + the persisted mode choice; loaded in setup before registration
+        ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); IPC commands land in phase 2
         ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
         ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
