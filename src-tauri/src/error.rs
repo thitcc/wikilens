@@ -36,6 +36,13 @@ pub enum AppError {
         body: String,
     },
 
+    /// Default mode can't run: its `WIKILENS_DEFAULT_*` env contract is
+    /// incomplete or invalid. The message is complete user-facing text built
+    /// by the resolver (`target::resolve_default_targets`) — var NAMES only,
+    /// never values.
+    #[error("{0}")]
+    DefaultMode(String),
+
     /// Screenshot capture failed (no monitor under the cursor, the OS refused
     /// the grab on a secure/DRM surface, a too-small selection, …). The message
     /// is already complete user-facing text shown verbatim in the error box.

@@ -115,8 +115,8 @@ export interface SettingsInfo {
     summon: HotkeyInfo;
     capture: HotkeyInfo;
   };
-  /** Persisted model-source choice; `null` = never chosen (phase 3
-   * auto-senses). Inert in phase 2: the footer chip and ask flow ignore it. */
+  /** Persisted model-source choice; `null` = never chosen (Rust auto-senses
+   * on first launch, so this is only null when that persist failed). */
   mode: Mode | null;
   /** Whether the packaged Default source is configured in this environment
    * (`WIKILENS_DEFAULT_*`), and whether it reads images. */

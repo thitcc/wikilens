@@ -16,7 +16,8 @@ use futures_util::StreamExt;
 
 use crate::error::AppError;
 use crate::http;
-use crate::providers::{Provider, ProviderKind};
+use crate::providers::ProviderKind;
+use crate::target::LlmTarget;
 use crate::wiki::fetch::WikiPage;
 
 const MAX_TOKENS: u32 = 1024;
@@ -109,15 +110,12 @@ pub struct StreamedAnswer {
     pub ttft: Option<std::time::Duration>,
 }
 
-/// Stream an answer from the given provider/model. Each text delta is handed to
+/// Stream an answer from the resolved target. Each text delta is handed to
 /// `on_delta` as it arrives; the full accumulated answer is returned at the end,
 /// along with reported token usage and time-to-first-token for the debug table.
-#[allow(clippy::too_many_arguments)] // one arg per request ingredient; callers pass them all anyway
 pub async fn answer_streaming<F>(
     client: &reqwest::Client,
-    provider: &Provider,
-    model: &str,
-    api_key: &str,
+    target: &LlmTarget,
     question: &str,
     pages: &[WikiPage],
     image_png: Option<&[u8]>,
@@ -126,12 +124,12 @@ pub async fn answer_streaming<F>(
 where
     F: FnMut(&str),
 {
-    let request = match provider.kind {
+    let request = match target.kind {
         ProviderKind::Anthropic => {
-            build_anthropic_request(client, provider, model, api_key, question, pages, image_png)
+            build_anthropic_request(client, target, question, pages, image_png)
         }
         ProviderKind::OpenAiCompatible => {
-            build_openai_request(client, provider, model, api_key, question, pages, image_png)
+            build_openai_request(client, target, question, pages, image_png)
         }
     };
 
@@ -143,12 +141,13 @@ where
         // With an image attached, translate the two known non-vision rejections
         // into plain language; everything else keeps the verbatim error body.
         if image_png.is_some() {
-            if let Some(message) = friendly_image_error(provider, model, status, &body) {
+            if let Some(message) = friendly_image_error(target.name, &target.model, status, &body)
+            {
                 return Err(AppError::VisionUnsupported(message));
             }
         }
         return Err(AppError::Llm {
-            provider: provider.name,
+            provider: target.name,
             status,
             body,
         });
@@ -171,7 +170,7 @@ where
         if received > MAX_STREAM_BYTES {
             return Err(AppError::BodyTooLarge(format!(
                 "The {} answer stream exceeded {} MB and was stopped. Try asking again.",
-                provider.name,
+                target.name,
                 MAX_STREAM_BYTES / (1024 * 1024)
             )));
         }
@@ -180,7 +179,7 @@ where
         while let Some(newline) = buffer.iter().position(|&b| b == b'\n') {
             let line_bytes: Vec<u8> = buffer.drain(..=newline).collect();
             let line = String::from_utf8_lossy(&line_bytes);
-            match parse_line(provider.kind, line.trim_end()) {
+            match parse_line(target.kind, line.trim_end()) {
                 SseLine::Delta(delta) => {
                     if ttft.is_none() {
                         ttft = Some(sent.elapsed());
@@ -200,7 +199,7 @@ where
                     // The stream returned HTTP 200 then failed mid-flight; 200 is
                     // the honest status to report alongside the error body.
                     return Err(AppError::Llm {
-                        provider: provider.name,
+                        provider: target.name,
                         status: 200,
                         body: message,
                     });
@@ -219,46 +218,45 @@ where
     })
 }
 
-/// Anthropic Messages API request: `x-api-key` auth and a top-level `system`.
+/// Anthropic Messages API request: `x-api-key` auth from the target and a
+/// top-level `system`. `extra_headers` is deliberately ignored on this path —
+/// the only registry entries carrying any are OpenAI-compatible.
 fn build_anthropic_request(
     client: &reqwest::Client,
-    provider: &Provider,
-    model: &str,
-    api_key: &str,
+    target: &LlmTarget,
     question: &str,
     pages: &[WikiPage],
     image_png: Option<&[u8]>,
 ) -> reqwest::RequestBuilder {
     let body = serde_json::json!({
-        "model": model,
+        "model": target.model,
         "max_tokens": MAX_TOKENS,
         "stream": true,
         "system": system_prompt(image_png.is_some()),
         "messages": [
-            { "role": "user", "content": build_user_content(provider.kind, question, pages, image_png) }
+            { "role": "user", "content": build_user_content(target.kind, question, pages, image_png) }
         ]
     });
     client
-        .post(provider.endpoint)
-        .header("x-api-key", api_key)
+        .post(&target.endpoint)
+        .header("x-api-key", &target.api_key)
         .header("anthropic-version", "2023-06-01")
         .json(&body)
 }
 
-/// OpenAI-compatible Chat Completions request (DeepSeek, OpenRouter): `Bearer`
-/// auth, the system prompt as a `system` role message, plus any provider-specific
-/// extra headers (e.g. OpenRouter attribution).
+/// OpenAI-compatible Chat Completions request (DeepSeek, OpenRouter, a Default
+/// target speaking the openai protocol): `Bearer` auth from the target, the
+/// system prompt as a `system` role message, plus the target's extra headers
+/// (e.g. OpenRouter attribution).
 fn build_openai_request(
     client: &reqwest::Client,
-    provider: &Provider,
-    model: &str,
-    api_key: &str,
+    target: &LlmTarget,
     question: &str,
     pages: &[WikiPage],
     image_png: Option<&[u8]>,
 ) -> reqwest::RequestBuilder {
     let body = serde_json::json!({
-        "model": model,
+        "model": target.model,
         "max_tokens": MAX_TOKENS,
         "stream": true,
         // Ask for a usage chunk (DeepSeek and OpenRouter both support this) so
@@ -267,13 +265,13 @@ fn build_openai_request(
         "stream_options": { "include_usage": true },
         "messages": [
             { "role": "system", "content": system_prompt(image_png.is_some()) },
-            { "role": "user", "content": build_user_content(provider.kind, question, pages, image_png) }
+            { "role": "user", "content": build_user_content(target.kind, question, pages, image_png) }
         ]
     });
     let mut request = client
-        .post(provider.endpoint)
-        .header("Authorization", format!("Bearer {api_key}"));
-    for (name, value) in provider.extra_headers {
+        .post(&target.endpoint)
+        .header("Authorization", format!("Bearer {}", target.api_key));
+    for (name, value) in target.extra_headers {
         request = request.header(*name, *value);
     }
     request.json(&body)
@@ -285,13 +283,17 @@ fn build_openai_request(
 /// place. Substring matching is brittle by nature — acceptable because it's
 /// image-conditional and the fallback stays reachable (see
 /// `vault/2026-07-06_image-attach-guardrails.md`).
-fn friendly_image_error(provider: &Provider, model: &str, status: u16, body: &str) -> Option<String> {
+fn friendly_image_error(
+    provider_name: &str,
+    model: &str,
+    status: u16,
+    body: &str,
+) -> Option<String> {
     // OpenAI-compatible endpoints reject the `image_url` content part with a raw
     // serde error (DeepSeek, live-captured 400 — the only text-only provider).
     if body.contains("unknown variant `image_url`") {
         return Some(format!(
-            "{} models can't read images. Remove the screenshot or switch providers.",
-            provider.name
+            "{provider_name} models can't read images. Remove the screenshot or switch providers."
         ));
     }
     // OpenRouter's routing-time rejection when no endpoint supports image input.
@@ -422,19 +424,17 @@ pub struct RewriteOutcome {
 /// `run_ask`). See `vault/2026-07-07_llm-query-rewrite-in-retrieval.md`.
 pub async fn rewrite_query(
     client: &reqwest::Client,
-    provider: &Provider,
-    model: &str,
-    api_key: &str,
+    target: &LlmTarget,
     game: &str,
     question: &str,
 ) -> Result<RewriteOutcome, AppError> {
     let user = format!("Game: {game}\nPlayer question: {question}");
-    let request = match provider.kind {
+    let request = match target.kind {
         ProviderKind::Anthropic => {
-            build_completion_anthropic(client, provider, model, api_key, REWRITE_SYSTEM_PROMPT, &user)
+            build_completion_anthropic(client, target, REWRITE_SYSTEM_PROMPT, &user)
         }
         ProviderKind::OpenAiCompatible => {
-            build_completion_openai(client, provider, model, api_key, REWRITE_SYSTEM_PROMPT, &user)
+            build_completion_openai(client, target, REWRITE_SYSTEM_PROMPT, &user)
         }
     };
     let resp = request.timeout(REWRITE_TIMEOUT).send().await?;
@@ -442,7 +442,7 @@ pub async fn rewrite_query(
         let status = resp.status().as_u16();
         let body = http::read_error_body(resp).await;
         return Err(AppError::Llm {
-            provider: provider.name,
+            provider: target.name,
             status,
             body,
         });
@@ -454,32 +454,31 @@ pub async fn rewrite_query(
         let preview: String = body.chars().take(500).collect();
         eprintln!("wikilens.rewrite.raw {preview}");
     }
-    let text = extract_completion_text(provider.kind, &body)?;
+    let text = extract_completion_text(target.kind, &body)?;
     Ok(RewriteOutcome {
         queries: parse_rewrite_queries(&text),
-        usage: extract_completion_usage(provider.kind, &body),
+        usage: extract_completion_usage(target.kind, &body),
     })
 }
 
 /// Non-streaming Anthropic Messages request (no wiki pages, no image) for the
 /// query rewrite: same auth/version as the answer path but `stream` omitted.
+/// `extra_headers` deliberately ignored here too (see the answer builder).
 fn build_completion_anthropic(
     client: &reqwest::Client,
-    provider: &Provider,
-    model: &str,
-    api_key: &str,
+    target: &LlmTarget,
     system: &str,
     user: &str,
 ) -> reqwest::RequestBuilder {
     let body = serde_json::json!({
-        "model": model,
+        "model": target.model,
         "max_tokens": REWRITE_MAX_TOKENS,
         "system": system,
         "messages": [ { "role": "user", "content": user } ]
     });
     client
-        .post(provider.endpoint)
-        .header("x-api-key", api_key)
+        .post(&target.endpoint)
+        .header("x-api-key", &target.api_key)
         .header("anthropic-version", "2023-06-01")
         .json(&body)
 }
@@ -487,14 +486,12 @@ fn build_completion_anthropic(
 /// Non-streaming OpenAI-compatible Chat Completions request for the query rewrite.
 fn build_completion_openai(
     client: &reqwest::Client,
-    provider: &Provider,
-    model: &str,
-    api_key: &str,
+    target: &LlmTarget,
     system: &str,
     user: &str,
 ) -> reqwest::RequestBuilder {
     let body = serde_json::json!({
-        "model": model,
+        "model": target.model,
         "max_tokens": REWRITE_MAX_TOKENS,
         "messages": [
             { "role": "system", "content": system },
@@ -502,9 +499,9 @@ fn build_completion_openai(
         ]
     });
     let mut request = client
-        .post(provider.endpoint)
-        .header("Authorization", format!("Bearer {api_key}"));
-    for (name, value) in provider.extra_headers {
+        .post(&target.endpoint)
+        .header("Authorization", format!("Bearer {}", target.api_key));
+    for (name, value) in target.extra_headers {
         request = request.header(*name, *value);
     }
     request.json(&body)
@@ -879,31 +876,28 @@ mod tests {
 
     #[test]
     fn friendly_error_maps_deepseek_serde_body() {
-        let provider = crate::providers::find_provider("deepseek").unwrap();
         // The live-captured DeepSeek 400 body.
         let body = "Failed to deserialize the JSON body into the target type: \
                     messages[0]: unknown variant `image_url`, expected `text`";
-        let msg = friendly_image_error(provider, "deepseek-v4-flash", 400, body).unwrap();
+        let msg = friendly_image_error("DeepSeek", "deepseek-v4-flash", 400, body).unwrap();
         assert!(msg.contains("DeepSeek"));
         assert!(msg.contains("can't read images"));
     }
 
     #[test]
     fn friendly_error_maps_openrouter_404_and_names_the_model() {
-        let provider = crate::providers::find_provider("openrouter").unwrap();
         let body = r#"{"error":{"message":"No endpoints found that support image input"}}"#;
-        let msg = friendly_image_error(provider, "some/text-only-model", 404, body).unwrap();
+        let msg = friendly_image_error("OpenRouter", "some/text-only-model", 404, body).unwrap();
         assert!(msg.contains("some/text-only-model"));
         assert!(msg.contains("can't read images"));
     }
 
     #[test]
     fn friendly_error_ignores_unrelated_failures() {
-        let provider = crate::providers::find_provider("deepseek").unwrap();
-        assert!(friendly_image_error(provider, "m", 401, "Invalid API key").is_none());
-        assert!(friendly_image_error(provider, "m", 500, "internal server error").is_none());
+        assert!(friendly_image_error("DeepSeek", "m", 401, "Invalid API key").is_none());
+        assert!(friendly_image_error("DeepSeek", "m", 500, "internal server error").is_none());
         // A 404 without the image-input marker is not ours to translate.
-        assert!(friendly_image_error(provider, "m", 404, "model not found").is_none());
+        assert!(friendly_image_error("DeepSeek", "m", 404, "model not found").is_none());
     }
 
     // ---- Anthropic SSE ----
@@ -1085,13 +1079,12 @@ mod tests {
             eprintln!("skipped: no {key_env} configured");
             return;
         };
+        let target = crate::target::LlmTarget::from_provider(provider, key, provider.model());
         let client = reqwest::Client::new();
         let pages = vec![page("Sky", "The sky is blue.")];
         let streamed = answer_streaming(
             &client,
-            provider,
-            &provider.model(),
-            &key,
+            &target,
             "What color is the sky? Answer in one word.",
             &pages,
             None,
@@ -1135,11 +1128,11 @@ mod http_tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
-    use crate::test_support::{anthropic_delta, mock_provider, openai_delta, sse_body, wiki_page};
+    use crate::test_support::{anthropic_delta, mock_target, openai_delta, sse_body, wiki_page};
 
-    /// Common act: stream an answer from the mock provider, collecting deltas.
+    /// Common act: stream an answer from the mock target, collecting deltas.
     async fn ask(
-        provider: &Provider,
+        target: &LlmTarget,
         image_png: Option<&[u8]>,
     ) -> (Result<String, AppError>, Vec<String>) {
         let client = crate::http::build_client();
@@ -1147,9 +1140,7 @@ mod http_tests {
         let mut deltas: Vec<String> = Vec::new();
         let result = answer_streaming(
             &client,
-            provider,
-            "mock-model",
-            "test-key",
+            target,
             "how do I fish?",
             &pages,
             image_png,
@@ -1167,11 +1158,7 @@ mod http_tests {
     #[tokio::test]
     async fn stream_exceeding_byte_cap_aborts_with_clear_error() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         let delta = openai_delta("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
         let per_line = delta.len() + 1; // sse_body joins lines with '\n'
         let lines = vec![delta.as_str(); MAX_STREAM_BYTES / per_line + 64];
@@ -1183,7 +1170,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, deltas) = ask(&provider, None).await;
+        let (result, deltas) = ask(&target, None).await;
         match result.unwrap_err() {
             AppError::BodyTooLarge(msg) => {
                 assert!(msg.contains("MockProv"), "must name the provider: {msg}")
@@ -1198,18 +1185,14 @@ mod http_tests {
     #[tokio::test]
     async fn oversized_error_body_is_truncated() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         Mock::given(method("POST"))
             .and(path("/chat"))
             .respond_with(ResponseTemplate::new(400).set_body_raw(vec![b'x'; 64 * 1024], "text/plain"))
             .mount(&server)
             .await;
 
-        let (result, _) = ask(&provider, None).await;
+        let (result, _) = ask(&target, None).await;
         match result.unwrap_err() {
             AppError::Llm { status, body, .. } => {
                 assert_eq!(status, 400);
@@ -1223,11 +1206,7 @@ mod http_tests {
     #[tokio::test]
     async fn openai_stream_accumulates_deltas_and_stops_at_done() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         // The matchers double as request-builder assertions: Bearer auth, the
         // stream flag, and the max_tokens cap must all be on the wire.
         Mock::given(method("POST"))
@@ -1257,7 +1236,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, deltas) = ask(&provider, None).await;
+        let (result, deltas) = ask(&target, None).await;
         assert_eq!(result.unwrap(), "Hello");
         assert_eq!(deltas, vec!["Hel", "lo"]);
     }
@@ -1265,15 +1244,14 @@ mod http_tests {
     #[tokio::test]
     async fn openai_extra_headers_are_sent() {
         let server = MockServer::start().await;
-        let provider = Provider {
+        let target = LlmTarget {
             extra_headers: &[
                 ("HTTP-Referer", "https://wikilens.app"),
                 ("X-Title", "WikiLens"),
             ],
-            ..mock_provider(
+            ..mock_target(
                 ProviderKind::OpenAiCompatible,
                 &format!("{}/chat", server.uri()),
-                &server.uri(),
             )
         };
         Mock::given(method("POST"))
@@ -1288,7 +1266,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, deltas) = ask(&provider, None).await;
+        let (result, deltas) = ask(&target, None).await;
         assert_eq!(result.unwrap(), "");
         assert!(deltas.is_empty());
     }
@@ -1296,11 +1274,7 @@ mod http_tests {
     #[tokio::test]
     async fn anthropic_stream_close_without_done_returns_accumulated_text() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::Anthropic,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::Anthropic, &format!("{}/chat", server.uri()));
         // Anthropic has no `[DONE]`; the loop must finish on stream close.
         // "Caffè" keeps a multi-byte char flowing through the byte buffer.
         Mock::given(method("POST"))
@@ -1332,7 +1306,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, deltas) = ask(&provider, None).await;
+        let (result, deltas) = ask(&target, None).await;
         assert_eq!(result.unwrap(), "Caffè latte");
         assert_eq!(deltas, vec!["Caffè ", "latte"]);
     }
@@ -1340,11 +1314,7 @@ mod http_tests {
     #[tokio::test]
     async fn openai_midstream_error_aborts_with_status_200() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         Mock::given(method("POST"))
             .and(path("/chat"))
             .respond_with(ResponseTemplate::new(200).set_body_raw(
@@ -1358,7 +1328,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, deltas) = ask(&provider, None).await;
+        let (result, deltas) = ask(&target, None).await;
         match result.unwrap_err() {
             AppError::Llm {
                 provider,
@@ -1379,18 +1349,14 @@ mod http_tests {
     #[tokio::test]
     async fn non_2xx_maps_to_llm_error_with_verbatim_body() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         Mock::given(method("POST"))
             .and(path("/chat"))
             .respond_with(ResponseTemplate::new(401).set_body_string("Invalid API key"))
             .mount(&server)
             .await;
 
-        let (result, deltas) = ask(&provider, None).await;
+        let (result, deltas) = ask(&target, None).await;
         match result.unwrap_err() {
             AppError::Llm { status, body, .. } => {
                 assert_eq!(status, 401);
@@ -1404,11 +1370,7 @@ mod http_tests {
     #[tokio::test]
     async fn image_unknown_variant_rejection_maps_to_vision_unsupported() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         // The live-captured DeepSeek 400 shape.
         Mock::given(method("POST"))
             .and(path("/chat"))
@@ -1419,7 +1381,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, _) = ask(&provider, Some(b"PNG")).await;
+        let (result, _) = ask(&target, Some(b"PNG")).await;
         match result.unwrap_err() {
             AppError::VisionUnsupported(msg) => {
                 assert!(msg.contains("MockProv"), "msg: {msg}");
@@ -1432,11 +1394,7 @@ mod http_tests {
     #[tokio::test]
     async fn image_404_support_image_input_maps_to_vision_unsupported() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         // OpenRouter's routing-time rejection.
         Mock::given(method("POST"))
             .and(path("/chat"))
@@ -1446,7 +1404,7 @@ mod http_tests {
             .mount(&server)
             .await;
 
-        let (result, _) = ask(&provider, Some(b"PNG")).await;
+        let (result, _) = ask(&target, Some(b"PNG")).await;
         match result.unwrap_err() {
             AppError::VisionUnsupported(msg) => {
                 assert!(msg.contains("mock-model"), "msg: {msg}");
@@ -1459,11 +1417,7 @@ mod http_tests {
     #[tokio::test]
     async fn image_with_unrelated_error_keeps_llm_backstop() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         Mock::given(method("POST"))
             .and(path("/chat"))
             .respond_with(ResponseTemplate::new(500).set_body_string("internal server error"))
@@ -1472,7 +1426,7 @@ mod http_tests {
 
         // An image is attached, but the failure isn't a vision rejection — the
         // verbatim Llm backstop must survive.
-        let (result, _) = ask(&provider, Some(b"PNG")).await;
+        let (result, _) = ask(&target, Some(b"PNG")).await;
         match result.unwrap_err() {
             AppError::Llm { status, body, .. } => {
                 assert_eq!(status, 500);
@@ -1486,11 +1440,7 @@ mod http_tests {
     #[ignore = "slow (~4s): pins the REWRITE_TIMEOUT behavior"]
     async fn rewrite_hang_times_out() {
         let server = MockServer::start().await;
-        let provider = mock_provider(
-            ProviderKind::OpenAiCompatible,
-            &format!("{}/chat", server.uri()),
-            &server.uri(),
-        );
+        let target = mock_target(ProviderKind::OpenAiCompatible, &format!("{}/chat", server.uri()));
         Mock::given(method("POST"))
             .and(path("/chat"))
             .respond_with(
@@ -1505,7 +1455,7 @@ mod http_tests {
 
         let client = crate::http::build_client();
         let start = std::time::Instant::now();
-        let err = rewrite_query(&client, &provider, "mock-model", "test-key", "Mockland", "where is wood?")
+        let err = rewrite_query(&client, &target, "Mockland", "where is wood?")
             .await
             .unwrap_err();
         assert!(matches!(err, AppError::Http(_)), "got {err:?}");

@@ -20,6 +20,7 @@ import type { KeyStatus, SettingsInfo } from "../types";
 async function renderMenu(over?: {
   settings?: SettingsInfo;
   onSaved?: (next: SettingsInfo) => void;
+  onKeysChanged?: () => void;
   onClose?: () => void;
   settle?: () => Promise<unknown>;
 }) {
@@ -30,6 +31,7 @@ async function renderMenu(over?: {
     <SettingsMenu
       settings={over?.settings ?? SETTINGS}
       onSaved={onSaved}
+      onKeysChanged={over?.onKeysChanged}
       onClose={onClose}
       triggerRef={triggerRef}
     />,
@@ -163,6 +165,54 @@ test("Remove sends remove_api_key and restores the paste row", async () => {
   ]);
   expect(await screen.findByLabelText("Anthropic API key")).toBeTruthy();
   expect(screen.queryByText("Key set")).toBeNull();
+});
+
+test("saving a key fires onKeysChanged once; the open fetch fires none", async () => {
+  const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
+  const user = userEvent.setup();
+  let changed = 0;
+  await renderMenu({ onKeysChanged: () => changed++ });
+  expect(changed).toBe(0);
+
+  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
+  await user.click(
+    screen.getByRole("button", { name: "Save the Anthropic API key" }),
+  );
+  expect(changed).toBe(1);
+  expect(backend.callsTo("set_api_key")).toHaveLength(1);
+});
+
+test("removing a key fires onKeysChanged once; a failure fires none", async () => {
+  const backend = installBackend({
+    list_key_status: () => ANTHROPIC_KEYED,
+    remove_api_key: () => KEY_STATUS,
+  });
+  const user = userEvent.setup();
+  let changed = 0;
+  await renderMenu({
+    onKeysChanged: () => changed++,
+    settle: () =>
+      screen.findByRole("button", { name: "Remove the Anthropic API key" }),
+  });
+
+  await user.click(
+    screen.getByRole("button", { name: "Remove the Anthropic API key" }),
+  );
+  expect(changed).toBe(1);
+
+  // A rejected save keeps the providers list untouched.
+  backend.onCommand("set_api_key", () => {
+    throw "Couldn't save your API keys: nope";
+  });
+  await user.type(
+    await screen.findByLabelText("Anthropic API key"),
+    "sk-retry",
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Save the Anthropic API key" }),
+  );
+  expect(await screen.findByText(/nope/)).toBeTruthy();
+  expect(changed).toBe(1);
 });
 
 // ---- Model source ---------------------------------------------------------

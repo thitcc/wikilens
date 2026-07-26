@@ -70,6 +70,10 @@ components:
     textColor: "{colors.ink-muted}"
     rounded: "{rounded.chip}"
     padding: "2px 4px"
+  static-chip:
+    textColor: "{colors.ink-muted}"
+    rounded: "{rounded.chip}"
+    padding: "2px 4px"
   quiet-chip-hover:
     backgroundColor: "{colors.veil}"
     textColor: "{colors.moon-ink}"

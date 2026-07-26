@@ -40,7 +40,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Settings panel: model-source rows (persisted, inert until phase 3), per-provider API keys (paste/remove), key-recorder rows (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: model-source rows (Default / Custom API), per-provider API keys (paste/remove), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -51,7 +51,7 @@ wikilens/
     ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only) + debug.json (debug — events + start-dragging only)
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
-        ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
+        ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state + first-launch mode auto-sense
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
         ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys + the persisted mode choice; loaded in setup before registration
         ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); read by the key commands and at ask/model-list time
@@ -63,7 +63,8 @@ wikilens/
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
-        ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE
+        ├── target.rs             # LlmTarget/AskTargets: the resolved-target seam — Custom (registry + KeyStore) vs Default (WIKILENS_DEFAULT_*) resolution
+        ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE over LlmTargets
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
         ├── debug_window.rs       # visual debug window (flag-gated): glass, draggable, never activates; create/show/toggle + the emit_to sink
@@ -118,12 +119,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `config_guardrails.rs`). Key *presence* booleans may cross
   (`KeyStatus.hasKey`). Never logged, never displayed back — the only action
   on a set key is Remove.
-- **Model precedence:** an explicit UI pick (footer chip menu, stored per provider
-  in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
+- **Model precedence** (Custom mode): an explicit UI pick (footer chip menu, stored
+  per provider in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
   `WIKILENS_<PROVIDER>_MODEL` env override (e.g. `WIKILENS_DEEPSEEK_MODEL`); else
   the built-in `default_model`. `ask` takes the model id; blank falls back to the
   provider default, and ids are deliberately **not** validated Rust-side — the
   provider is the authoritative validator (a stale id surfaces in the error box).
+  In **Default mode** (Settings → Model source) this chain is bypassed: the
+  `WIKILENS_DEFAULT_*` env family defines one answer/rewrite target
+  (`target.rs`), `ask` ignores the request's provider/model args, and the
+  footer shows only "Default" — the var contract lives in README's
+  "Default mode" section (single source; don't re-list it here).
 - **Model lists** (`list_models`, hybrid — see the sourcing ADR in `vault/`):
   live fetch (8s timeout, parsers trim to `{id, label}`) → session cache (**live
   lists only** — fallbacks always retry next open) → the provider's tiny
@@ -193,7 +199,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
-  exits still report). The same flag also creates the **visual debug window**
+  exits still report). Accepted carve-out: in Default mode the table/window
+  still print the underlying `default / <model>` pair — the model id can be
+  vendor-shaped, and that's fine for dev tooling that's off by default. The same flag also creates the **visual debug window**
   (`debug_window.rs` → `src/debug/`): a glass panel like the overlay,
   draggable by its header, with live per-ask cards fed by the
   `debug://…` events — progress bars, collapsible details, ~25-ask session

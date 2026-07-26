@@ -210,10 +210,17 @@ fn prod_csp_restricts_scripts_to_self_without_eval() {
 /// CLAUDE.md §4: `ProviderInfo` never carries key material — key *presence*
 /// crosses separately as `KeyStatus`. Pin the exact serialized field set —
 /// extend the list only after confirming a new field carries no key material.
+/// Every registry provider is keyed here: `provider_infos` filters to keyed
+/// providers, and an empty list would make this pin vacuous.
 #[test]
 fn provider_info_serializes_exactly_the_known_fields() {
-    let infos = crate::commands::list_providers();
-    assert!(!infos.is_empty());
+    use crate::keys::KeyStore;
+    let keys = crate::keys::InMemoryKeyStore::default();
+    for provider in crate::providers::PROVIDERS {
+        keys.set(provider.id, "pin-test-key").expect("seed");
+    }
+    let infos = crate::commands::provider_infos(&keys);
+    assert_eq!(infos.len(), crate::providers::PROVIDERS.len());
     for info in &infos {
         let value = serde_json::to_value(info).expect("ProviderInfo serializes");
         let keys: BTreeSet<&str> = value
@@ -256,9 +263,9 @@ fn key_status_serializes_exactly_the_known_fields() {
 /// A stored key's value must never appear in any serialized IPC surface that
 /// touches provider/key state. Seeds the real DPAPI store (the exact type the
 /// shipping commands serialize from) with a sentinel, then checks the two
-/// lists. `ProviderInfo` structurally can't see the store today; the check is
-/// the forward guard phase 3 inherits when `list_providers` gains store
-/// access for keyed-only filtering.
+/// lists. Since `provider_infos` filters to keyed providers, the
+/// sentinel-keyed provider actually appears in the second list — the value
+/// check is live, not merely structural.
 #[test]
 fn key_status_never_contains_stored_key_values() {
     use crate::keys::KeyStore;
@@ -273,7 +280,8 @@ fn key_status_never_contains_stored_key_values() {
     assert!(!statuses.contains(SENTINEL), "key value leaked into KeyStatus JSON");
 
     let providers =
-        serde_json::to_string(&crate::commands::list_providers()).expect("serializes");
+        serde_json::to_string(&crate::commands::provider_infos(&store)).expect("serializes");
+    assert!(providers.contains("\"id\":\"anthropic\""), "vacuous run: {providers}");
     assert!(!providers.contains(SENTINEL), "key value leaked into ProviderInfo JSON");
 }
 

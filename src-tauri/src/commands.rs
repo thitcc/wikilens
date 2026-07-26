@@ -13,6 +13,7 @@ use crate::error::AppError;
 use crate::keys::{DpapiKeyStore, KeyStore};
 use crate::models::{self, ModelInfo, ModelSource};
 use crate::settings::{HotkeyRole, Mode, SettingsStore};
+use crate::target::{self, AskTargets, LlmTarget};
 use crate::state::AppState;
 use crate::wiki::games::GameWiki;
 use crate::wiki::user::UserWikiStore;
@@ -99,8 +100,8 @@ pub struct KeyStatus {
 }
 
 /// Whether the packaged Default model source is configured in this
-/// environment (`WIKILENS_DEFAULT_*`), and whether it reads images. Sensed
-/// per command call; inert until phase 3 wires the mode into the ask path.
+/// environment (`WIKILENS_DEFAULT_*` — configured means the resolver
+/// succeeds), and whether it reads images. Sensed per command call.
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct DefaultModeInfo {
     pub configured: bool,
@@ -143,16 +144,13 @@ pub(crate) fn settings_info(settings: &SettingsStore, default_mode: DefaultModeI
 }
 
 /// Pure over an injected env lookup — the multi-threaded suite never mutates
-/// env, so tests drive this with closures.
+/// env, so tests drive this with closures. `configured` is resolver success
+/// (not mere var presence), so the panel's "isn't set up" note and the ask
+/// path's error can never disagree — an invalid `_API_PROVIDER` counts as
+/// unconfigured here too.
 fn default_mode_info(env: impl Fn(&str) -> Option<String>) -> DefaultModeInfo {
-    const REQUIRED: [&str; 4] = [
-        "WIKILENS_DEFAULT_API_KEY",
-        "WIKILENS_DEFAULT_API_PROVIDER",
-        "WIKILENS_DEFAULT_API_URL",
-        "WIKILENS_DEFAULT_ANSWER_MODEL",
-    ];
     DefaultModeInfo {
-        configured: REQUIRED.iter().all(|v| env(v).is_some()),
+        configured: crate::target::resolve_default_targets(&env).is_ok(),
         // Vision is opt-in (no id heuristic exists for an arbitrary target);
         // same truthy semantics as WIKILENS_DEBUG.
         vision: env("WIKILENS_DEFAULT_VISION").is_some_and(|v| crate::debug::is_truthy(&v)),
@@ -299,11 +297,12 @@ pub fn remove_game(store: State<'_, UserWikiStore>, id: String) -> Result<(), St
     }
 }
 
-/// List the supported LLM providers with their resolved default models.
-#[tauri::command]
-pub fn list_providers() -> Vec<ProviderInfo> {
+/// The keyed providers, in registry order — Custom mode's menu shows only
+/// providers the player can actually use. Presence check only; never decrypts.
+pub(crate) fn provider_infos(keys: &impl KeyStore) -> Vec<ProviderInfo> {
     providers::PROVIDERS
         .iter()
+        .filter(|p| keys.has_key(p.id))
         .map(|p| {
             let default_model = p.model();
             let default_model_label = p.model_label(&default_model).to_string();
@@ -321,6 +320,12 @@ pub fn list_providers() -> Vec<ProviderInfo> {
             }
         })
         .collect()
+}
+
+/// List the LLM providers with a stored key (Custom mode's picker source).
+#[tauri::command]
+pub fn list_providers(keys: State<'_, DpapiKeyStore>) -> Vec<ProviderInfo> {
+    provider_infos(&*keys)
 }
 
 /// List a provider's selectable models: the session-cached live list when one
@@ -524,11 +529,10 @@ pub fn remove_api_key(
     remove_key(&*keys, &provider_id)
 }
 
-/// Persist the model-source choice. Deliberately inert this phase: the footer
-/// chip and ask path ignore it until phase 3 of the plan wires Default mode
-/// through (vault/2026-07-26_default-mode-and-byo-api-keys.md). Writable gate
-/// + persist-then-commit live in `SettingsStore::set_mode` (the `set_hotkey`
-/// shape).
+/// Persist the model-source choice — `run_ask` snapshots it per ask and the
+/// footer follows it (vault/2026-07-26_default-mode-and-byo-api-keys.md).
+/// Writable gate + persist-then-commit live in `SettingsStore::set_mode`
+/// (the `set_hotkey` shape).
 #[tauri::command]
 pub fn set_mode(settings: State<'_, SettingsStore>, mode: Mode) -> Result<SettingsInfo, String> {
     settings.set_mode(mode).map_err(String::from)?;
@@ -598,7 +602,7 @@ pub const ASK_CANCELLED: &str = "wikilens::ask-cancelled";
 /// `image_id` optionally names an attached screenshot (from `finish_capture`);
 /// a mismatch with the stored attachment fails fast as "capture it again". The
 /// attachment is cleared only after the model actually answers.
-// The arg list is the IPC contract: four managed handles + one arg per
+// The arg list is the IPC contract: five managed handles + one arg per
 // frontend payload field. Bundling them into a struct would only move the count.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -607,6 +611,7 @@ pub async fn ask(
     state: State<'_, AppState>,
     store: State<'_, UserWikiStore>,
     keys: State<'_, DpapiKeyStore>,
+    settings: State<'_, SettingsStore>,
     game_id: String,
     provider_id: String,
     model: String,
@@ -635,6 +640,7 @@ pub async fn ask(
         &state,
         &store,
         &*keys,
+        &settings,
         &game_id,
         &provider_id,
         &model,
@@ -698,36 +704,14 @@ impl Drop for AskGuard<'_> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_ask(
-    app: &AppHandle,
-    state: &AppState,
-    store: &UserWikiStore,
+/// Custom-mode target resolution: registry provider + stored key + the picked
+/// model, with the `WIKILENS_REWRITE_*` overrides (registry-coupled, so
+/// Custom-only — Default mode has its own optional rewrite var).
+fn resolve_custom_targets(
     keys: &dyn KeyStore,
-    game_id: &str,
     provider_id: &str,
     model: &str,
-    question: &str,
-    image_id: Option<&str>,
-) -> Result<AskResult, AppError> {
-    let question = question.trim();
-    if question.is_empty() {
-        return Err(AppError::EmptyQuestion);
-    }
-    // Resolve any attached screenshot before any network work, so a stale id
-    // fails instantly ("capture it again") rather than after searching. `None`
-    // when no image is attached — the request then stays text-only.
-    let image_png = capture::resolve_image(state, image_id)?;
-    // Built-ins first, then the user store; the owned clone means a game
-    // removed mid-ask can't be yanked out from under this run.
-    let wiki = games::find_game(game_id)
-        .cloned()
-        .or_else(|| store.get(game_id))
-        .ok_or_else(|| AppError::UnknownGame(game_id.to_string()))?;
-
-    // Resolve provider → key → model up front, before any status event, so a
-    // missing key fails instantly (no stuck "Searching…"). The AskGuard still
-    // releases the concurrency slot on this early return.
+) -> Result<AskTargets, AppError> {
     // The frontend always sends a provider, but fall back to the default if it
     // ever sends a blank one (commands are a trust boundary).
     let provider_id = if provider_id.trim().is_empty() {
@@ -741,11 +725,9 @@ async fn run_ask(
     // the storage ADR: a ghost blob from another machine reads as "Key set"
     // in the panel (`has_key` never decrypts) but as missing here — re-pasting
     // the key recovers.
-    let api_key = keys
-        .get(provider.id)
-        .ok_or(AppError::MissingApiKey {
-            provider: provider.name,
-        })?;
+    let api_key = keys.get(provider.id).ok_or(AppError::MissingApiKey {
+        provider: provider.name,
+    })?;
     let model = effective_model(model, provider.model());
     // The query rewrite is a lightweight utility task that wants a *fast,
     // non-reasoning* model. A whole provider can be reasoning-only (DeepSeek v4
@@ -772,6 +754,54 @@ async fn run_ask(
         .model_reasoning(&rewrite_model)
         .or_else(|| models::reasoning_from_id(&rewrite_model))
         == Some(true);
+    Ok(AskTargets {
+        answer: LlmTarget::from_provider(provider, api_key.clone(), model),
+        rewrite: LlmTarget::from_provider(rewrite_provider, rewrite_key, rewrite_model),
+        rewrite_skip_reasoning,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_ask(
+    app: &AppHandle,
+    state: &AppState,
+    store: &UserWikiStore,
+    keys: &dyn KeyStore,
+    settings: &SettingsStore,
+    game_id: &str,
+    provider_id: &str,
+    model: &str,
+    question: &str,
+    image_id: Option<&str>,
+) -> Result<AskResult, AppError> {
+    let question = question.trim();
+    if question.is_empty() {
+        return Err(AppError::EmptyQuestion);
+    }
+    // Resolve any attached screenshot before any network work, so a stale id
+    // fails instantly ("capture it again") rather than after searching. `None`
+    // when no image is attached — the request then stays text-only.
+    let image_png = capture::resolve_image(state, image_id)?;
+    // Built-ins first, then the user store; the owned clone means a game
+    // removed mid-ask can't be yanked out from under this run.
+    let wiki = games::find_game(game_id)
+        .cloned()
+        .or_else(|| store.get(game_id))
+        .ok_or_else(|| AppError::UnknownGame(game_id.to_string()))?;
+
+    // Resolve the ask's targets up front, before any status event, so a
+    // missing key / unconfigured Default fails instantly (no stuck
+    // "Searching…"). The AskGuard still releases the slot on this early
+    // return. The mode is snapshotted ONCE here — a mid-ask switch can't tear
+    // the pair (the gear is disabled while busy anyway; this is the backstop).
+    let mode = settings.mode().unwrap_or(Mode::Custom);
+    let targets = match mode {
+        // Default mode: one env-configured target; the request's
+        // provider_id/model args are deliberately ignored.
+        Mode::Default => target::sense_default_targets().map_err(AppError::DefaultMode)?,
+        Mode::Custom => resolve_custom_targets(keys, provider_id, model)?,
+    };
+    let rewrite_skip_reasoning = targets.rewrite_skip_reasoning;
 
     let _ = app.emit("ask://status", "searching");
     // The wiki search gets a keyword-stripped query; the LLM still receives the
@@ -780,15 +810,18 @@ async fn run_ask(
     // WIKILENS_DEBUG collector — filled below, prints itself on every exit path
     // (including `?` errors) via Drop. Created only now because the header rows
     // need the resolved models; the pre-flight failures above print no table.
+    // Ids and models come from the targets on BOTH sides: the pair-equality
+    // check in debug.rs suppresses the rewrite row only when the strings
+    // match, and identical targets carry identical debug_ids by construction.
     let mut report = DebugReport::new(
         &wiki.name,
         game_id,
         question,
         &query,
-        provider.id,
-        &model,
-        rewrite_provider.id,
-        &rewrite_model,
+        targets.answer.debug_id,
+        &targets.answer.model,
+        targets.rewrite.debug_id,
+        &targets.rewrite.model,
     );
     // Mirror the report into the debug window when it exists (flag on at
     // startup); every setter below then also emits its debug:// event.
@@ -832,16 +865,7 @@ async fn run_ask(
             return (Vec::new(), None, None, None);
         }
         let timer = std::time::Instant::now();
-        match llm::rewrite_query(
-            &state.http,
-            rewrite_provider,
-            &rewrite_model,
-            &rewrite_key,
-            &wiki.name,
-            question,
-        )
-        .await
-        {
+        match llm::rewrite_query(&state.http, &targets.rewrite, &wiki.name, question).await {
             Ok(outcome) => {
                 if tracing {
                     eprintln!("wikilens.rewrite candidates={:?}", outcome.queries);
@@ -1073,9 +1097,7 @@ async fn run_ask(
     let answer_timer = std::time::Instant::now();
     let streamed = llm::answer_streaming(
         &state.http,
-        provider,
-        &model,
-        &api_key,
+        &targets.answer,
         question,
         &pages,
         image_png.as_deref(),
@@ -1369,6 +1391,17 @@ mod tests {
     use crate::keys::InMemoryKeyStore;
 
     #[test]
+    fn provider_infos_lists_only_keyed_providers_in_registry_order() {
+        let keys = InMemoryKeyStore::default();
+        assert!(provider_infos(&keys).is_empty(), "no keys → empty menu");
+
+        keys.set("deepseek", "sk-1").unwrap();
+        keys.set("anthropic", "sk-2").unwrap();
+        let ids: Vec<String> = provider_infos(&keys).into_iter().map(|p| p.id).collect();
+        assert_eq!(ids, vec!["anthropic", "deepseek"], "registry order, keyed only");
+    }
+
+    #[test]
     fn key_status_lists_every_provider_in_registry_order() {
         let keys = InMemoryKeyStore::default();
         let rows = key_status(&keys);
@@ -1435,6 +1468,18 @@ mod tests {
         let info = default_mode_info(full);
         assert!(info.configured);
         assert!(!info.vision, "vision defaults off");
+
+        // Configured means resolver success, not mere presence: an invalid
+        // protocol word (e.g. a vendor id) must read as unconfigured, so the
+        // panel's note and the ask-path error can't disagree.
+        let info = default_mode_info(|name| {
+            if name == "WIKILENS_DEFAULT_API_PROVIDER" {
+                Some("deepseek".to_string())
+            } else {
+                full(name)
+            }
+        });
+        assert!(!info.configured, "vendor id is not a protocol word");
 
         // Any one required var missing → unconfigured.
         for missing in [

@@ -73,7 +73,8 @@ impl Mode {
 #[derive(Clone, Copy)]
 struct Persisted {
     hotkeys: Hotkeys,
-    /// `None` = the user never chose; phase 3 auto-senses on first launch.
+    /// `None` = the user never chose; `lib.rs` auto-senses on first launch,
+    /// so this survives as `None` only when that persist failed.
     mode: Option<Mode>,
 }
 
@@ -199,8 +200,8 @@ impl SettingsStore {
         self.read().hotkeys
     }
 
-    /// The persisted mode choice; `None` = never chosen (phase 3 auto-senses
-    /// on first launch).
+    /// The persisted mode choice; `None` = never chosen (both consumers then
+    /// treat it as Custom).
     pub fn mode(&self) -> Option<Mode> {
         self.read().mode
     }
