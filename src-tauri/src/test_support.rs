@@ -7,6 +7,7 @@
 use proptest::prelude::*;
 
 use crate::providers::{Provider, ProviderKind};
+use crate::target::LlmTarget;
 use crate::wiki::fetch::WikiPage;
 use crate::wiki::games::GameWiki;
 
@@ -16,6 +17,21 @@ use crate::wiki::games::GameWiki;
 /// making the production endpoints non-static just for tests.
 fn leak(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
+}
+
+/// An `LlmTarget` pointing at a mock server — the llm.rs suites' fixture.
+/// Owned Strings, so no `Box::leak` here (the leak survives only for
+/// `mock_provider`, whose `models_endpoint` models.rs still needs).
+pub fn mock_target(kind: ProviderKind, endpoint: &str) -> LlmTarget {
+    LlmTarget {
+        kind,
+        endpoint: endpoint.to_string(),
+        api_key: "test-key".to_string(),
+        model: "mock-model".to_string(),
+        name: "MockProv",
+        debug_id: "mock",
+        extra_headers: &[],
+    }
 }
 
 /// A `Provider` literal pointing at a mock server instead of a live host.

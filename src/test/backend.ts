@@ -99,11 +99,28 @@ export const SETTINGS: SettingsInfo = {
   defaultMode: { configured: false, vision: false },
 };
 
-/** Fresh-install key state: the fixture providers, none keyed. */
+/** Fresh-install key state: the fixture providers, none keyed.
+ * Deliberately independent of PROVIDERS (mocks are per-command): the
+ * SettingsMenu suites need keyless paste inputs, while the App suites need a
+ * non-empty provider list — a test exercising the real coupling overrides
+ * both. */
 export const KEY_STATUS: KeyStatus[] = [
   { id: "anthropic", name: "Anthropic", hasKey: false },
   { id: "deepseek", name: "DeepSeek", hasKey: false },
 ];
+
+/** Default mode chosen and configured (text-only). */
+export const SETTINGS_DEFAULT: SettingsInfo = {
+  ...SETTINGS,
+  mode: "default",
+  defaultMode: { configured: true, vision: false },
+};
+
+/** Default mode with an image-capable target (WIKILENS_DEFAULT_VISION). */
+export const SETTINGS_DEFAULT_VISION: SettingsInfo = {
+  ...SETTINGS_DEFAULT,
+  defaultMode: { configured: true, vision: true },
+};
 
 // ---- Backend ----------------------------------------------------------------
 

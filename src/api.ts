@@ -129,8 +129,9 @@ export function removeApiKey(providerId: string): Promise<KeyStatus[]> {
   return invoke<KeyStatus[]>("remove_api_key", { providerId });
 }
 
-/** Persist the model-source choice (inert in phase 2 — the chip and ask flow
- * ignore it until Default mode lands). Resolves with the fresh settings. */
+/** Persist the model-source choice — the footer chip and the ask path follow
+ * it (Default: one env-configured target; Custom: keyed providers). Resolves
+ * with the fresh settings. */
 export function setMode(mode: Mode): Promise<SettingsInfo> {
   return invoke<SettingsInfo>("set_mode", { mode });
 }

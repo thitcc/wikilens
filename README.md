@@ -55,6 +55,28 @@ touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matte
 because model ids drift over time (e.g. DeepSeek retired its `deepseek-chat` alias
 in favor of `deepseek-v4-flash`).
 
+### Default mode (optional)
+
+One env-configured model source with the vendor hidden: the footer chip reads
+just **Default**, there is no provider or model menu, and asks resolve entirely
+from these variables. Switch between **Default** and **Custom API** in
+Settings → Model source; on first launch WikiLens auto-senses (a complete
+`WIKILENS_DEFAULT_*` set selects Default once — your stored choice wins forever
+after). All four are required together:
+
+| Variable | Meaning |
+|---|---|
+| `WIKILENS_DEFAULT_API_PROVIDER` | Wire protocol: `anthropic` or `openai` (never a vendor id — a neutral proxy works) |
+| `WIKILENS_DEFAULT_API_URL` | Full chat/messages endpoint URL |
+| `WIKILENS_DEFAULT_API_KEY` | The credential sent to that endpoint |
+| `WIKILENS_DEFAULT_ANSWER_MODEL` | Model id for answers |
+
+Optional: `WIKILENS_DEFAULT_REWRITE_MODEL` (a fast model for the pre-search
+query rewrite; defaults to the answer model) and `WIKILENS_DEFAULT_VISION`
+(truthy if the answer model reads images; default text-only — the capture
+chip follows it). Packaged apps should set these as OS env vars (`.env` works
+for `npm run tauri dev`).
+
 ## Retrieval tuning (advanced)
 
 Before answering, WikiLens runs a small retrieval pipeline: a raw keyword search

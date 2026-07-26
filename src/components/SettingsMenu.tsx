@@ -31,6 +31,9 @@ interface SettingsMenuProps {
   settings: SettingsInfo;
   /** A shortcut was saved (already persisted and re-registered Rust-side). */
   onSaved: (next: SettingsInfo) => void;
+  /** A key was saved or removed — App re-fetches the keyed-provider list.
+   * Never fired by the open-time status fetch (nothing changed then). */
+  onKeysChanged?: () => void;
   onClose: () => void;
   /** The header gear; outside-click close ignores it (see GameChip). */
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -52,8 +55,8 @@ function comboKeys(parts: string[]) {
 }
 
 /**
- * The Settings panel: Model source (Default vs Custom API — persisted, inert
- * until Default mode's behavior lands), API keys (paste/remove per provider;
+ * The Settings panel: Model source (Default vs Custom API — the footer chip
+ * and ask path follow it), API keys (paste/remove per provider;
  * a pasted key crosses IPC once and is never displayed back — the only
  * action on a set key is Remove), and Shortcuts (the summon and capture key
  * recorders). Arming a recorder row suspends the OS registrations (pressing
@@ -67,6 +70,7 @@ function comboKeys(parts: string[]) {
 export function SettingsMenu({
   settings,
   onSaved,
+  onKeysChanged,
   onClose,
   triggerRef,
 }: SettingsMenuProps) {
@@ -135,6 +139,7 @@ export function SettingsMenu({
       setStatuses(await setApiKey(providerId, draft));
       // Success unmounts the input; drop the key text from state too.
       setDrafts((d) => ({ ...d, [providerId]: "" }));
+      onKeysChanged?.();
     } catch (e) {
       // The draft stays for a retry.
       setKeysError(String(e));
@@ -149,6 +154,7 @@ export function SettingsMenu({
     setKeysError(null);
     try {
       setStatuses(await removeApiKey(providerId));
+      onKeysChanged?.();
     } catch (e) {
       setKeysError(String(e));
     } finally {

@@ -288,6 +288,17 @@ body {
   opacity: 0.5;
 }
 
+/* Non-interactive footer label (Default mode): quiet-chip anatomy on a
+   <span> — no hover affordance, nothing to open. Source order beats the
+   generic hover rule above (spans match :not(:disabled)). */
+.quiet-chip.static-chip {
+  cursor: default;
+}
+.quiet-chip.static-chip:hover {
+  background: transparent;
+  color: var(--fg-muted);
+}
+
 /* Shared menu card (all menus are direct children of .panel — never inside
    .content, whose overflow would clip them). The base anchoring is the
    model menu's UPWARD FALLBACK: floated above the footer, used only when a

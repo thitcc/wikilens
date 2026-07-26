@@ -25,6 +25,7 @@ import type {
   AskStatus,
   AttachmentInfo,
   GameInfo,
+  Mode,
   ModelInfo,
   ProviderInfo,
   SettingsInfo,
@@ -81,6 +82,15 @@ function storedRecentGames(): string[] {
  * drift. */
 const CAPTURE_NEEDS_VISION =
   "This model can't read images — remove it or pick one with the Image badge.";
+
+/** The Default-mode variant: there is no model menu to pick from. Keeps the
+ * same leading clause (test suites match on it). */
+const CAPTURE_NEEDS_VISION_DEFAULT =
+  "This model can't read images — remove the screenshot to ask.";
+
+/** The footer's word for the Default model source — the single constant the
+ * whole frontend renders for it (mirrors Rust `target::DEFAULT_TARGET_NAME`). */
+const DEFAULT_MODE_LABEL = "Default";
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
@@ -168,6 +178,18 @@ function App() {
   // The configured shortcuts (null until get_settings resolves — the copy
   // below falls back to the shipped defaults, and the gear stays disabled).
   const [settings, setSettings] = useState<SettingsInfo | null>(null);
+  // True once get_settings settled either way — the provider fetch waits for
+  // the mode to be known (a failed get_settings settles as Custom).
+  const [settingsSettled, setSettingsSettled] = useState(false);
+  // True once list_providers settled — gates the zero-keys CTA (a bare empty
+  // list can't distinguish "no keys" from "not fetched yet").
+  const [providersSettled, setProvidersSettled] = useState(false);
+  // Bumped when the Settings panel saves/removes a key → providers re-fetch.
+  const [keysVersion, setKeysVersion] = useState(0);
+
+  /** The effective model-source mode; never-chosen displays as Custom (the
+   * same normalization SettingsMenu applies). */
+  const mode: Mode = settings?.mode ?? "custom";
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const chipRef = useRef<HTMLButtonElement | null>(null);
@@ -202,33 +224,51 @@ function App() {
     };
   }, []);
 
-  // Load the LLM providers once; default the selection to the first provider.
+  // The keyed-provider list — Custom mode only, once the mode is known
+  // (settings settled; a failed get_settings settles as Custom). Re-runs when
+  // the panel saves/removes a key (keysVersion) and on a mode flip back to
+  // Custom — Default mode never calls list_providers at all.
   useEffect(() => {
+    if (!settingsSettled || mode !== "custom") return;
     let active = true;
     listProviders()
       .then((list) => {
         if (!active) return;
         setProviders(list);
+        setProvidersSettled(true);
         setSelectedProvider((current) => {
-          if (current && list.some((p) => p.id === current)) return current;
+          // Prefer the stored id when state was zeroed by an earlier empty
+          // list — a removed key's pick revives with the key.
+          const want =
+            current || localStorage.getItem(PROVIDER_STORAGE_KEY) || "";
+          if (want && list.some((p) => p.id === want)) return want;
           return list[0]?.id ?? "";
         });
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (!active) return;
+        setProvidersSettled(true);
+        setError(String(e));
+      });
     return () => {
       active = false;
     };
-  }, []);
+  }, [settingsSettled, mode, keysVersion]);
 
   // Load the configured shortcuts once. A failure is non-fatal: the copy
-  // falls back to the shipped defaults and the gear stays disabled.
+  // falls back to the shipped defaults and the gear stays disabled — and it
+  // settles the mode as Custom, so the provider fetch above still runs.
   useEffect(() => {
     let active = true;
     getSettings()
       .then((info) => {
-        if (active) setSettings(info);
+        if (!active) return;
+        setSettings(info);
+        setSettingsSettled(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setSettingsSettled(true);
+      });
     return () => {
       active = false;
     };
@@ -261,9 +301,17 @@ function App() {
   // Self-heal a pre-badges pick (stored without `vision`): one model-list load
   // (session cache / instant curated fallback — works offline) patches the flag
   // and rewrites localStorage, so capture gating resolves correctly for
-  // returning users instead of wrongly treating them as text-only.
+  // returning users instead of wrongly treating them as text-only. Custom mode
+  // only, and only once the mode is actually known — a stale pick must never
+  // fire a vendor-shaped fetch in (or racing into) Default mode.
   useEffect(() => {
-    if (!selectedProvider || !modelPick || typeof modelPick.vision === "boolean") {
+    if (
+      !settingsSettled ||
+      mode !== "custom" ||
+      !selectedProvider ||
+      !modelPick ||
+      typeof modelPick.vision === "boolean"
+    ) {
       return;
     }
     let active = true;
@@ -289,7 +337,7 @@ function App() {
     return () => {
       active = false;
     };
-  }, [selectedProvider, modelPick]);
+  }, [settingsSettled, mode, selectedProvider, modelPick]);
 
   // Subscribe to backend events for the lifetime of the app.
   useEffect(() => {
@@ -440,7 +488,15 @@ function App() {
 
   const provider = providers.find((p) => p.id === selectedProvider);
   // Whether the active model can read images — gates capture and image submit.
-  const vision = activeModelVision(provider, modelPick);
+  // Default mode: the env-declared flag (opt-in, text-only unless set);
+  // Custom mode: the pick/provider resolution.
+  const vision =
+    mode === "default"
+      ? (settings?.defaultMode.vision ?? false)
+      : activeModelVision(provider, modelPick);
+  // The matching "why not" copy (Default mode has no menu to pick from).
+  const captureVisionCopy =
+    mode === "default" ? CAPTURE_NEEDS_VISION_DEFAULT : CAPTURE_NEEDS_VISION;
 
   // Start a capture (footer button and hotkey both land here). Rust hides the
   // panel, shows the crosshair overlay, and later fires capture://attached.
@@ -452,7 +508,7 @@ function App() {
     if (busy) return;
     if (!vision) {
       void showOverlay().catch(() => {});
-      setError(CAPTURE_NEEDS_VISION);
+      setError(captureVisionCopy);
       return;
     }
     setOpenMenu(null);
@@ -480,7 +536,10 @@ function App() {
 
   async function handleSubmit() {
     const trimmed = question.trim();
-    if (busy || !trimmed || !selectedGame || !selectedProvider) return;
+    if (busy || !trimmed || !selectedGame) return;
+    // Custom mode needs a provider (zero keyed providers blocks here);
+    // Default mode resolves its target Rust-side and ignores these args.
+    if (mode !== "default" && !selectedProvider) return;
     // Never dispatch an image to a model that can't read it — the attachment
     // hint already explains why; this makes Enter a no-op instead of burning a
     // request we can predict will fail.
@@ -495,13 +554,16 @@ function App() {
     setStatus("searching");
 
     try {
-      // The explicit pick when there is one, else the provider default; a
-      // blank value would fall back Rust-side, this is just the same rule
-      // applied eagerly so the chip and the request always agree.
-      const model = modelPick?.id ?? provider?.defaultModel ?? "";
+      // Custom mode: the explicit pick when there is one, else the provider
+      // default (a blank value would fall back Rust-side; this is the same
+      // rule applied eagerly so the chip and the request always agree).
+      // Default mode: both args blank — run_ask ignores them by contract.
+      const providerId = mode === "default" ? "" : selectedProvider;
+      const model =
+        mode === "default" ? "" : (modelPick?.id ?? provider?.defaultModel ?? "");
       const result = await ask(
         selectedGame,
-        selectedProvider,
+        providerId,
         model,
         trimmed,
         attachment?.id,
@@ -638,7 +700,7 @@ function App() {
             </button>
           </div>
           {!vision && (
-            <div className="attachment-hint">{CAPTURE_NEEDS_VISION}</div>
+            <div className="attachment-hint">{captureVisionCopy}</div>
           )}
         </div>
       )}
@@ -705,7 +767,11 @@ function App() {
       </div>
 
       <footer className="panel-footer">
-        {provider && (
+        {mode === "default" ? (
+          // Static, non-interactive: the vendor never surfaces; the
+          // explanation lives in the Settings panel's Model source section.
+          <span className="quiet-chip static-chip">{DEFAULT_MODE_LABEL}</span>
+        ) : provider ? (
           <ModelChip
             providerName={provider.name}
             modelLabel={modelPick?.label ?? provider.defaultModelLabel}
@@ -717,7 +783,18 @@ function App() {
             }
             buttonRef={chipRef}
           />
-        )}
+        ) : providersSettled && providers.length === 0 ? (
+          // Zero keyed providers: the dead-end state gets a way out. A second
+          // click while Settings is open just re-opens it — harmless.
+          <button
+            type="button"
+            className="quiet-chip"
+            disabled={busy || !settings}
+            onClick={() => setOpenMenu("settings")}
+          >
+            Set up a model
+          </button>
+        ) : null}
         <div className="capture-cluster">
           {debugChip && (
             <button
@@ -750,7 +827,7 @@ function App() {
       </footer>
 
       {/* Menus are direct children of .panel — .content's overflow would clip them. */}
-      {openMenu === "model" && provider && (
+      {openMenu === "model" && mode === "custom" && provider && (
         <ModelMenu
           providers={providers}
           selected={{
@@ -791,6 +868,7 @@ function App() {
         <SettingsMenu
           settings={settings}
           onSaved={setSettings}
+          onKeysChanged={() => setKeysVersion((v) => v + 1)}
           onClose={closeMenu}
           triggerRef={settingsChipRef}
         />
