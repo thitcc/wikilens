@@ -36,12 +36,56 @@ pub struct Hotkeys {
     pub capture: Shortcut,
 }
 
+/// Which model-source mode the player chose in the config panel — `"default"`
+/// / `"custom"` on disk (vault/2026-07-26_default-mode-and-byo-api-keys.md).
+/// No serde derives yet: phase 2 adds them when `SettingsInfo` grows the
+/// field; until then the store writes the strings via `as_str`, pinned by
+/// `set_mode_persists_and_reloads` so the two encodings can't drift.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Mode {
+    Default,
+    Custom,
+}
+
+impl Mode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Mode::Default => "default",
+            Mode::Custom => "custom",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Mode> {
+        match s {
+            "default" => Some(Mode::Default),
+            "custom" => Some(Mode::Custom),
+            _ => None,
+        }
+    }
+}
+
+/// Everything `persist` writes, mutated as one candidate (clone-mutate-
+/// persist-commit). One write lock held across persist serializes every
+/// mutation, so two concurrent mutators can never save each other's state
+/// stale.
+#[derive(Clone, Copy)]
+struct Persisted {
+    hotkeys: Hotkeys,
+    /// `None` = the user never chose; phase 3 auto-senses on first launch.
+    mode: Option<Mode>,
+}
+
 /// On-disk shape. `#[serde(default)]` at every level: an absent file, an
 /// absent `hotkeys` object, or an absent field each fall back independently.
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
 struct SettingsFile {
     hotkeys: HotkeyEntries,
+    /// `"default"` | `"custom"`. Typed as the raw string so an unrecognized
+    /// value falls back alone (`resolve_mode`) instead of tripping the
+    /// whole-file corrupt path; omitted entirely until the user chooses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
     /// Top-level keys a future version wrote — preserved across saves.
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
@@ -61,7 +105,7 @@ struct HotkeyEntries {
 
 pub struct SettingsStore {
     path: PathBuf,
-    hotkeys: RwLock<Hotkeys>,
+    state: RwLock<Persisted>,
     /// Unknown JSON preserved from the loaded file (`SettingsFile::extra`,
     /// `HotkeyEntries::extra`) — only touched by `load` and `persist`.
     extra: Mutex<(
@@ -127,7 +171,10 @@ impl SettingsStore {
 
         Self {
             path,
-            hotkeys: RwLock::new(hotkeys),
+            state: RwLock::new(Persisted {
+                hotkeys,
+                mode: resolve_mode(file.mode),
+            }),
             extra: Mutex::new((file.extra, file.hotkeys.extra)),
             suspended: AtomicBool::new(false),
             load_error,
@@ -144,10 +191,18 @@ impl SettingsStore {
         }
     }
 
-    /// Copy out the live pair (`Shortcut` is `Copy`; the lock is held only
+    /// Copy out the live pair (`Persisted` is `Copy`; the lock is held only
     /// for the read — never across a plugin call).
     pub fn hotkeys(&self) -> Hotkeys {
-        *self.read()
+        self.read().hotkeys
+    }
+
+    /// The persisted mode choice; `None` = never chosen (phase 3 auto-senses
+    /// on first launch). Consumed by phase 2's `get_settings`; the allow dies
+    /// with it.
+    #[allow(dead_code)]
+    pub fn mode(&self) -> Option<Mode> {
+        self.read().mode
     }
 
     pub fn shortcut(&self, role: HotkeyRole) -> Shortcut {
@@ -182,14 +237,28 @@ impl SettingsStore {
         let mut guard = self.write();
         let mut next = *guard;
         match role {
-            HotkeyRole::Summon => next.summon = new,
-            HotkeyRole::Capture => next.capture = new,
+            HotkeyRole::Summon => next.hotkeys.summon = new,
+            HotkeyRole::Capture => next.hotkeys.capture = new,
         }
-        if next.summon == next.capture {
+        if next.hotkeys.summon == next.hotkeys.capture {
             return Err(AppError::Hotkey(
                 "That combo is already your other shortcut — pick a different one.".to_string(),
             ));
         }
+        self.persist(&next)?;
+        *guard = next;
+        Ok(())
+    }
+
+    /// Store the mode choice: persist-then-commit, the `set_hotkey` shape
+    /// (no conflict check — any mode is valid against any other setting).
+    /// Consumed by phase 2's `set_mode` command; the allow dies with it.
+    #[allow(dead_code)]
+    pub fn set_mode(&self, mode: Mode) -> Result<(), AppError> {
+        self.writable()?;
+        let mut guard = self.write();
+        let mut next = *guard;
+        next.mode = Some(mode);
         self.persist(&next)?;
         *guard = next;
         Ok(())
@@ -211,7 +280,7 @@ impl SettingsStore {
 
     /// Crash-safe write: temp file in the same dir, then rename over the
     /// real one (std rename replaces existing files on Windows too).
-    fn persist(&self, next: &Hotkeys) -> Result<(), AppError> {
+    fn persist(&self, next: &Persisted) -> Result<(), AppError> {
         let settings_err = |e: &dyn std::fmt::Display| AppError::Settings(e.to_string());
         let dir = self
             .path
@@ -224,10 +293,11 @@ impl SettingsStore {
         };
         let file = SettingsFile {
             hotkeys: HotkeyEntries {
-                summon: Some(hotkey::to_accelerator(&next.summon)),
-                capture: Some(hotkey::to_accelerator(&next.capture)),
+                summon: Some(hotkey::to_accelerator(&next.hotkeys.summon)),
+                capture: Some(hotkey::to_accelerator(&next.hotkeys.capture)),
                 extra: hotkeys_extra,
             },
+            mode: next.mode.map(|m| m.as_str().to_string()),
             extra: file_extra,
         };
         let json = serde_json::to_string_pretty(&file).map_err(|e| settings_err(&e))?;
@@ -238,12 +308,23 @@ impl SettingsStore {
 
     // Poisoning: same policy as UserWikiStore — plain data, safe to keep
     // using after a panicked writer.
-    fn read(&self) -> RwLockReadGuard<'_, Hotkeys> {
-        self.hotkeys.read().unwrap_or_else(PoisonError::into_inner)
+    fn read(&self) -> RwLockReadGuard<'_, Persisted> {
+        self.state.read().unwrap_or_else(PoisonError::into_inner)
     }
-    fn write(&self) -> RwLockWriteGuard<'_, Hotkeys> {
-        self.hotkeys.write().unwrap_or_else(PoisonError::into_inner)
+    fn write(&self) -> RwLockWriteGuard<'_, Persisted> {
+        self.state.write().unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+/// The stored mode, or `None` ("never chosen") when absent or unrecognized —
+/// like `resolve_field`, the file is not rewritten; the next save repairs it.
+fn resolve_mode(stored: Option<String>) -> Option<Mode> {
+    let s = stored?;
+    let mode = Mode::parse(&s);
+    if mode.is_none() {
+        eprintln!("wikilens: stored mode {s:?} is invalid; treating it as unchosen");
+    }
+    mode
 }
 
 /// A stored accelerator, or the role's default when absent/unparseable.
@@ -283,6 +364,62 @@ mod tests {
             Some(HotkeyRole::Capture)
         );
         assert_eq!(store.role_of(&alt_q()), None);
+        assert_eq!(store.mode(), None);
+    }
+
+    #[test]
+    fn set_mode_persists_and_reloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.mode(), None);
+        store.set_mode(Mode::Custom).unwrap();
+        assert_eq!(store.mode(), Some(Mode::Custom));
+
+        let reloaded = SettingsStore::load(path.clone());
+        assert_eq!(reloaded.mode(), Some(Mode::Custom));
+
+        // The file holds the wire string — pinned so a future serde derive
+        // on `Mode` can't drift from `as_str`.
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"mode\": \"custom\""), "raw file was: {raw}");
+    }
+
+    #[test]
+    fn invalid_stored_mode_falls_back_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            r#"{ "hotkeys": { "capture": "Alt+KeyQ" }, "mode": "banana" }"#,
+        )
+        .unwrap();
+
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.mode(), None);
+        assert_eq!(store.shortcut(HotkeyRole::Capture), alt_q());
+        // The file is not rewritten by load — repair happens on the next save.
+        assert!(fs::read_to_string(&path).unwrap().contains("banana"));
+    }
+
+    #[test]
+    fn mode_and_hotkeys_survive_each_others_saves() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        store.set_mode(Mode::Default).unwrap();
+        store.set_hotkey(HotkeyRole::Summon, alt_q()).unwrap();
+
+        let reloaded = SettingsStore::load(path.clone());
+        assert_eq!(reloaded.mode(), Some(Mode::Default));
+        assert_eq!(reloaded.shortcut(HotkeyRole::Summon), alt_q());
+
+        reloaded.set_mode(Mode::Custom).unwrap();
+        let again = SettingsStore::load(path);
+        assert_eq!(again.shortcut(HotkeyRole::Summon), alt_q());
+        assert_eq!(again.mode(), Some(Mode::Custom));
     }
 
     #[test]
@@ -397,6 +534,10 @@ mod tests {
             store.set_hotkey(HotkeyRole::Summon, alt_q()),
             Err(AppError::Settings(_))
         ));
+        assert!(matches!(
+            store.set_mode(Mode::Custom),
+            Err(AppError::Settings(_))
+        ));
         assert!(path.is_dir(), "store path must not have been touched");
     }
 
@@ -415,6 +556,7 @@ mod tests {
 
         let store = SettingsStore::load(path.clone());
         store.set_hotkey(HotkeyRole::Capture, alt_p()).unwrap();
+        store.set_mode(Mode::Custom).unwrap();
 
         let saved: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -422,6 +564,7 @@ mod tests {
         assert_eq!(saved["hotkeys"]["push_to_talk"], "F13");
         assert_eq!(saved["hotkeys"]["summon"], "Alt+KeyQ");
         assert_eq!(saved["hotkeys"]["capture"], "Alt+KeyP");
+        assert_eq!(saved["mode"], "custom");
     }
 
     fn alt_p() -> Shortcut {

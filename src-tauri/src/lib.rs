@@ -12,6 +12,7 @@ mod debug_window;
 mod error;
 mod hotkey;
 mod http;
+mod keys;
 mod llm;
 mod models;
 mod providers;
@@ -94,6 +95,10 @@ pub fn run() {
             }
             // User-added wikis, persisted in the app-data dir.
             app.manage(UserWikiStore::load(data_dir.join("wikis.json")));
+            // Panel-entered API keys, DPAPI-encrypted per Windows user
+            // (keys.rs). Inert until phase 2's IPC commands consume it
+            // (vault/2026-07-26_default-mode-and-byo-api-keys.md).
+            app.manage(keys::DpapiKeyStore::load(data_dir.join("keys.json")));
             Ok(())
         })
         .on_window_event(|win, event| {
