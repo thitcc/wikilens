@@ -22,11 +22,12 @@ pub enum AppError {
     #[error("Please type a question first.")]
     EmptyQuestion,
 
-    #[error("{provider} API key not found. Set the {env_var} environment variable (or add it to a .env file), then restart WikiLens.")]
-    MissingApiKey {
-        provider: &'static str,
-        env_var: &'static str,
-    },
+    /// No stored key for the provider an ask or model-list call needs. The
+    /// field is `&'static str` by design: a runtime key value structurally
+    /// cannot be embedded here (pinned in `config_guardrails.rs`). Keys are
+    /// read at ask time, so no restart is needed after adding one.
+    #[error("No API key for {provider} yet — add one in Settings → API keys.")]
+    MissingApiKey { provider: &'static str },
 
     #[error("The {provider} API returned an error ({status}): {body}")]
     Llm {

@@ -1,26 +1,32 @@
-// The recorder's contract: arming suspends the OS hotkeys and swallows keys
-// at capture phase; every exit path (save, refuse, Esc, hide, unmount)
-// resumes them exactly once. Keyboard goes through userEvent only (see
-// harness.tsx — a raw window KeyboardEvent would invert the capture/bubble
-// ordering these tests exist to pin).
+// The Settings panel's contract. Recorder half: arming suspends the OS
+// hotkeys and swallows keys at capture phase; every exit path (save, refuse,
+// Esc, hide, unmount) resumes them exactly once. Keys half: a pasted key
+// crosses IPC exactly once via set_api_key and is never displayed back — a
+// stored key renders as presence + Remove only. Keyboard goes through
+// userEvent only (see harness.tsx — a raw window KeyboardEvent would invert
+// the capture/bubble ordering these tests exist to pin).
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { SettingsMenu } from "./SettingsMenu";
-import { SETTINGS, installBackend } from "../test/backend";
+import { KEY_STATUS, SETTINGS, installBackend } from "../test/backend";
 import { fireBackendEvent } from "../test/harness";
-import type { SettingsInfo } from "../types";
+import type { KeyStatus, SettingsInfo } from "../types";
 
-function renderMenu(over?: {
+/** Mounts the menu and settles the open-time list_key_status fetch (the
+ * default settle target is the keyless Anthropic input; tests that override
+ * the key fixtures pass their own). */
+async function renderMenu(over?: {
   settings?: SettingsInfo;
   onSaved?: (next: SettingsInfo) => void;
   onClose?: () => void;
+  settle?: () => Promise<unknown>;
 }) {
   const triggerRef = { current: null };
   const onSaved = over?.onSaved ?? (() => {});
   const onClose = over?.onClose ?? (() => {});
-  return render(
+  const result = render(
     <SettingsMenu
       settings={over?.settings ?? SETTINGS}
       onSaved={onSaved}
@@ -28,10 +34,13 @@ function renderMenu(over?: {
       triggerRef={triggerRef}
     />,
   );
+  await (over?.settle?.() ?? screen.findByLabelText("Anthropic API key"));
+  return result;
 }
 
 /** SETTINGS with a non-default summon, for the Reset affordance. */
 const CUSTOM_SUMMON: SettingsInfo = {
+  ...SETTINGS,
   hotkeys: {
     ...SETTINGS.hotkeys,
     summon: {
@@ -43,22 +52,183 @@ const CUSTOM_SUMMON: SettingsInfo = {
   },
 };
 
-test("renders both shortcuts as key chips", () => {
-  installBackend();
-  renderMenu();
+/** KEY_STATUS with the Anthropic key stored. */
+const ANTHROPIC_KEYED: KeyStatus[] = KEY_STATUS.map((s) =>
+  s.id === "anthropic" ? { ...s, hasKey: true } : s,
+);
 
-  const dialog = screen.getByRole("dialog", { name: "Shortcuts" });
-  expect(dialog.textContent).toContain("Summon");
-  expect(dialog.textContent).toContain("Ctrl+`");
-  expect(dialog.textContent).toContain("Capture");
-  expect(dialog.textContent).toContain("Ctrl+Shift+C");
+test("renders the three sections in order with both shortcut chips", async () => {
+  installBackend();
+  await renderMenu();
+
+  const dialog = screen.getByRole("dialog", { name: "Settings" });
+  const text = dialog.textContent ?? "";
+  const order = [
+    text.indexOf("Model source"),
+    text.indexOf("API keys"),
+    text.indexOf("Shortcuts"),
+  ];
+  expect(Math.min(...order)).toBeGreaterThanOrEqual(0);
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+  expect(text).toContain("Summon");
+  expect(text).toContain("Ctrl+`");
+  expect(text).toContain("Capture");
+  expect(text).toContain("Ctrl+Shift+C");
 });
+
+// ---- API keys -------------------------------------------------------------
+
+test("keyless providers render masked inputs with a gated Save", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  const input = screen.getByLabelText("Anthropic API key") as HTMLInputElement;
+  expect(input.type).toBe("password");
+  expect(input.getAttribute("autocomplete")).toBe("off");
+  expect(screen.getByLabelText("DeepSeek API key")).toBeTruthy();
+
+  // Save arms only once there is text.
+  const save = screen.getByRole("button", { name: "Save the Anthropic API key" });
+  expect(save.hasAttribute("disabled")).toBe(true);
+  await user.type(input, "sk-ant-test");
+  expect(save.hasAttribute("disabled")).toBe(false);
+});
+
+test("a stored key renders as Key set with Remove only", async () => {
+  installBackend({ list_key_status: () => ANTHROPIC_KEYED });
+  await renderMenu({
+    settle: () =>
+      screen.findByRole("button", { name: "Remove the Anthropic API key" }),
+  });
+
+  expect(screen.getByText("Key set")).toBeTruthy();
+  // The key itself never renders — no input for a keyed provider.
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  // The keyless provider keeps its input.
+  expect(screen.getByLabelText("DeepSeek API key")).toBeTruthy();
+});
+
+test("pasting a key and saving sends it once and flips the row", async () => {
+  const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
+  await user.click(
+    screen.getByRole("button", { name: "Save the Anthropic API key" }),
+  );
+
+  expect(backend.callsTo("set_api_key")).toEqual([
+    { providerId: "anthropic", key: "sk-ant-test" },
+  ]);
+  expect(await screen.findByText("Key set")).toBeTruthy();
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+});
+
+test("a failed key save shows the error and keeps the draft", async () => {
+  const backend = installBackend();
+  backend.onCommand("set_api_key", () => {
+    throw "Couldn't save your API keys: the disk is full";
+  });
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
+  await user.click(
+    screen.getByRole("button", { name: "Save the Anthropic API key" }),
+  );
+
+  expect(await screen.findByText(/the disk is full/)).toBeTruthy();
+  const input = screen.getByLabelText("Anthropic API key") as HTMLInputElement;
+  expect(input.value).toBe("sk-ant-test");
+});
+
+test("Remove sends remove_api_key and restores the paste row", async () => {
+  const backend = installBackend({
+    list_key_status: () => ANTHROPIC_KEYED,
+    remove_api_key: () => KEY_STATUS,
+  });
+  const user = userEvent.setup();
+  await renderMenu({
+    settle: () =>
+      screen.findByRole("button", { name: "Remove the Anthropic API key" }),
+  });
+
+  await user.click(
+    screen.getByRole("button", { name: "Remove the Anthropic API key" }),
+  );
+  expect(backend.callsTo("remove_api_key")).toEqual([
+    { providerId: "anthropic" },
+  ]);
+  expect(await screen.findByLabelText("Anthropic API key")).toBeTruthy();
+  expect(screen.queryByText("Key set")).toBeNull();
+});
+
+// ---- Model source ---------------------------------------------------------
+
+test("switching the model source calls set_mode and reports the fresh settings", async () => {
+  const configured: SettingsInfo = {
+    ...SETTINGS,
+    defaultMode: { configured: true, vision: false },
+  };
+  const backend = installBackend();
+  const user = userEvent.setup();
+  const saved: SettingsInfo[] = [];
+  await renderMenu({
+    settings: configured,
+    onSaved: (next) => saved.push(next),
+  });
+
+  await user.click(screen.getByRole("button", { name: "Default" }));
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  expect(saved).toHaveLength(1);
+});
+
+test("the stored mode marks its row selected", async () => {
+  const onDefault: SettingsInfo = {
+    ...SETTINGS,
+    mode: "default",
+    defaultMode: { configured: true, vision: false },
+  };
+  installBackend();
+  await renderMenu({ settings: onDefault });
+
+  expect(
+    screen
+      .getByRole("button", { name: "Default" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+  expect(
+    screen
+      .getByRole("button", { name: "Custom API" })
+      .getAttribute("aria-current"),
+  ).toBeNull();
+});
+
+test("the Default row is disabled with a note when unconfigured", async () => {
+  installBackend();
+  await renderMenu();
+
+  expect(
+    screen.getByRole("button", { name: "Default" }).hasAttribute("disabled"),
+  ).toBe(true);
+  expect(screen.getByText("Default isn't set up in this install.")).toBeTruthy();
+  // Never-chosen displays as Custom.
+  expect(
+    screen
+      .getByRole("button", { name: "Custom API" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+});
+
+// ---- Shortcuts (the recorder) ---------------------------------------------
 
 test("recording a valid combo suspends, saves, and resumes", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
-  renderMenu({ onSaved: (next) => saved.push(next) });
+  await renderMenu({ onSaved: (next) => saved.push(next) });
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -79,7 +249,7 @@ test("recording a valid combo suspends, saves, and resumes", async () => {
 test("a Shift-only combo is refused with the trap rationale and stays armed", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
-  renderMenu();
+  await renderMenu();
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -98,7 +268,7 @@ test("a Shift-only combo is refused with the trap rationale and stays armed", as
 test("recording the other role's combo is refused", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
-  renderMenu();
+  await renderMenu();
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -117,7 +287,7 @@ test("a rejected save shows the message and still resumes", async () => {
     throw "Couldn't claim Ctrl+Alt+P — another app may already be using it.";
   });
   const user = userEvent.setup();
-  renderMenu();
+  await renderMenu();
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -132,7 +302,7 @@ test("Esc is three-layered while armed: cancel recording, then close", async () 
   const backend = installBackend();
   const user = userEvent.setup();
   let closed = 0;
-  renderMenu({ onClose: () => closed++ });
+  await renderMenu({ onClose: () => closed++ });
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -152,7 +322,7 @@ test("Esc is three-layered while armed: cancel recording, then close", async () 
 test("unmounting while armed resumes the hotkeys", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
-  const { unmount } = renderMenu();
+  const { unmount } = await renderMenu();
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -166,7 +336,7 @@ test("unmounting while armed resumes the hotkeys", async () => {
 test("the overlay hiding while armed disarms and resumes", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
-  renderMenu();
+  await renderMenu();
 
   await user.click(
     screen.getByRole("button", { name: "Change the Summon shortcut" }),
@@ -181,7 +351,10 @@ test("Reset saves the default without recording or suspension", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
-  renderMenu({ settings: CUSTOM_SUMMON, onSaved: (next) => saved.push(next) });
+  await renderMenu({
+    settings: CUSTOM_SUMMON,
+    onSaved: (next) => saved.push(next),
+  });
 
   await user.click(
     screen.getByRole("button", {
@@ -195,9 +368,9 @@ test("Reset saves the default without recording or suspension", async () => {
   expect(saved).toHaveLength(1);
 });
 
-test("a default shortcut offers no Reset", () => {
+test("a default shortcut offers no Reset", async () => {
   installBackend();
-  renderMenu();
+  await renderMenu();
   expect(
     screen.queryByRole("button", { name: /Reset the Summon shortcut/ }),
   ).toBeNull();

@@ -1,7 +1,22 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { onOverlayHidden, resumeHotkeys, setHotkey, suspendHotkeys } from "../api";
-import type { HotkeyInfo, HotkeyRole, SettingsInfo } from "../types";
+import {
+  listKeyStatus,
+  onOverlayHidden,
+  removeApiKey,
+  resumeHotkeys,
+  setApiKey,
+  setHotkey,
+  setMode,
+  suspendHotkeys,
+} from "../api";
+import type {
+  HotkeyInfo,
+  HotkeyRole,
+  KeyStatus,
+  Mode,
+  SettingsInfo,
+} from "../types";
 import {
   comboFromEvent,
   labelParts,
@@ -10,6 +25,7 @@ import {
   toAccelerator,
   validateCombo,
 } from "../hotkeys";
+import { Badge } from "./Badge";
 
 interface SettingsMenuProps {
   settings: SettingsInfo;
@@ -36,13 +52,17 @@ function comboKeys(parts: string[]) {
 }
 
 /**
- * "Shortcuts" popover: the summon and capture hotkeys, each with a key
- * recorder. Arming a row suspends the OS registrations (pressing the current
- * combo mid-recording must not toggle the overlay) and swallows every
- * keydown at capture phase — Enter must not reach the prompt, and Esc gets a
- * third layer: cancel recording, then close the menu, then hide the overlay.
- * Same interaction contract as AddGameMenu otherwise: capture-phase Esc,
- * outside-pointerdown close excluding the trigger, direct `.panel` child.
+ * The Settings panel: Model source (Default vs Custom API — persisted, inert
+ * until Default mode's behavior lands), API keys (paste/remove per provider;
+ * a pasted key crosses IPC once and is never displayed back — the only
+ * action on a set key is Remove), and Shortcuts (the summon and capture key
+ * recorders). Arming a recorder row suspends the OS registrations (pressing
+ * the current combo mid-recording must not toggle the overlay) and swallows
+ * every keydown at capture phase — Enter must not reach the prompt, and Esc
+ * gets a third layer: cancel recording, then close the menu, then hide the
+ * overlay. Same interaction contract as AddGameMenu otherwise: capture-phase
+ * Esc, outside-pointerdown close excluding the trigger, direct `.panel`
+ * child.
  */
 export function SettingsMenu({
   settings,
@@ -56,10 +76,85 @@ export function SettingsMenu({
   /** Why the last recorded combo was refused — shown under the armed row. */
   const [hint, setHint] = useState<string | null>(null);
   const [pendingMods, setPendingMods] = useState<string[]>([]);
+  /** Key presence per provider; `null` while the open-time fetch runs. */
+  const [statuses, setStatuses] = useState<KeyStatus[] | null>(null);
+  /** Per-provider key input text — cleared the moment a save succeeds. */
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  /** The one in-flight panel action (outside the recorder's `saving`). */
+  const [action, setAction] = useState<
+    "idle" | "mode" | "save-key" | "remove-key"
+  >("idle");
+  const [modeError, setModeError] = useState<string | null>(null);
+  const [keysError, setKeysError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Whether THIS menu suspended the registrations — resume exactly once per
   // suspend, whatever exit path runs (save, cancel, hide, unmount).
   const suspendedRef = useRef(false);
+
+  /** One in-flight action panel-wide — every section's controls wait. */
+  const busyAll = saving || action !== "idle";
+  /** The stored choice; never-chosen displays as Custom (today's behavior). */
+  const currentMode: Mode = settings.mode ?? "custom";
+
+  // Key statuses are fetched per open (the menu mounts fresh each time).
+  useEffect(() => {
+    let active = true;
+    listKeyStatus()
+      .then((list) => {
+        if (active) setStatuses(list);
+      })
+      .catch((e) => {
+        if (active) setKeysError(String(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function pickMode(mode: Mode) {
+    // A first click on Custom with no stored mode DOES persist the explicit
+    // choice (settings.mode is null then, not "custom").
+    if (busyAll || settings.mode === mode) return;
+    setAction("mode");
+    setModeError(null);
+    try {
+      onSaved(await setMode(mode));
+    } catch (e) {
+      setModeError(String(e));
+    } finally {
+      setAction("idle");
+    }
+  }
+
+  async function handleSaveKey(providerId: string) {
+    const draft = (drafts[providerId] ?? "").trim();
+    if (busyAll || draft === "") return;
+    setAction("save-key");
+    setKeysError(null);
+    try {
+      setStatuses(await setApiKey(providerId, draft));
+      // Success unmounts the input; drop the key text from state too.
+      setDrafts((d) => ({ ...d, [providerId]: "" }));
+    } catch (e) {
+      // The draft stays for a retry.
+      setKeysError(String(e));
+    } finally {
+      setAction("idle");
+    }
+  }
+
+  async function handleRemoveKey(providerId: string) {
+    if (busyAll) return;
+    setAction("remove-key");
+    setKeysError(null);
+    try {
+      setStatuses(await removeApiKey(providerId));
+    } catch (e) {
+      setKeysError(String(e));
+    } finally {
+      setAction("idle");
+    }
+  }
 
   function resume() {
     if (!suspendedRef.current) return;
@@ -231,7 +326,7 @@ export function SettingsMenu({
               <button
                 type="button"
                 className="hotkey-btn"
-                disabled={saving}
+                disabled={busyAll}
                 aria-label={`Reset the ${ROLE_NAMES[role]} shortcut to ${info.defaultLabel}`}
                 onClick={() => void handleReset(role)}
               >
@@ -241,7 +336,7 @@ export function SettingsMenu({
             <button
               type="button"
               className="hotkey-btn"
-              disabled={saving}
+              disabled={busyAll}
               aria-label={`Change the ${ROLE_NAMES[role]} shortcut`}
               onClick={() => arm(role)}
             >
@@ -253,14 +348,102 @@ export function SettingsMenu({
     );
   }
 
+  function modeRow(mode: Mode, label: string, disabledExtra = false) {
+    const selected = currentMode === mode;
+    return (
+      <button
+        type="button"
+        className={"model-row" + (selected ? " selected" : "")}
+        disabled={disabledExtra || busyAll}
+        aria-current={selected ? "true" : undefined}
+        onClick={() => void pickMode(mode)}
+      >
+        <span className="row-name">{label}</span>
+        <span className="row-side">
+          <span className="check" aria-hidden="true">
+            ✓
+          </span>
+        </span>
+      </button>
+    );
+  }
+
+  function keyRow(status: KeyStatus) {
+    if (status.hasKey) {
+      return (
+        <div className="hotkey-row" key={status.id}>
+          <span className="hotkey-role">{status.name}</span>
+          <Badge title="A key is stored on this machine — it's never shown again">
+            Key set
+          </Badge>
+          <span className="hotkey-actions">
+            <button
+              type="button"
+              className="hotkey-btn"
+              disabled={busyAll}
+              aria-label={`Remove the ${status.name} API key`}
+              onClick={() => void handleRemoveKey(status.id)}
+            >
+              Remove
+            </button>
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="menu-url-row" key={status.id}>
+        <input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          value={drafts[status.id] ?? ""}
+          placeholder={`${status.name} API key…`}
+          aria-label={`${status.name} API key`}
+          onChange={(e) => {
+            // Read before the updater runs — currentTarget is only valid
+            // during dispatch.
+            const value = e.currentTarget.value;
+            setDrafts((d) => ({ ...d, [status.id]: value }));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void handleSaveKey(status.id);
+            }
+          }}
+        />
+        <button
+          type="button"
+          disabled={busyAll || (drafts[status.id] ?? "").trim() === ""}
+          aria-label={`Save the ${status.name} API key`}
+          onClick={() => void handleSaveKey(status.id)}
+        >
+          Save
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className="menu menu--top"
       ref={menuRef}
       role="dialog"
-      aria-label="Shortcuts"
+      aria-label="Settings"
     >
       <div className="menu-list">
+        <div className="menu-heading">Model source</div>
+        {modeRow("default", "Default", !settings.defaultMode.configured)}
+        {!settings.defaultMode.configured && (
+          <div className="menu-note">Default isn't set up in this install.</div>
+        )}
+        {modeRow("custom", "Custom API")}
+        {modeError && <div className="menu-error">{modeError}</div>}
+
+        <div className="menu-heading">API keys</div>
+        {statuses?.map(keyRow)}
+        {keysError && <div className="menu-error">{keysError}</div>}
+
         <div className="menu-heading">Shortcuts</div>
         {row("summon", settings.hotkeys.summon)}
         {row("capture", settings.hotkeys.capture)}

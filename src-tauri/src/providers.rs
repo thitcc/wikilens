@@ -26,8 +26,6 @@ pub struct Provider {
     pub kind: ProviderKind,
     /// Full chat/messages endpoint URL.
     pub endpoint: &'static str,
-    /// Env var holding this provider's API key.
-    pub api_key_env: &'static str,
     /// Env var that overrides the model. Stored explicitly (rather than derived
     /// from `id`) so the exact name is greppable with no case-transform edge.
     pub model_env: &'static str,
@@ -70,7 +68,6 @@ pub static PROVIDERS: &[Provider] = &[
         name: "Anthropic",
         kind: ProviderKind::Anthropic,
         endpoint: "https://api.anthropic.com/v1/messages",
-        api_key_env: "ANTHROPIC_API_KEY",
         model_env: "WIKILENS_ANTHROPIC_MODEL",
         default_model: "claude-haiku-4-5-20251001",
         models_endpoint: "https://api.anthropic.com/v1/models?limit=1000",
@@ -90,7 +87,6 @@ pub static PROVIDERS: &[Provider] = &[
         name: "DeepSeek",
         kind: ProviderKind::OpenAiCompatible,
         endpoint: "https://api.deepseek.com/chat/completions",
-        api_key_env: "DEEPSEEK_API_KEY",
         model_env: "WIKILENS_DEEPSEEK_MODEL",
         // Not the `deepseek-chat` alias — DeepSeek retires it on 2026-07-24.
         default_model: "deepseek-v4-flash",
@@ -111,7 +107,6 @@ pub static PROVIDERS: &[Provider] = &[
         name: "OpenRouter",
         kind: ProviderKind::OpenAiCompatible,
         endpoint: "https://openrouter.ai/api/v1/chat/completions",
-        api_key_env: "OPENROUTER_API_KEY",
         model_env: "WIKILENS_OPENROUTER_MODEL",
         default_model: "openai/gpt-4o-mini",
         models_endpoint: "https://openrouter.ai/api/v1/models",
@@ -149,14 +144,6 @@ fn env_nonempty(name: &str) -> Option<String> {
 }
 
 impl Provider {
-    /// This provider's API key from its env var, or `None` if unset/blank.
-    ///
-    /// Kept as `Option` (like `wiki::games::find_game`) so this module stays free
-    /// of `AppError`; `commands.rs` maps `None` to `AppError::MissingApiKey`.
-    pub fn api_key(&self) -> Option<String> {
-        env_nonempty(self.api_key_env)
-    }
-
     /// The resolved model: the `WIKILENS_<PROVIDER>_MODEL` override if set,
     /// otherwise the built-in default.
     pub fn model(&self) -> String {

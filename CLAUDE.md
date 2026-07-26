@@ -8,8 +8,9 @@ types a question and gets an answer generated **only** from the game's MediaWiki
 content (hotkey → panel → RAG over the wiki → streamed answer + sources). A
 second hotkey (**Ctrl+Shift+C** by default) — or the footer capture chip — grabs
 a screen region and attaches it to the prompt as an image (vision-capable models
-only). Both shortcuts are configurable from the header gear's **Shortcuts**
-popover (persisted to `settings.json` in the app-data dir). Works over
+only). Both shortcuts are configurable from the header gear's **Settings**
+panel (persisted to `settings.json` in the app-data dir), which also holds the
+model-source choice and per-provider API keys. Works over
 **borderless/windowed** games only — exclusive fullscreen covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
@@ -39,7 +40,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Shortcuts popover: a key-recorder row per hotkey (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: model-source rows (persisted, inert until phase 3), per-provider API keys (paste/remove), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -53,12 +54,12 @@ wikilens/
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
         ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys + the persisted mode choice; loaded in setup before registration
-        ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); IPC commands land in phase 2
+        ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); read by the key commands and at ask/model-list time
         ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
         ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
@@ -107,12 +108,16 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `http::read_body_capped` / `read_error_body`, never bare `.text()` — new
   fetch paths inherit the byte caps only through the helpers. The webview has
   no network/http/fs permissions (see `capabilities/default.json`).
-- **API keys:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY`,
-  from a `.env` file (dotenvy, loaded at the top of `run()`) or OS env vars (which
-  take precedence). Read Rust-side only in `commands.rs`; never logged, never
-  sent to the frontend. `ProviderInfo` (id, name, resolved default model + label)
-  is the only provider data crossing IPC — it deliberately does not report which
-  keys are configured.
+- **API keys:** pasted in **Settings → API keys**, stored per provider as
+  per-user DPAPI ciphertexts in `keys.json` (app-data; `keys.rs`, ADR:
+  `vault/2026-07-26_api-key-storage-dpapi.md`) and read from the store at
+  ask/model-list time — the vendor env vars (`ANTHROPIC_API_KEY` etc.) are
+  gone. The invariant: key *material* crosses IPC exactly once — the
+  `set_api_key` request, webview → Rust — and never back (no response, event,
+  error string, or debug payload may contain it; pinned in
+  `config_guardrails.rs`). Key *presence* booleans may cross
+  (`KeyStatus.hasKey`). Never logged, never displayed back — the only action
+  on a set key is Remove.
 - **Model precedence:** an explicit UI pick (footer chip menu, stored per provider
   in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
   `WIKILENS_<PROVIDER>_MODEL` env override (e.g. `WIKILENS_DEEPSEEK_MODEL`); else
@@ -294,7 +299,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   grants `opener:allow-open-url` **with** an inline `http(s)://*` scope. Without the
   scope, `open_url` returns `ForbiddenUrl` at runtime (compiles fine).
 - `.env` is loaded via dotenvy at the top of `run()` for dev; a **packaged app's
-  cwd is unpredictable**, so shipped installs should supply keys via OS env vars.
+  cwd is unpredictable**, so shipped installs should supply env config (model
+  overrides, tuning vars) via OS env vars. API keys don't ride env at all —
+  they live in the DPAPI store (`keys.rs`).
 - OpenAI-compatible SSE (DeepSeek/OpenRouter) emits `:` comment/keep-alive lines
   and can report errors mid-stream on an HTTP-200 body; `parse_openai_sse_line`
   (via the `SseLine` enum) handles `[DONE]`, comments, null content, and errors.

@@ -560,8 +560,8 @@ function App() {
             disabled={busy || !settings}
             aria-haspopup="dialog"
             aria-expanded={openMenu === "settings"}
-            aria-label="Shortcuts"
-            title="Shortcuts"
+            aria-label="Settings"
+            title="Settings"
             // Same closeMenu() rule as the game chip (focus contract).
             onClick={() =>
               openMenu === "settings" ? closeMenu() : setOpenMenu("settings")

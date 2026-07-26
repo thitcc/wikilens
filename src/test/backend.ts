@@ -12,6 +12,7 @@ import type {
   AskResult,
   AttachmentInfo,
   GameInfo,
+  KeyStatus,
   ModelList,
   ProviderInfo,
   SettingsInfo,
@@ -75,7 +76,8 @@ export const CANDIDATES: WikiCandidate[] = [
   },
 ];
 
-/** The shipped defaults, mirroring Rust's `default_summon`/`default_capture`. */
+/** The shipped defaults, mirroring Rust's `default_summon`/`default_capture`
+ * (fresh install: no mode chosen, Default source unconfigured). */
 export const SETTINGS: SettingsInfo = {
   hotkeys: {
     summon: {
@@ -93,7 +95,15 @@ export const SETTINGS: SettingsInfo = {
       isDefault: true,
     },
   },
+  mode: null,
+  defaultMode: { configured: false, vision: false },
 };
+
+/** Fresh-install key state: the fixture providers, none keyed. */
+export const KEY_STATUS: KeyStatus[] = [
+  { id: "anthropic", name: "Anthropic", hasKey: false },
+  { id: "deepseek", name: "DeepSeek", hasKey: false },
+];
 
 // ---- Backend ----------------------------------------------------------------
 
@@ -150,6 +160,10 @@ export function installBackend(
       set_hotkey: () => SETTINGS,
       suspend_hotkeys: () => undefined,
       resume_hotkeys: () => undefined,
+      list_key_status: () => KEY_STATUS,
+      set_api_key: () => KEY_STATUS,
+      remove_api_key: () => KEY_STATUS,
+      set_mode: () => SETTINGS,
       suggest_wikis: () => CANDIDATES,
       add_game: () => {
         throw new Error("add_game: override this handler in the test");

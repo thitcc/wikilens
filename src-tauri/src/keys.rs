@@ -10,12 +10,6 @@
 //! `UserWikiStore`/`SettingsStore` discipline: persisted to disk before they
 //! become visible in memory.
 
-// Phase 1 of vault/2026-07-26_default-mode-and-byo-api-keys.md lands this
-// store behaviorally inert; the phase-2 IPC commands (set_api_key /
-// remove_api_key / list_key_status) are its production callers. DELETE this
-// allow when phase 2 wires them up.
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
@@ -27,10 +21,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 
-/// The key-store seam: the phase-2 commands and phase-3 ask-time resolver
-/// consume this, with the test-only `InMemoryKeyStore` standing in for the
-/// DPAPI store in their tests.
-pub trait KeyStore {
+/// The key-store seam: the key commands (`set_api_key` / `remove_api_key` /
+/// `list_key_status`) and the ask/model-list key resolution consume this,
+/// with the test-only `InMemoryKeyStore` standing in for the DPAPI store in
+/// their tests. `Send + Sync` because `run_ask` holds a `&dyn KeyStore`
+/// across awaits inside a future Tauri requires to be `Send`.
+pub trait KeyStore: Send + Sync {
     /// Store (or replace) a provider's key. Cleartext never reaches disk —
     /// implementations encrypt before persisting. Empty/whitespace keys are
     /// rejected here as defense in depth; the command layer validates earlier

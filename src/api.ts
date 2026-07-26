@@ -11,6 +11,8 @@ import type {
   AttachmentInfo,
   GameInfo,
   HotkeyRole,
+  KeyStatus,
+  Mode,
   ModelList,
   ProviderInfo,
   SettingsInfo,
@@ -102,6 +104,35 @@ export function suspendHotkeys(): Promise<void> {
  * with a user-readable message if a combo was taken meanwhile. */
 export function resumeHotkeys(): Promise<void> {
   return invoke<void>("resume_hotkeys");
+}
+
+/** Key presence per provider, for the Settings panel's API-keys section. */
+export function listKeyStatus(): Promise<KeyStatus[]> {
+  return invoke<KeyStatus[]>("list_key_status");
+}
+
+/** Store (or replace) a provider's API key — the ONE call that carries key
+ * material toward Rust; it is never returned, rendered, or logged back.
+ * Resolves with fresh statuses so the panel updates in one round trip;
+ * rejects with a user-readable message (blank key, unknown provider, store
+ * failure). */
+export function setApiKey(
+  providerId: string,
+  key: string,
+): Promise<KeyStatus[]> {
+  return invoke<KeyStatus[]>("set_api_key", { providerId, key });
+}
+
+/** Drop a provider's stored key — the only action offered on a set key.
+ * Resolves with fresh statuses. */
+export function removeApiKey(providerId: string): Promise<KeyStatus[]> {
+  return invoke<KeyStatus[]>("remove_api_key", { providerId });
+}
+
+/** Persist the model-source choice (inert in phase 2 — the chip and ask flow
+ * ignore it until Default mode lands). Resolves with the fresh settings. */
+export function setMode(mode: Mode): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_mode", { mode });
 }
 
 /** The rejection value `ask` settles with after `cancelAsk` wins — mirrors
