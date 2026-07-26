@@ -215,3 +215,12 @@ never a stuck status.
   resolution in ask/list_models, the Settings-pointing MissingApiKey copy, and the guardrail
   pins rewritten (KeyStatus/SettingsInfo field-set pins + a DPAPI-store sentinel non-leak
   pin replacing the env-based one).
+- 2026-07-26 — phase 3 (Default mode) landed (8dfc876): `target.rs` resolved-target layer
+  (`LlmTarget`/`AskTargets`; llm.rs migrated off `&Provider`), the pure `WIKILENS_DEFAULT_*`
+  resolver (one function feeds the panel's `configured`, the ask path, and the first-launch
+  auto-sense — an invalid `_API_PROVIDER` now reads as unconfigured everywhere), mode-aware
+  `run_ask` (snapshot per ask; Default ignores provider/model args), keyed-only
+  `list_providers` with both pins repointed at `provider_infos`, the static `Default` footer
+  chip, the zero-keys "Set up a model" chip, key-change → provider re-fetch, and capture
+  gated on `defaultMode.vision` with Default-mode copy. Remaining: phase 4 (legacy
+  `WIKILENS_REWRITE_*` removal + docs sweep + breaker-notice copy).
