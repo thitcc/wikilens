@@ -83,28 +83,30 @@ never a stuck status.
    built for this), plus the new guardrail pins. Behaviorally inert.
 2. **IPC + config panel** — commands `set_api_key` (the single webview→Rust key crossing),
    `remove_api_key`, `list_key_status` → `[{id, name, hasKey}]`, `set_mode` → `SettingsInfo`
-   (the `set_hotkey` shape), `import_env_key` (legacy migration: Rust reads env → store, key
-   never crosses IPC at all). `SettingsInfo` grows `mode` + `defaultMode: {configured, vision}`.
+   (the `set_hotkey` shape). `SettingsInfo` grows `mode` + `defaultMode: {configured, vision}`.
    The gear popover becomes one sectioned scrollable `menu menu--top` panel — Model source /
    API keys / Shortcuts under `.menu-heading` headings, key field on the `.menu-url-row`
    input+button pattern, gear label "Shortcuts" → "Settings". Existing rules hold: owned
    controls only, capture-phase Esc, one `openMenu` member, direct `.panel` child, no
    clearance retuning (`--menu-clearance-top` has no JS twin); no new DESIGN.md tokens
    expected — reuse `menu-row`/`hotkey-row`/input tokens, and document any that do appear.
-   Transitional rule: "has key" = store **or** legacy env, so nothing breaks yet.
+   *Amended by the 2026-07-26 owner rulings (status log): keys are store-only from this
+   phase — the vendor env keys stop being read here (no transitional OR-rule, no
+   `import_env_key`), and the Model source switch ships wired-but-inert (the chip and ask
+   path ignore it until phase 3).*
 3. **Default mode** — the `LlmTarget` refactor, the `WIKILENS_DEFAULT_*` resolver, mode-aware
    `run_ask` (ignores `provider_id`/`model` args in Default mode), the static `Default` footer
    chip (single frontend constant; frontend skips `list_providers` entirely), model-menu
    filtering to keyed providers, and the degenerate states below.
-4. **Legacy removal + docs sweep** — delete `Provider.api_key_env` / `Provider::api_key()` /
-   `AppError::MissingApiKey.env_var` and the three vendor key vars plus
-   `WIKILENS_REWRITE_MODEL` / `WIKILENS_REWRITE_PROVIDER`; add the returning-dev safety net
-   (startup stderr warning when legacy vars are detected + the panel's per-provider
-   "found in environment — Import" hint + README migration note). Docs: README "Setup: API
-   keys" rewrite and retrieval-table row removals, `.env.example` rewrite, smoke-checklist
-   prerequisites + §9 OS-env item replaced by key-store/mode items, CLAUDE.md §4,
-   `.impeccable/design.json` mock error copy, `llm.rs:380` doc comment, and the circuit
-   breaker's stderr notice (state.rs:97-99 names the removed vars as the fix).
+4. **Legacy removal + docs sweep** — *shrunk by the store-only ruling: the vendor key vars,
+   `Provider.api_key_env` / `Provider::api_key()` / `MissingApiKey.env_var`, and the
+   README/`.env.example` key-setup rewrites all landed with phase 2.* Remaining: delete
+   `WIKILENS_REWRITE_MODEL` / `WIKILENS_REWRITE_PROVIDER`; an optional startup stderr nudge
+   when the dead vendor key vars are still set (returning-dev safety net); docs sweep:
+   README retrieval-table row removals, smoke-checklist prerequisites + §9 OS-env item
+   replaced by key-store/mode items, `.impeccable/design.json` mock error copy, the
+   `llm.rs` doc comment near the auth-header build, and the circuit breaker's stderr
+   notice (state.rs:97-99 names the removed vars as the fix).
 
 ### Consequences worked through (positions on the design review's 13 points)
 
@@ -118,10 +120,13 @@ never a stuck status.
    plus the existing debug payload key-set pins.
 3. **Key storage** — DPAPI blob; the fork and its rejected alternatives (Credential Manager
    via `keyring`, plaintext JSON) live in "[[2026-07-26_api-key-storage-dpapi]]".
-4. **Legacy env removal** — staged (phases 2→4); dead-`.env` failure mode designed against
-   with warning + Import + README note. New missing-key copy: "No API key for {provider} yet —
-   add one in Settings → API keys" (no more "restart WikiLens": stored keys are read at ask
-   time). dotenvy stays — it now serves `WIKILENS_DEFAULT_*` and the tuning vars in dev.
+4. **Legacy env removal** — un-staged by the owner's store-only ruling: the vendor key vars
+   died with phase 2 itself (custom keys never fall back to env; the only env credential is
+   the `WIKILENS_DEFAULT_*` family). The dead-`.env` failure mode is answered by the README
+   migration note; a startup stderr nudge remains a phase-4 option. New missing-key copy:
+   "No API key for {provider} yet — add one in Settings → API keys" (no more "restart
+   WikiLens": stored keys are read at ask time). dotenvy stays — it now serves
+   `WIKILENS_DEFAULT_*` and the tuning vars in dev.
 5. **Endpoint no longer compile-time** — solved by the target layer; `Provider` stays
    `&'static` declarative data, the registry untouched.
 6. **`list_models` in Default mode** — never called; nothing built for it (non-goal above).
@@ -171,7 +176,7 @@ never a stuck status.
   keys-file no-cleartext pin; the `MissingApiKey` copy test rewritten (the `env_var` field
   dies); the `debug://` payload key-set pins unchanged.
 - Vitest via `src/test/backend.ts` `installBackend` (new commands must join its handler map or
-  every touching test throws): panel key states (paste+Save / "Key set"+Remove / Import hint),
+  every touching test throws): panel key states (paste+Save / "Key set"+Remove),
   mode switch driving chip + menu, the static `Default` chip, the zero-keys empty state,
   capture gating on `defaultMode.vision`.
 - Manual (smoke checklist): a stored key survives restart; packaged-app Default mode via OS
@@ -200,3 +205,13 @@ never a stuck status.
   `mode` persisted in `SettingsStore` behind one combined lock, no-cleartext/schema pins.
   Behaviorally inert as planned. The ADR closed with one factual correction: `LocalFree` is in
   `Win32_Foundation` (already enabled), not `Win32_System_Memory`.
+- 2026-07-26 — two owner rulings before phase 2: (1) the Model source switch ships in phase 2
+  wired-but-inert rather than waiting for phase 3's behavior; (2) custom-mode keys are
+  **store-only — no env fallback, ever**: no transitional OR-rule, no `import_env_key`, and
+  the vendor key vars are removed in phase 2 rather than phase 4. Phase 2/4 bullets and
+  consequence 4 amended in place.
+- 2026-07-26 — phase 2 (IPC + settings panel) landed (e7d7ec8): commands `list_key_status` /
+  `set_api_key` / `remove_api_key` / `set_mode`, the sectioned Settings panel, store-only key
+  resolution in ask/list_models, the Settings-pointing MissingApiKey copy, and the guardrail
+  pins rewritten (KeyStatus/SettingsInfo field-set pins + a DPAPI-store sentinel non-leak
+  pin replacing the env-based one).
