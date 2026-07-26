@@ -1070,13 +1070,19 @@ mod tests {
 
     /// Stream a tiny answer and assert the provider reported token usage and a
     /// first-token time — proves `stream_options` acceptance and usage parsing
-    /// end-to-end on the real gateway. Skips (passes) when the provider's key
-    /// isn't configured, so keyless `--ignored` runs stay green.
-    async fn live_usage_roundtrip(provider_id: &str) {
+    /// end-to-end on the real gateway. Skips (passes) when `key_env` isn't
+    /// configured, so keyless `--ignored` runs stay green. Dev-only carve-out:
+    /// this live suite reads the key from env directly — the product itself
+    /// reads keys only from the DPAPI store (keys.rs).
+    async fn live_usage_roundtrip(provider_id: &str, key_env: &str) {
         dotenvy::dotenv().ok();
         let provider = crate::providers::find_provider(provider_id).unwrap();
-        let Some(key) = provider.api_key() else {
-            eprintln!("skipped: no API key configured for {provider_id}");
+        let Some(key) = std::env::var(key_env)
+            .ok()
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty())
+        else {
+            eprintln!("skipped: no {key_env} configured");
             return;
         };
         let client = reqwest::Client::new();
@@ -1102,13 +1108,13 @@ mod tests {
     #[tokio::test]
     #[ignore = "hits the live Anthropic API; needs ANTHROPIC_API_KEY"]
     async fn anthropic_live_streaming_reports_usage() {
-        live_usage_roundtrip("anthropic").await;
+        live_usage_roundtrip("anthropic", "ANTHROPIC_API_KEY").await;
     }
 
     #[tokio::test]
     #[ignore = "hits the live DeepSeek API; needs DEEPSEEK_API_KEY"]
     async fn deepseek_live_streaming_reports_usage() {
-        live_usage_roundtrip("deepseek").await;
+        live_usage_roundtrip("deepseek", "DEEPSEEK_API_KEY").await;
     }
 
     #[test]

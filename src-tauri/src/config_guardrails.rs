@@ -207,10 +207,9 @@ fn prod_csp_restricts_scripts_to_self_without_eval() {
     assert!(!csp.contains("unsafe-eval"), "prod CSP must never allow eval: {csp}");
 }
 
-/// CLAUDE.md §4: `ProviderInfo` is the only provider data crossing IPC and
-/// deliberately never reports key material or which keys are configured. Pin
-/// the exact serialized field set — extend the list only after confirming a
-/// new field carries no key material.
+/// CLAUDE.md §4: `ProviderInfo` never carries key material — key *presence*
+/// crosses separately as `KeyStatus`. Pin the exact serialized field set —
+/// extend the list only after confirming a new field carries no key material.
 #[test]
 fn provider_info_serializes_exactly_the_known_fields() {
     let infos = crate::commands::list_providers();
@@ -231,45 +230,102 @@ fn provider_info_serializes_exactly_the_known_fields() {
     }
 }
 
-/// If a real key is configured in this environment, its value must not appear
-/// anywhere in the serialized provider list. Read-only env access — tests run
-/// multi-threaded, so never mutate env here. Vacuous in CI (no keys set); the
-/// field-set pin above is the structural guarantee there.
+/// `KeyStatus` is the one IPC type that reports key state. Pin the exact
+/// serialized field set — presence booleans may cross, key material may not;
+/// extend the list only after confirming a new field carries none.
 #[test]
-fn provider_info_never_contains_configured_key_values() {
-    let serialized =
-        serde_json::to_string(&crate::commands::list_providers()).expect("serializes");
-    for provider in crate::providers::PROVIDERS {
-        let Ok(key) = std::env::var(provider.api_key_env) else {
-            continue;
-        };
-        let key = key.trim();
-        // Skip trivially short dummy values ("test") that could substring-match
-        // by coincidence; real provider keys are long random strings.
-        if key.len() < 8 {
-            continue;
-        }
-        assert!(
-            !serialized.contains(key),
-            "{}: configured key value leaked into ProviderInfo JSON",
-            provider.id
+fn key_status_serializes_exactly_the_known_fields() {
+    let rows = crate::commands::key_status(&crate::keys::InMemoryKeyStore::default());
+    assert!(!rows.is_empty());
+    for row in &rows {
+        let value = serde_json::to_value(row).expect("KeyStatus serializes");
+        let keys: BTreeSet<&str> = value
+            .as_object()
+            .expect("KeyStatus serializes to an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            BTreeSet::from(["id", "name", "hasKey"]),
+            "new KeyStatus IPC field — review it for key material, then update this pin"
         );
     }
 }
 
-/// CLAUDE.md §4: keys are "never logged, never sent to the frontend". The
-/// missing-key message names the env VAR so the user can fix it — and both
-/// variant fields are `&'static str`, so a runtime key value structurally
-/// cannot be embedded in this error.
+/// A stored key's value must never appear in any serialized IPC surface that
+/// touches provider/key state. Seeds the real DPAPI store (the exact type the
+/// shipping commands serialize from) with a sentinel, then checks the two
+/// lists. `ProviderInfo` structurally can't see the store today; the check is
+/// the forward guard phase 3 inherits when `list_providers` gains store
+/// access for keyed-only filtering.
 #[test]
-fn missing_api_key_error_names_the_env_var_not_a_value() {
+fn key_status_never_contains_stored_key_values() {
+    use crate::keys::KeyStore;
+    const SENTINEL: &str = "WIKILENS-SENTINEL-NOT-A-REAL-KEY";
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = crate::keys::DpapiKeyStore::load(dir.path().join("keys.json"));
+    store.set("anthropic", SENTINEL).expect("store the sentinel");
+
+    let statuses =
+        serde_json::to_string(&crate::commands::key_status(&store)).expect("serializes");
+    assert!(statuses.contains("\"hasKey\":true"), "vacuous run: {statuses}");
+    assert!(!statuses.contains(SENTINEL), "key value leaked into KeyStatus JSON");
+
+    let providers =
+        serde_json::to_string(&crate::commands::list_providers()).expect("serializes");
+    assert!(!providers.contains(SENTINEL), "key value leaked into ProviderInfo JSON");
+}
+
+/// `SettingsInfo` is the settings envelope crossing IPC. Pin its exact field
+/// sets (top level + the nested `defaultMode`), and that a never-chosen mode
+/// crosses as an explicit null rather than an absent field.
+#[test]
+fn settings_info_serializes_exactly_the_known_fields() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = crate::settings::SettingsStore::load(dir.path().join("settings.json"));
+    let info = crate::commands::settings_info(
+        &store,
+        crate::commands::DefaultModeInfo {
+            configured: false,
+            vision: false,
+        },
+    );
+    let value = serde_json::to_value(&info).expect("SettingsInfo serializes");
+    let top: BTreeSet<&str> = value
+        .as_object()
+        .expect("SettingsInfo serializes to an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        top,
+        BTreeSet::from(["hotkeys", "mode", "defaultMode"]),
+        "new SettingsInfo IPC field — review it for key material, then update this pin"
+    );
+    assert!(value["mode"].is_null(), "never-chosen mode must cross as null");
+    let nested: BTreeSet<&str> = value["defaultMode"]
+        .as_object()
+        .expect("defaultMode serializes to an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(nested, BTreeSet::from(["configured", "vision"]));
+}
+
+/// CLAUDE.md §4: keys are "never logged, never sent to the frontend". The
+/// missing-key message points at the Settings panel — and the variant's one
+/// field is `&'static str`, so a runtime key value structurally cannot be
+/// embedded in this error.
+#[test]
+fn missing_api_key_error_points_at_settings_not_a_value() {
     let msg = AppError::MissingApiKey {
         provider: "Anthropic",
-        env_var: "ANTHROPIC_API_KEY",
     }
     .to_string();
-    assert!(msg.contains("ANTHROPIC_API_KEY"), "must name the env var: {msg}");
     assert!(msg.contains("Anthropic"), "must name the provider: {msg}");
+    assert!(msg.contains("Settings"), "must point at the panel: {msg}");
+    assert!(msg.contains("API keys"), "must name the section: {msg}");
 }
 
 /// `AppError::Http` wraps transport errors from `send()` (llm.rs) — the one

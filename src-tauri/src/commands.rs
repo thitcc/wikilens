@@ -10,8 +10,9 @@ use tokio_util::sync::CancellationToken;
 use crate::capture::{self, CropRect};
 use crate::debug::DebugReport;
 use crate::error::AppError;
+use crate::keys::{DpapiKeyStore, KeyStore};
 use crate::models::{self, ModelInfo, ModelSource};
-use crate::settings::{HotkeyRole, SettingsStore};
+use crate::settings::{HotkeyRole, Mode, SettingsStore};
 use crate::state::AppState;
 use crate::wiki::games::GameWiki;
 use crate::wiki::user::UserWikiStore;
@@ -29,8 +30,8 @@ pub struct GameInfo {
 
 /// A supported LLM provider, as sent to the frontend. Carries the resolved
 /// default model (env override applied) so the footer chip can label itself
-/// before any model list is fetched. It still never reports which API keys
-/// are configured.
+/// before any model list is fetched. Key *presence* crosses IPC separately
+/// (`KeyStatus`); key material never does.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderInfo {
@@ -87,10 +88,33 @@ pub struct HotkeysInfo {
     pub capture: HotkeyInfo,
 }
 
+/// One provider's key *presence*, for the settings panel. Never key material —
+/// the guardrails pin the field set and sentinel-check the serialization.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyStatus {
+    pub id: String,
+    pub name: String,
+    pub has_key: bool,
+}
+
+/// Whether the packaged Default model source is configured in this
+/// environment (`WIKILENS_DEFAULT_*`), and whether it reads images. Sensed
+/// per command call; inert until phase 3 wires the mode into the ask path.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct DefaultModeInfo {
+    pub configured: bool,
+    pub vision: bool,
+}
+
 /// Extensible settings envelope — future config-panel tenants join here.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SettingsInfo {
     pub hotkeys: HotkeysInfo,
+    /// The persisted model-source choice; `None` (→ JSON null) = never chosen.
+    pub mode: Option<Mode>,
+    pub default_mode: DefaultModeInfo,
 }
 
 fn hotkey_info(settings: &SettingsStore, role: HotkeyRole) -> HotkeyInfo {
@@ -105,13 +129,74 @@ fn hotkey_info(settings: &SettingsStore, role: HotkeyRole) -> HotkeyInfo {
     }
 }
 
-fn settings_info(settings: &SettingsStore) -> SettingsInfo {
+/// Pure over its inputs (the guardrail pins call it with a fixed
+/// `DefaultModeInfo`); commands pass `sense_default_mode()`.
+pub(crate) fn settings_info(settings: &SettingsStore, default_mode: DefaultModeInfo) -> SettingsInfo {
     SettingsInfo {
         hotkeys: HotkeysInfo {
             summon: hotkey_info(settings, HotkeyRole::Summon),
             capture: hotkey_info(settings, HotkeyRole::Capture),
         },
+        mode: settings.mode(),
+        default_mode,
     }
+}
+
+/// Pure over an injected env lookup — the multi-threaded suite never mutates
+/// env, so tests drive this with closures.
+fn default_mode_info(env: impl Fn(&str) -> Option<String>) -> DefaultModeInfo {
+    const REQUIRED: [&str; 4] = [
+        "WIKILENS_DEFAULT_API_KEY",
+        "WIKILENS_DEFAULT_API_PROVIDER",
+        "WIKILENS_DEFAULT_API_URL",
+        "WIKILENS_DEFAULT_ANSWER_MODEL",
+    ];
+    DefaultModeInfo {
+        configured: REQUIRED.iter().all(|v| env(v).is_some()),
+        // Vision is opt-in (no id heuristic exists for an arbitrary target);
+        // same truthy semantics as WIKILENS_DEBUG.
+        vision: env("WIKILENS_DEFAULT_VISION").is_some_and(|v| crate::debug::is_truthy(&v)),
+    }
+}
+
+/// The impure half: real env reads (`env_nonempty` trims and drops blanks).
+fn sense_default_mode() -> DefaultModeInfo {
+    default_mode_info(env_nonempty)
+}
+
+/// One row per registry provider, in registry order. Presence only — reading
+/// `has_key` never decrypts (keys.rs).
+pub(crate) fn key_status(keys: &impl KeyStore) -> Vec<KeyStatus> {
+    providers::PROVIDERS
+        .iter()
+        .map(|p| KeyStatus {
+            id: p.id.to_string(),
+            name: p.name.to_string(),
+            has_key: keys.has_key(p.id),
+        })
+        .collect()
+}
+
+fn set_key(keys: &impl KeyStore, provider_id: &str, key: &str) -> Result<Vec<KeyStatus>, String> {
+    let provider = providers::find_provider(provider_id)
+        .ok_or_else(|| String::from(AppError::UnknownProvider(provider_id.to_string())))?;
+    // Trim here: a pasted trailing newline would poison the auth header at
+    // ask time. Only the trimmed key is stored.
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("Paste an API key first.".to_string());
+    }
+    keys.set(provider.id, key).map_err(String::from)?;
+    Ok(key_status(keys))
+}
+
+fn remove_key(keys: &impl KeyStore, provider_id: &str) -> Result<Vec<KeyStatus>, String> {
+    let provider = providers::find_provider(provider_id)
+        .ok_or_else(|| String::from(AppError::UnknownProvider(provider_id.to_string())))?;
+    // An absent key is the trait's documented no-op leg — a double-clicked
+    // Remove stays quiet.
+    keys.remove(provider.id).map_err(String::from)?;
+    Ok(key_status(keys))
 }
 
 /// List the supported games: built-ins in curated order, then user-added
@@ -245,6 +330,7 @@ pub fn list_providers() -> Vec<ProviderInfo> {
 #[tauri::command]
 pub async fn list_models(
     state: State<'_, AppState>,
+    keys: State<'_, DpapiKeyStore>,
     provider_id: String,
 ) -> Result<ModelList, String> {
     let provider = providers::find_provider(&provider_id)
@@ -265,12 +351,11 @@ pub async fn list_models(
         });
     }
 
-    let api_key = provider.api_key();
+    let api_key = keys.get(provider.id);
     let live = if provider.models_need_key && api_key.is_none() {
         // The endpoint would 401 — skip the doomed round trip and degrade.
         Err(AppError::MissingApiKey {
             provider: provider.name,
-            env_var: provider.api_key_env,
         })
     } else {
         // Keyless endpoints (OpenRouter) are always called unauthenticated —
@@ -331,7 +416,7 @@ pub fn toggle_debug_window(app: AppHandle) {
 /// placeholder, capture chip title).
 #[tauri::command]
 pub fn get_settings(settings: State<'_, SettingsStore>) -> SettingsInfo {
-    settings_info(&settings)
+    settings_info(&settings, sense_default_mode())
 }
 
 /// Change one shortcut: parse, refuse the other role's combo, prove the OS
@@ -347,7 +432,7 @@ pub async fn set_hotkey(
     let new = hotkey::parse_accelerator(&accelerator).map_err(String::from)?;
     let current = settings.shortcut(role);
     if new == current {
-        return Ok(settings_info(&settings));
+        return Ok(settings_info(&settings, sense_default_mode()));
     }
     let other = match role {
         HotkeyRole::Summon => HotkeyRole::Capture,
@@ -379,7 +464,7 @@ pub async fn set_hotkey(
         }
     }
     crate::tray::update_summon_tooltip(&app);
-    Ok(settings_info(&settings))
+    Ok(settings_info(&settings, sense_default_mode()))
 }
 
 /// Drop the OS hotkey registrations while the settings recorder is armed —
@@ -408,6 +493,46 @@ pub async fn resume_hotkeys(
         hotkey::register_all(&app).map_err(String::from)?;
     }
     Ok(())
+}
+
+/// Key presence per provider, for the settings panel's API-keys section.
+#[tauri::command]
+pub fn list_key_status(keys: State<'_, DpapiKeyStore>) -> Vec<KeyStatus> {
+    key_status(&*keys)
+}
+
+/// Store (or replace) a provider's API key — **the single place key material
+/// crosses IPC, and only webview → Rust**. No response, event, or error ever
+/// carries it back (pinned in `config_guardrails.rs`). Resolves with fresh
+/// statuses so the panel updates in one round trip.
+#[tauri::command]
+pub fn set_api_key(
+    keys: State<'_, DpapiKeyStore>,
+    provider_id: String,
+    key: String,
+) -> Result<Vec<KeyStatus>, String> {
+    set_key(&*keys, &provider_id, &key)
+}
+
+/// Drop a provider's stored key. The only action offered on a set key — keys
+/// are never displayed back in any form.
+#[tauri::command]
+pub fn remove_api_key(
+    keys: State<'_, DpapiKeyStore>,
+    provider_id: String,
+) -> Result<Vec<KeyStatus>, String> {
+    remove_key(&*keys, &provider_id)
+}
+
+/// Persist the model-source choice. Deliberately inert this phase: the footer
+/// chip and ask path ignore it until phase 3 of the plan wires Default mode
+/// through (vault/2026-07-26_default-mode-and-byo-api-keys.md). Writable gate
+/// + persist-then-commit live in `SettingsStore::set_mode` (the `set_hotkey`
+/// shape).
+#[tauri::command]
+pub fn set_mode(settings: State<'_, SettingsStore>, mode: Mode) -> Result<SettingsInfo, String> {
+    settings.set_mode(mode).map_err(String::from)?;
+    Ok(settings_info(&settings, sense_default_mode()))
 }
 
 /// Start a region capture: hide the panel, freeze the monitor under the cursor,
@@ -473,7 +598,7 @@ pub const ASK_CANCELLED: &str = "wikilens::ask-cancelled";
 /// `image_id` optionally names an attached screenshot (from `finish_capture`);
 /// a mismatch with the stored attachment fails fast as "capture it again". The
 /// attachment is cleared only after the model actually answers.
-// The arg list is the IPC contract: three managed handles + one arg per
+// The arg list is the IPC contract: four managed handles + one arg per
 // frontend payload field. Bundling them into a struct would only move the count.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -481,6 +606,7 @@ pub async fn ask(
     app: AppHandle,
     state: State<'_, AppState>,
     store: State<'_, UserWikiStore>,
+    keys: State<'_, DpapiKeyStore>,
     game_id: String,
     provider_id: String,
     model: String,
@@ -508,6 +634,7 @@ pub async fn ask(
         &app,
         &state,
         &store,
+        &*keys,
         &game_id,
         &provider_id,
         &model,
@@ -576,6 +703,7 @@ async fn run_ask(
     app: &AppHandle,
     state: &AppState,
     store: &UserWikiStore,
+    keys: &dyn KeyStore,
     game_id: &str,
     provider_id: &str,
     model: &str,
@@ -609,15 +737,20 @@ async fn run_ask(
     };
     let provider = providers::find_provider(provider_id)
         .ok_or_else(|| AppError::UnknownProvider(provider_id.to_string()))?;
-    let api_key = provider.api_key().ok_or(AppError::MissingApiKey {
-        provider: provider.name,
-        env_var: provider.api_key_env,
-    })?;
+    // Store-only key resolution (no env fallback). Known quirk, accepted by
+    // the storage ADR: a ghost blob from another machine reads as "Key set"
+    // in the panel (`has_key` never decrypts) but as missing here — re-pasting
+    // the key recovers.
+    let api_key = keys
+        .get(provider.id)
+        .ok_or(AppError::MissingApiKey {
+            provider: provider.name,
+        })?;
     let model = effective_model(model, provider.model());
     // The query rewrite is a lightweight utility task that wants a *fast,
     // non-reasoning* model. A whole provider can be reasoning-only (DeepSeek v4
     // flash and pro both reason), so allow pinning the rewrite to a model on any
-    // configured provider: `WIKILENS_REWRITE_PROVIDER` (+ its key) and
+    // provider with a stored key: `WIKILENS_REWRITE_PROVIDER` and
     // `WIKILENS_REWRITE_MODEL`. Both optional; each falls back to the answer
     // provider/model — a deliberate default: the player's question already goes
     // to that provider for the answer, so the rewrite adds no new destination
@@ -627,7 +760,7 @@ async fn run_ask(
     let rewrite_model = env_nonempty("WIKILENS_REWRITE_MODEL").unwrap_or_else(|| model.clone());
     let (rewrite_provider, rewrite_key) = env_nonempty("WIKILENS_REWRITE_PROVIDER")
         .and_then(|pid| providers::find_provider(&pid))
-        .and_then(|p| p.api_key().map(|k| (p, k)))
+        .and_then(|p| keys.get(p.id).map(|k| (p, k)))
         .unwrap_or_else(|| (provider, api_key.clone()));
     // A known-Reasoning rewrite model is a call we *know* fails: its reply
     // lands in `reasoning_content`, the parser reads `content` → zero
@@ -1232,6 +1365,100 @@ mod tests {
     use super::*;
 
     use std::time::{Duration, Instant};
+
+    use crate::keys::InMemoryKeyStore;
+
+    #[test]
+    fn key_status_lists_every_provider_in_registry_order() {
+        let keys = InMemoryKeyStore::default();
+        let rows = key_status(&keys);
+        let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["anthropic", "deepseek", "openrouter"]);
+        assert!(rows.iter().all(|r| !r.has_key));
+
+        keys.set("deepseek", "sk-ds").unwrap();
+        let rows = key_status(&keys);
+        assert!(rows.iter().all(|r| r.has_key == (r.id == "deepseek")));
+    }
+
+    #[test]
+    fn set_key_trims_stores_and_reports_fresh_statuses() {
+        let keys = InMemoryKeyStore::default();
+        let rows = set_key(&keys, "anthropic", "  sk-ant-1\n").unwrap();
+        assert_eq!(keys.get("anthropic").as_deref(), Some("sk-ant-1"));
+        assert!(rows.iter().any(|r| r.id == "anthropic" && r.has_key));
+    }
+
+    #[test]
+    fn set_key_rejects_unknown_provider() {
+        let keys = InMemoryKeyStore::default();
+        let err = set_key(&keys, "netscape", "sk-1").unwrap_err();
+        assert!(err.contains("Unknown provider"), "was: {err}");
+    }
+
+    #[test]
+    fn set_key_rejects_a_blank_key_with_friendly_copy() {
+        let keys = InMemoryKeyStore::default();
+        assert_eq!(
+            set_key(&keys, "anthropic", "   ").unwrap_err(),
+            "Paste an API key first."
+        );
+        assert!(!keys.has_key("anthropic"));
+    }
+
+    #[test]
+    fn remove_key_clears_and_reports_fresh_statuses() {
+        let keys = InMemoryKeyStore::default();
+        keys.set("anthropic", "sk-1").unwrap();
+        let rows = remove_key(&keys, "anthropic").unwrap();
+        assert!(rows.iter().all(|r| !r.has_key));
+        // Removing an absent key is the trait's no-op leg — still Ok.
+        assert!(remove_key(&keys, "anthropic").is_ok());
+    }
+
+    #[test]
+    fn remove_key_rejects_unknown_provider() {
+        let keys = InMemoryKeyStore::default();
+        let err = remove_key(&keys, "netscape").unwrap_err();
+        assert!(err.contains("Unknown provider"), "was: {err}");
+    }
+
+    #[test]
+    fn default_mode_requires_all_four_vars_and_vision_is_opt_in() {
+        let full = |name: &str| match name {
+            "WIKILENS_DEFAULT_API_KEY" => Some("k".to_string()),
+            "WIKILENS_DEFAULT_API_PROVIDER" => Some("anthropic".to_string()),
+            "WIKILENS_DEFAULT_API_URL" => Some("https://proxy.example/v1".to_string()),
+            "WIKILENS_DEFAULT_ANSWER_MODEL" => Some("some-model".to_string()),
+            _ => None,
+        };
+        let info = default_mode_info(full);
+        assert!(info.configured);
+        assert!(!info.vision, "vision defaults off");
+
+        // Any one required var missing → unconfigured.
+        for missing in [
+            "WIKILENS_DEFAULT_API_KEY",
+            "WIKILENS_DEFAULT_API_PROVIDER",
+            "WIKILENS_DEFAULT_API_URL",
+            "WIKILENS_DEFAULT_ANSWER_MODEL",
+        ] {
+            let info = default_mode_info(|name| if name == missing { None } else { full(name) });
+            assert!(!info.configured, "should be unconfigured without {missing}");
+        }
+
+        // Vision is opt-in with the WIKILENS_DEBUG truthy semantics.
+        for (value, expected) in [("1", true), ("true", true), ("0", false), ("off", false)] {
+            let info = default_mode_info(|name| {
+                if name == "WIKILENS_DEFAULT_VISION" {
+                    Some(value.to_string())
+                } else {
+                    full(name)
+                }
+            });
+            assert_eq!(info.vision, expected, "WIKILENS_DEFAULT_VISION={value}");
+        }
+    }
 
     #[tokio::test]
     async fn race_cancel_pre_cancelled_token_beats_a_pending_future() {

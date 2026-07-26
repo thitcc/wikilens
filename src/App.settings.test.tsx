@@ -12,6 +12,7 @@ import type { SettingsInfo } from "./types";
 
 test("the placeholder and capture title render the configured combos", async () => {
   const custom: SettingsInfo = {
+    ...SETTINGS,
     hotkeys: {
       summon: {
         ...SETTINGS.hotkeys.summon,
@@ -49,17 +50,18 @@ test("a failed get_settings falls back to the shipped defaults", async () => {
   );
   expect(screen.getByTitle("Capture a screenshot (Ctrl+Shift+C)")).toBeTruthy();
   // No data to edit — the gear is disabled, not broken.
-  const gear = screen.getByRole("button", { name: "Shortcuts" });
+  const gear = screen.getByRole("button", { name: "Settings" });
   expect(gear.hasAttribute("disabled")).toBe(true);
 });
 
-test("the header gear opens the Shortcuts popover", async () => {
+test("the header gear opens the Settings panel", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
   await renderApp();
 
-  await user.click(screen.getByRole("button", { name: "Shortcuts" }));
-  expect(screen.getByRole("dialog", { name: "Shortcuts" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
+  await screen.findByLabelText("Anthropic API key");
 
   // Esc layering holds for the settings menu too.
   await user.keyboard("{Escape}");
@@ -72,8 +74,9 @@ test("the settings menu joins the one-open-menu rule", async () => {
   const user = userEvent.setup();
   await renderApp();
 
-  await user.click(screen.getByRole("button", { name: "Shortcuts" }));
-  expect(screen.getByRole("dialog", { name: "Shortcuts" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
+  await screen.findByLabelText("Anthropic API key");
 
   // Clicking the game chip: outside-pointerdown closes settings, the chip
   // click opens the game menu — never both.

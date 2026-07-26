@@ -37,11 +37,13 @@ pub struct Hotkeys {
 }
 
 /// Which model-source mode the player chose in the config panel — `"default"`
-/// / `"custom"` on disk (vault/2026-07-26_default-mode-and-byo-api-keys.md).
-/// No serde derives yet: phase 2 adds them when `SettingsInfo` grows the
-/// field; until then the store writes the strings via `as_str`, pinned by
-/// `set_mode_persists_and_reloads` so the two encodings can't drift.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// / `"custom"` on disk and on the wire
+/// (vault/2026-07-26_default-mode-and-byo-api-keys.md). The serde form (the
+/// `set_mode` command / `SettingsInfo`) and the `as_str` file form are pinned
+/// against each other by `mode_serde_matches_the_stored_wire_strings` and
+/// `set_mode_persists_and_reloads`, so the two encodings can't drift.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Mode {
     Default,
     Custom,
@@ -198,9 +200,7 @@ impl SettingsStore {
     }
 
     /// The persisted mode choice; `None` = never chosen (phase 3 auto-senses
-    /// on first launch). Consumed by phase 2's `get_settings`; the allow dies
-    /// with it.
-    #[allow(dead_code)]
+    /// on first launch).
     pub fn mode(&self) -> Option<Mode> {
         self.read().mode
     }
@@ -252,8 +252,6 @@ impl SettingsStore {
 
     /// Store the mode choice: persist-then-commit, the `set_hotkey` shape
     /// (no conflict check — any mode is valid against any other setting).
-    /// Consumed by phase 2's `set_mode` command; the allow dies with it.
-    #[allow(dead_code)]
     pub fn set_mode(&self, mode: Mode) -> Result<(), AppError> {
         self.writable()?;
         let mut guard = self.write();
@@ -384,6 +382,19 @@ mod tests {
         // on `Mode` can't drift from `as_str`.
         let raw = fs::read_to_string(&path).unwrap();
         assert!(raw.contains("\"mode\": \"custom\""), "raw file was: {raw}");
+    }
+
+    /// The IPC encoding (serde derive) must match the file encoding (`as_str`)
+    /// byte for byte — `set_mode_persists_and_reloads` pins the file half.
+    #[test]
+    fn mode_serde_matches_the_stored_wire_strings() {
+        assert_eq!(serde_json::to_value(Mode::Default).unwrap(), "default");
+        assert_eq!(serde_json::to_value(Mode::Custom).unwrap(), "custom");
+        assert_eq!(
+            serde_json::from_value::<Mode>("custom".into()).unwrap(),
+            Mode::Custom
+        );
+        assert!(serde_json::from_value::<Mode>("banana".into()).is_err());
     }
 
     #[test]

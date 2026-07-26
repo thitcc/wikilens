@@ -31,44 +31,24 @@ permissions and never sees your API key.
 ## Setup: API keys
 
 WikiLens supports three LLM providers — choose one from the provider dropdown in
-the panel. Keys are read **in the Rust process only**; they are never sent to the
-frontend or logged. You only need a key for the provider you actually use.
+the panel. Keys are pasted **into the app**: open the header gear (**Settings**)
+→ **API keys** and paste the key for the provider(s) you use. Stored keys are
+encrypted for your Windows user (DPAPI) in the app-data dir, are read **in the
+Rust process only**, and are never displayed back in any form — the only action
+on a set key is **Remove**. Keys are read at ask time, so adding one needs no
+restart. If the selected provider has no key yet, the app answers with
+*"No API key for `<provider>` yet — add one in Settings → API keys."*
 
-| Provider | Env var | Default model | Model override var |
-|---|---|---|---|
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | `WIKILENS_ANTHROPIC_MODEL` |
-| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-v4-flash` | `WIKILENS_DEEPSEEK_MODEL` |
-| OpenRouter | `OPENROUTER_API_KEY` | `openai/gpt-4o-mini` | `WIKILENS_OPENROUTER_MODEL` |
+| Provider | Default model | Model override var |
+|---|---|---|
+| Anthropic | `claude-haiku-4-5-20251001` | `WIKILENS_ANTHROPIC_MODEL` |
+| DeepSeek | `deepseek-v4-flash` | `WIKILENS_DEEPSEEK_MODEL` |
+| OpenRouter | `openai/gpt-4o-mini` | `WIKILENS_OPENROUTER_MODEL` |
 
-**Option A — `.env` file (easiest for development):** copy the template and fill
-in the keys you have.
-
-```bash
-cp .env.example .env
-# then edit .env and paste your key(s)
-```
-
-`.env` is gitignored and loaded on startup; it works for `npm run tauri dev`.
-
-**Option B — OS environment variables** (required for the *packaged* app, whose
-working directory is unpredictable, so `.env` may not be found):
-
-```powershell
-# PowerShell (current session)
-$env:DEEPSEEK_API_KEY = "sk-..."
-# Or persist for your user account (new terminals only)
-setx ANTHROPIC_API_KEY "sk-ant-..."
-```
-
-```bash
-# bash / Git Bash
-export OPENROUTER_API_KEY="sk-or-..."
-```
-
-OS environment variables **take precedence** over `.env` values. Keys are read when
-you ask a question; if you set one after launching, restart WikiLens. If the
-selected provider's key is missing, the app shows a clear "set `<PROVIDER>_API_KEY`"
-message instead of answering.
+> **Migrating from the env-var era:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` /
+> `OPENROUTER_API_KEY` are no longer read. Paste those keys into
+> **Settings → API keys** once, then remove them from your `.env` — it now only
+> serves the model overrides and tuning vars below.
 
 **Changing the model:** each provider ships a sensible default; override it without
 touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matters
@@ -150,10 +130,11 @@ All changes land through a pull request — no direct commits to `main`:
 - When shown, the panel takes focus so you can type immediately.
 - **Enter** sends your question; **Shift+Enter** adds a newline.
 - **Esc** (or Ctrl+` again) hides the panel; focus returns to the game.
-- **Changing the shortcuts:** the header's gear opens **Shortcuts** — press
-  **Change** on a row, then press the new combo (Esc cancels). Both the summon
-  and capture shortcuts are configurable; choices persist in `settings.json`
-  in the app-data dir, and **Reset** restores a default.
+- **Changing the shortcuts:** the header's gear opens **Settings** — in its
+  Shortcuts section, press **Change** on a row, then press the new combo (Esc
+  cancels). Both the summon and capture shortcuts are configurable; choices
+  persist in `settings.json` in the app-data dir, and **Reset** restores a
+  default.
 - The app starts hidden and lives in the **system tray**. It only quits via the
   tray's **Quit** item — closing the window just hides it.
 
@@ -181,19 +162,20 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 > checklist (hotkey, tray, DPI, transparency, Esc layering, packaged build) is
 > [`docs/smoke-checklist.md`](docs/smoke-checklist.md).
 
-1. Set a key: `cp .env.example .env` and fill in one provider's key (or export it,
-   e.g. `$env:ANTHROPIC_API_KEY = "sk-ant-..."`).
-2. From the repo root: `npm install` then `npm run tauri dev`.
-3. Wait for the tray icon to appear (the window starts hidden), then press
+1. From the repo root: `npm install` then `npm run tauri dev`.
+2. Wait for the tray icon to appear (the window starts hidden), then press
    **Ctrl+`** (the key left of 1).
-4. The panel slides in from the right and focuses the input.
-5. Choose your **provider** (the one you set a key for) and a **game**, then ask a
+3. The panel slides in from the right and focuses the input.
+4. Add a key: the header gear (**Settings**) → **API keys** — paste one
+   provider's key and press **Save** (it shows as "Key set"; it won't be
+   displayed again).
+5. Choose your **provider** (the one you keyed) and a **game**, then ask a
    question — e.g. **Conan Exiles** → *"how do I make steel bars?"*, or **Core
    Keeper** → *"best way to get wood"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer
    to **stream in** as markdown, and **2–4 source links** to appear beneath it.
    Clicking a source opens the wiki page in your browser.
-7. Try the other providers (whichever keys you set) — the same question should
+7. Try the other providers (whichever keys you added) — the same question should
    stream an answer from each. Press **Esc** to hide the panel.
 
 > **Stardew Valley** search works best with short keyword queries (e.g. *"cauliflower"*
@@ -217,8 +199,10 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 
 ## Security & privacy
 
-- Your provider API keys stay in the Rust process; they are never exposed to the
-  webview or written to logs.
+- Your provider API keys are stored encrypted for your Windows user (DPAPI, in
+  `keys.json` in the app-data dir — another account or machine can't read them)
+  and stay in the Rust process; a pasted key crosses to Rust once and is never
+  sent back to the webview, displayed, or written to logs.
 - The webview is locked down by CSP to talk only to the local Tauri IPC — it has
   no direct network, HTTP, or filesystem access. Every outbound request (wiki +
   the selected LLM provider) is made from Rust.

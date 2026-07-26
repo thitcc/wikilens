@@ -97,11 +97,32 @@ export interface HotkeyInfo {
   isDefault: boolean;
 }
 
+/** The model-source choice ("default" | "custom"), mirroring Rust `Mode`. */
+export type Mode = "default" | "custom";
+
+/** One provider's key presence, from `list_key_status` / `set_api_key` /
+ * `remove_api_key`. Presence only — key material never crosses back toward
+ * the webview in any form. */
+export interface KeyStatus {
+  id: string;
+  name: string;
+  hasKey: boolean;
+}
+
 /** Extensible settings envelope — future config-panel tenants join here. */
 export interface SettingsInfo {
   hotkeys: {
     summon: HotkeyInfo;
     capture: HotkeyInfo;
+  };
+  /** Persisted model-source choice; `null` = never chosen (phase 3
+   * auto-senses). Inert in phase 2: the footer chip and ask flow ignore it. */
+  mode: Mode | null;
+  /** Whether the packaged Default source is configured in this environment
+   * (`WIKILENS_DEFAULT_*`), and whether it reads images. */
+  defaultMode: {
+    configured: boolean;
+    vision: boolean;
   };
 }
 

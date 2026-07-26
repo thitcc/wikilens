@@ -26,7 +26,6 @@ pub fn mock_provider(kind: ProviderKind, endpoint: &str, models_endpoint: &str) 
         name: "MockProv",
         kind,
         endpoint: leak(endpoint.to_string()),
-        api_key_env: "WIKILENS_TEST_MOCK_KEY",
         model_env: "WIKILENS_TEST_MOCK_MODEL",
         default_model: "mock-model",
         models_endpoint: leak(models_endpoint.to_string()),

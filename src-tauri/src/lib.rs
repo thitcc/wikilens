@@ -96,8 +96,9 @@ pub fn run() {
             // User-added wikis, persisted in the app-data dir.
             app.manage(UserWikiStore::load(data_dir.join("wikis.json")));
             // Panel-entered API keys, DPAPI-encrypted per Windows user
-            // (keys.rs). Inert until phase 2's IPC commands consume it
-            // (vault/2026-07-26_default-mode-and-byo-api-keys.md).
+            // (keys.rs) — read by the key commands and at ask/model-list
+            // time. Store-only: the vendor env keys are gone
+            // (vault/2026-07-26_default-mode-and-byo-api-keys.md, phase 2).
             app.manage(keys::DpapiKeyStore::load(data_dir.join("keys.json")));
             Ok(())
         })
@@ -130,6 +131,10 @@ pub fn run() {
             commands::set_hotkey,
             commands::suspend_hotkeys,
             commands::resume_hotkeys,
+            commands::list_key_status,
+            commands::set_api_key,
+            commands::remove_api_key,
+            commands::set_mode,
             commands::begin_capture,
             commands::finish_capture,
             commands::cancel_capture,
