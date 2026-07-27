@@ -77,8 +77,7 @@ const VAR_REWRITE_MODEL: &str = "WIKILENS_DEFAULT_REWRITE_MODEL";
 /// selects the wire protocol (`anthropic` | `openai`, case-insensitive —
 /// never a vendor id, so a neutral proxy is expressible);
 /// `WIKILENS_DEFAULT_REWRITE_MODEL` is optional and falls back to the answer
-/// model. The generic `WIKILENS_REWRITE_*` overrides are registry-coupled and
-/// deliberately NOT read here (Custom mode only).
+/// model.
 pub fn resolve_default_targets(
     env: impl Fn(&str) -> Option<String>,
 ) -> Result<AskTargets, String> {
@@ -146,6 +145,41 @@ pub fn resolve_default_targets(
 /// first-launch auto-sense in `lib.rs` — the three can't disagree.
 pub(crate) fn sense_default_targets() -> Result<AskTargets, String> {
     resolve_default_targets(crate::providers::env_nonempty)
+}
+
+/// Env vars WikiLens once read and no longer does — the vendor key vars died
+/// with the DPAPI store, the rewrite pins with "the picked model drives the
+/// rewrite". One stderr line per stale var at startup (the returning-dev
+/// safety net), naming the var and today's path; values never echoed. Note:
+/// the `--ignored` live test suites still read the key vars deliberately —
+/// a dev who keeps them exported just sees this nudge each launch.
+pub fn legacy_env_notices(env: impl Fn(&str) -> Option<String>) -> Vec<String> {
+    let mut notices = Vec::new();
+    for var in ["ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY"] {
+        if env(var).is_some() {
+            notices.push(format!(
+                "wikilens: {var} is set but WikiLens no longer reads it — paste \
+                 the key in Settings → API keys instead."
+            ));
+        }
+    }
+    for var in ["WIKILENS_REWRITE_MODEL", "WIKILENS_REWRITE_PROVIDER"] {
+        if env(var).is_some() {
+            notices.push(format!(
+                "wikilens: {var} is set but WikiLens no longer reads it — the \
+                 picked model drives the rewrite (Default mode: \
+                 WIKILENS_DEFAULT_REWRITE_MODEL)."
+            ));
+        }
+    }
+    notices
+}
+
+/// Print the nudges (called once at startup, right after dotenv).
+pub(crate) fn warn_legacy_env() {
+    for notice in legacy_env_notices(crate::providers::env_nonempty) {
+        eprintln!("{notice}");
+    }
 }
 
 #[cfg(test)]
@@ -278,6 +312,36 @@ mod tests {
         .err()
         .expect("three missing vars");
         assert!(!err.contains(SENTINEL), "echoed a value: {err}");
+    }
+
+    #[test]
+    fn legacy_notices_name_each_stale_var_and_never_echo_values() {
+        const SENTINEL: &str = "WIKILENS-SENTINEL-NOT-A-REAL-VALUE";
+        // Clean env → silence.
+        assert!(legacy_env_notices(|_| None).is_empty());
+
+        // Each dead var earns exactly one notice naming it; values stay out.
+        for var in [
+            "ANTHROPIC_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "OPENROUTER_API_KEY",
+            "WIKILENS_REWRITE_MODEL",
+            "WIKILENS_REWRITE_PROVIDER",
+        ] {
+            let notices =
+                legacy_env_notices(|n| (n == var).then(|| SENTINEL.to_string()));
+            assert_eq!(notices.len(), 1, "{var}");
+            assert!(notices[0].contains(var), "{var}: {}", notices[0]);
+            assert!(!notices[0].contains(SENTINEL), "echoed a value: {}", notices[0]);
+        }
+
+        // Live vars never trigger it.
+        for var in ["WIKILENS_DEFAULT_API_KEY", "WIKILENS_QUERY_REWRITE"] {
+            assert!(
+                legacy_env_notices(|n| (n == var).then(|| "1".to_string())).is_empty(),
+                "{var} is not legacy"
+            );
+        }
     }
 
     #[test]

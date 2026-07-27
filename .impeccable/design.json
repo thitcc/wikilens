@@ -113,7 +113,7 @@
       "kind": "custom",
       "refersTo": "panel",
       "description": "The failure voice: Rose Signal ink on Rose Wash with a Rose Line border — the only non-blue color in the system.",
-      "html": "<div class=\"ds-bed-block\"><div class=\"ds-error\">DEEPSEEK_API_KEY is not set. Add it to .env or your OS environment.</div></div>",
+      "html": "<div class=\"ds-bed-block\"><div class=\"ds-error\">No API key for DeepSeek yet — add one in Settings → API keys.</div></div>",
       "css": ".ds-bed-block { padding: 12px; background: #16161d; border-radius: 8px; } .ds-error { padding: 10px 12px; color: #ffb3bd; background: rgba(120,30,40,0.35); border: 1px solid rgba(255,120,140,0.25); border-radius: 10px; font: 400 14px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; white-space: pre-wrap; }"
     }
   ],

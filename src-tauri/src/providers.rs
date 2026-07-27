@@ -136,7 +136,7 @@ pub fn find_provider(id: &str) -> Option<&'static Provider> {
 }
 
 /// Read a trimmed, non-empty env var. `None` if unset or blank/whitespace-only.
-/// `pub(crate)` for `target::sense_default_targets` — one reader, not three.
+/// `pub(crate)`: the one env reader — `target.rs` and `commands.rs` reuse it.
 pub(crate) fn env_nonempty(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()

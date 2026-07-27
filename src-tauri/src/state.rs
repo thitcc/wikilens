@@ -93,11 +93,11 @@ impl AppState {
             eprintln!(
                 "wikilens: query rewrite disabled for the rest of this session — \
                  {REWRITE_BREAKER_LIMIT} consecutive attempts produced no usable candidates. \
-                 Likely causes: a reasoning-only rewrite model (its reply lands outside the \
-                 parsed content), a misconfigured WIKILENS_REWRITE_MODEL, or an unreachable \
-                 provider host. Fix: point WIKILENS_REWRITE_MODEL (and, if needed, \
-                 WIKILENS_REWRITE_PROVIDER) at a fast non-reasoning model, then restart \
-                 WikiLens to re-enable rewrites. Asks still work — they just skip the rewrite."
+                 Likely causes: a reasoning model doing the rewrite (its reply lands outside \
+                 the parsed content) or an unreachable provider host. Fix: use a fast \
+                 non-reasoning model (Custom mode: the footer menu pick drives the rewrite; \
+                 Default mode: set WIKILENS_DEFAULT_REWRITE_MODEL), then restart WikiLens \
+                 to re-enable rewrites. Asks still work — they just skip the rewrite."
             );
         }
     }

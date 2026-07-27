@@ -63,7 +63,7 @@ wikilens/
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
-        ├── target.rs             # LlmTarget/AskTargets: the resolved-target seam — Custom (registry + KeyStore) vs Default (WIKILENS_DEFAULT_*) resolution
+        ├── target.rs             # LlmTarget/AskTargets: the resolved-target seam — Custom (registry + KeyStore) vs Default (WIKILENS_DEFAULT_*) resolution + the legacy-env startup nudge
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE over LlmTargets
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
@@ -118,11 +118,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   error string, or debug payload may contain it; pinned in
   `config_guardrails.rs`). Key *presence* booleans may cross
   (`KeyStatus.hasKey`). Never logged, never displayed back — the only action
-  on a set key is Remove.
+  on a set key is Remove. A startup stderr notice (`target::warn_legacy_env`)
+  names any legacy env var still set.
 - **Model precedence** (Custom mode): an explicit UI pick (footer chip menu, stored
   per provider in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
   `WIKILENS_<PROVIDER>_MODEL` env override (e.g. `WIKILENS_DEEPSEEK_MODEL`); else
-  the built-in `default_model`. `ask` takes the model id; blank falls back to the
+  the built-in `default_model`. The picked model drives **both** the answer and
+  the pre-search rewrite. `ask` takes the model id; blank falls back to the
   provider default, and ids are deliberately **not** validated Rust-side — the
   provider is the authoritative validator (a stale id surfaces in the error box).
   In **Default mode** (Settings → Model source) this chain is bypassed: the
@@ -211,8 +213,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   panel"; closing/hiding never loses history, and the hidden webview keeps
   recording asks run before the first show. The table stays byte-identical — the window is additive.
   Independent of
-  `WIKILENS_TRACE_RETRIEVAL`. The five
-  retrieval-tuning env vars (rewrite toggle/model/provider, title index, trace)
+  `WIKILENS_TRACE_RETRIEVAL`. The three
+  retrieval-tuning env vars (rewrite toggle, title index, trace)
   are documented in README's "Retrieval tuning (advanced)" table — that table is
   the single source; don't re-list them here.
 - **Delivery: every change lands via PR** (ADR:

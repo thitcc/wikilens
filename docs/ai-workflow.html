@@ -401,10 +401,10 @@
     <div class="callout warn">
       <span class="tag">The rewrite needs a fast, non-reasoning model</span>
       <p>A <em>reasoning</em> model (e.g. DeepSeek v4) "thinks out loud" into a <code>reasoning_content</code>
-      field, leaves <code>content</code> empty, and takes ~13s — useless for this quick task. Pin the rewrite
-      to a fast model on any configured provider with <code>WIKILENS_REWRITE_PROVIDER</code> +
-      <code>WIKILENS_REWRITE_MODEL</code> (e.g. answer with DeepSeek, rewrite with Claude Haiku); both fall
-      back to the answer model <span class="cite">commands.rs</span>.</p>
+      field, leaves <code>content</code> empty, and takes ~13s — useless for this quick task. The picked
+      model drives the rewrite, so pick a fast non-reasoning one in the footer menu; in Default mode set
+      <code>WIKILENS_DEFAULT_REWRITE_MODEL</code> (falls back to the answer model)
+      <span class="cite">commands.rs</span>.</p>
     </div>
     <h3>Deterministic net (only if the merge is empty)</h3>
     <p>If raw + rewrite both come up empty, cheap fallbacks fire in turn, each only while still empty
@@ -517,7 +517,7 @@ Player question: best winter crops?</code></pre>
       <div class="col">
         <h4><span class="dot anthropic"></span>Anthropic native <span class="cite">llm.rs:130</span></h4>
         <pre><code><span class="c-com">POST https://api.anthropic.com/v1/messages</span>
-<span class="c-key">x-api-key</span>: &lt;ANTHROPIC_API_KEY&gt;
+<span class="c-key">x-api-key</span>: &lt;stored key&gt;
 <span class="c-key">anthropic-version</span>: 2023-06-01
 
 <span class="c-punc">{</span>
@@ -617,7 +617,7 @@ setAnswer(result.answer);</code></pre>
           <tr><td>Per-page fetch timeout</td><td class="val">12 s</td><td><code>PARSE_TIMEOUT</code> · fetch.rs:26</td></tr>
           <tr><td>Model output cap</td><td class="val">1,024 tok</td><td><code>MAX_TOKENS</code> · llm.rs:19</td></tr>
           <tr><td>Temperature</td><td class="val">unset</td><td>provider default (llm.rs:139,167)</td></tr>
-          <tr><td>Query rewrite</td><td class="val">eager + merge</td><td>fast model via <code>WIKILENS_REWRITE_PROVIDER/MODEL</code> · commands.rs</td></tr>
+          <tr><td>Query rewrite</td><td class="val">eager + merge</td><td>the answer model (Default mode: <code>WIKILENS_DEFAULT_REWRITE_MODEL</code>) · commands.rs</td></tr>
           <tr><td>Empty-merge fallbacks</td><td class="val">3</td><td>suggestion · keyword · title-index · commands.rs</td></tr>
           <tr><td>Concurrent asks</td><td class="val">1</td><td><code>AskGuard</code> · commands.rs:320</td></tr>
           <tr><td>Page cache</td><td class="val">none</td><td>every ask is a live round-trip</td></tr>

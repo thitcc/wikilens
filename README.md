@@ -48,7 +48,8 @@ restart. If the selected provider has no key yet, the app answers with
 > **Migrating from the env-var era:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` /
 > `OPENROUTER_API_KEY` are no longer read. Paste those keys into
 > **Settings → API keys** once, then remove them from your `.env` — it now only
-> serves the model overrides and tuning vars below.
+> serves the model overrides and tuning vars below. WikiLens prints a one-line
+> startup reminder if any legacy variable is still set.
 
 **Changing the model:** each provider ships a sensible default; override it without
 touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matters
@@ -87,18 +88,17 @@ these variables are escape hatches for when you want to change or trace it.
 | Variable | Default | Effect |
 |---|---|---|
 | `WIKILENS_QUERY_REWRITE` | on | Set to `0`/`false`/`off`/`no` to disable the LLM query rewrite entirely. |
-| `WIKILENS_REWRITE_MODEL` | the answer model | Pin the rewrite to a different model id — pick a fast, non-reasoning one. |
-| `WIKILENS_REWRITE_PROVIDER` | the answer provider | Pin the rewrite to another configured provider (its API key must be set; an unknown or keyless id silently falls back). **Note: your question text is then sent to that second vendor as well.** |
 | `WIKILENS_TITLE_INDEX` | on | Set to `0`/`false`/`off`/`no` to disable the last-resort fuzzy match of short queries against the game's page titles (it only fires when every search returned nothing). |
 | `WIKILENS_TRACE_RETRIEVAL` | off | Set (to anything) to log each retrieval round as a JSON line on stderr for offline evaluation — public wiki data only, never keys or answer text. |
 
-Two behaviors are automatic, with no variable to set: if the effective rewrite
-model is known to be a *reasoning* model (those think out loud and return unusable
-rewrites), the rewrite is skipped at zero cost — pinning `WIKILENS_REWRITE_MODEL` /
-`WIKILENS_REWRITE_PROVIDER` at a fast model is how you keep it. And after two
-consecutive failed rewrites, a per-session circuit breaker stops further attempts
-and prints a one-time notice to the terminal naming the fix; restarting WikiLens
-resets it.
+The picked model drives both the answer and the rewrite (Default mode: the
+answer model, or `WIKILENS_DEFAULT_REWRITE_MODEL` when set). Two behaviors are
+automatic, with no variable to set: if that model is known to be a *reasoning*
+model (those think out loud and return unusable rewrites), the rewrite is
+skipped at zero cost — picking a fast non-reasoning model is how you keep it.
+And after two consecutive failed rewrites, a per-session circuit breaker stops
+further attempts and prints a one-time notice to the terminal naming the fix;
+restarting WikiLens resets it.
 
 ## Debugging
 
