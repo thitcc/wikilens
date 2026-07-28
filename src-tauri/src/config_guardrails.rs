@@ -322,9 +322,10 @@ fn settings_info_serializes_exactly_the_known_fields() {
 }
 
 /// CLAUDE.md §4: keys are "never logged, never sent to the frontend". The
-/// missing-key message points at the Settings panel — and the variant's one
-/// field is `&'static str`, so a runtime key value structurally cannot be
-/// embedded in this error.
+/// missing-key message points at the Settings panel and names the fix (add a
+/// key) rather than a section heading — headings move, the fix doesn't — and
+/// the variant's one field is `&'static str`, so a runtime key value
+/// structurally cannot be embedded in this error.
 #[test]
 fn missing_api_key_error_points_at_settings_not_a_value() {
     let msg = AppError::MissingApiKey {
@@ -333,7 +334,7 @@ fn missing_api_key_error_points_at_settings_not_a_value() {
     .to_string();
     assert!(msg.contains("Anthropic"), "must name the provider: {msg}");
     assert!(msg.contains("Settings"), "must point at the panel: {msg}");
-    assert!(msg.contains("API keys"), "must name the section: {msg}");
+    assert!(msg.contains("add one"), "must name the fix: {msg}");
 }
 
 /// `AppError::Http` wraps transport errors from `send()` (llm.rs) — the one

@@ -500,7 +500,8 @@ pub async fn resume_hotkeys(
     Ok(())
 }
 
-/// Key presence per provider, for the settings panel's API-keys section.
+/// Key presence per provider, for the settings panel's "Answers come from"
+/// list (one row per provider; presence decides keyed vs. needs-a-key).
 #[tauri::command]
 pub fn list_key_status(keys: State<'_, DpapiKeyStore>) -> Vec<KeyStatus> {
     key_status(&*keys)
@@ -721,7 +722,7 @@ fn resolve_custom_targets(
     let provider = providers::find_provider(provider_id)
         .ok_or_else(|| AppError::UnknownProvider(provider_id.to_string()))?;
     // Store-only key resolution (no env fallback). Known quirk, accepted by
-    // the storage ADR: a ghost blob from another machine reads as "Key set"
+    // the storage ADR: a ghost blob from another machine reads as "Key added"
     // in the panel (`has_key` never decrypts) but as missing here — re-pasting
     // the key recovers.
     let api_key = keys.get(provider.id).ok_or(AppError::MissingApiKey {

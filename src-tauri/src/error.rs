@@ -26,7 +26,7 @@ pub enum AppError {
     /// field is `&'static str` by design: a runtime key value structurally
     /// cannot be embedded here (pinned in `config_guardrails.rs`). Keys are
     /// read at ask time, so no restart is needed after adding one.
-    #[error("No API key for {provider} yet — add one in Settings → API keys.")]
+    #[error("No API key for {provider} yet — add one in Settings.")]
     MissingApiKey { provider: &'static str },
 
     #[error("The {provider} API returned an error ({status}): {body}")]

@@ -358,7 +358,8 @@ body {
 }
 
 .menu-search input,
-.menu-url-row input {
+.menu-url-row input,
+.key-field input {
   width: 100%;
   padding: var(--pad-control);
   color: var(--fg);
@@ -370,12 +371,14 @@ body {
 }
 
 .menu-search input::placeholder,
-.menu-url-row input::placeholder {
+.menu-url-row input::placeholder,
+.key-field input::placeholder {
   color: var(--fg-muted);
 }
 
 .menu-search input:focus,
-.menu-url-row input:focus {
+.menu-url-row input:focus,
+.key-field input:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -433,6 +436,12 @@ body {
   transform: rotate(-90deg);
 }
 
+/* Width reserved on rows that don't open anything, so every source-row name
+   sits on one left edge (the same trick .model-row .check uses). */
+.group-caret.is-blank {
+  opacity: 0;
+}
+
 /* Muted "offline list" marker on fallback groups; lowercase against the
    uppercase header. */
 .group-note {
@@ -470,14 +479,25 @@ body {
   cursor: pointer;
 }
 
-.model-row:hover {
+.model-row:hover:not(:disabled) {
   background: var(--surface-control);
 }
 
 /* Arrow-key highlight — the keyboard's hover, same veil voice. Independent of
-   :hover (the mouse never moves it) and of .selected (the accent check). */
-.model-row.is-highlighted {
+   :hover (the mouse never moves it) and of .selected (the accent check).
+   .is-open is the third voice of the same state: the row whose key form is
+   showing stays lit while it is open. */
+.model-row.is-highlighted,
+.model-row.is-open {
   background: var(--surface-control);
+}
+
+/* A row can be disabled (the settings source list freezes while an action is
+   in flight), and without this it kept full ink, the hand cursor and the hover
+   veil — the affordance lying about a dead click. Mirrors .menu-action below. */
+.model-row:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
 }
 
 .model-row .check {
@@ -612,7 +632,60 @@ body {
   font-size: var(--text-label);
 }
 
-/* Right-aligned host hint on a candidate row (wiki.gg vs Fandom). */
+/* ---- Settings source list ("Answers come from") ---- */
+
+/* One row per answer source. The row itself is the pick; a keyed provider's
+   Remove sits beside it rather than inside it (a button can't nest in a
+   button) — the .custom-game-row + .remove-btn pairing, made pickable. */
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.source-row .model-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The open row's key field: a plain sibling of the row that owns it — no
+   fill, no border, no shadow, so it claims no second altitude inside the menu
+   card (DESIGN.md §4, the Two Altitudes Rule). Its box aligns with the row's
+   veil rectangle above it; only the help line takes the row's text inset. */
+.key-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+.key-help {
+  padding: 0 var(--space-8);
+  color: var(--fg-muted);
+  font-size: var(--text-status);
+  line-height: var(--leading-compact);
+}
+
+.key-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.key-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The commit action wears the sanctioned accent-action anatomy (DESIGN.md §5,
+   "Add a game…"), shrunk to sit beside the field instead of spanning the row. */
+.key-field .menu-action {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+/* Right-aligned host hint on a candidate row (wiki.gg vs Fandom), and the
+   source list's single right-cell signal ("Needs a key" / "Key added"). */
 .row-note {
   flex: 0 0 auto;
   color: var(--fg-muted);
@@ -751,9 +824,14 @@ body {
   cursor: pointer;
 }
 
-.remove-btn:hover {
+.remove-btn:hover:not(:disabled) {
   color: var(--error-fg);
   background: var(--surface-control);
+}
+
+.remove-btn:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
 }
 
 .prompt-input {

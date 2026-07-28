@@ -307,10 +307,11 @@ field with a border needs no second voice.
   at top, scrolling list, optional pinned footer action; never a native
   `<select>` (OS-drawn popups render as unstylable white sheets over the
   glass).
-- **Rows:** 13px ink text, 8px radius, veil on hover *and* on the arrow-key
-  highlight (the keyboard's hover — same voice, independent states); selection
-  is a Moonlight Blue check (and monogram tiles promote to ink on
-  hover/selected).
+- **Rows:** 13px ink text, 8px radius, veil on hover, on the arrow-key
+  highlight (the keyboard's hover — same voice, independent states), *and*
+  while the row's key form is open (the third voice of the same state: a row
+  that opened something stays lit until it closes); selection is a Moonlight
+  Blue check (and monogram tiles promote to ink on hover/selected).
 - **Keyboard:** focus stays on the filter input; Up/Down move the highlight
   through the pickable rows only (no wrap — Home/End jump), Enter picks the
   highlighted row, and typing keeps filtering. Group headers and pinned

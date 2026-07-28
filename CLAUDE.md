@@ -9,9 +9,10 @@ content (hotkey → panel → RAG over the wiki → streamed answer + sources). 
 second hotkey (**Ctrl+Shift+C** by default) — or the footer capture chip — grabs
 a screen region and attaches it to the prompt as an image (vision-capable models
 only). Both shortcuts are configurable from the header gear's **Settings**
-panel (persisted to `settings.json` in the app-data dir), which also holds the
-model-source choice and per-provider API keys. Works over
-**borderless/windowed** games only — exclusive fullscreen covers the overlay.
+panel (persisted to `settings.json` in the app-data dir), whose **Answers come
+from** list is both the answer-source choice and where provider API keys get
+pasted. Works over **borderless/windowed** games only — exclusive fullscreen
+covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
 ## 2. Architecture map
@@ -27,6 +28,7 @@ wikilens/
 │   ├── api.ts                    # ONLY bridge to Rust: invoke() + event listeners (typed)
 │   ├── types.ts                  # Shared types: GameInfo, ProviderInfo, ModelInfo/List, Source, AskResult, AskStatus
 │   ├── modelPick.ts              # stored model pick + vision resolution (pure helpers, unit-tested)
+│   ├── providerHelp.ts           # per-provider key-console URL/host for the Settings key form (frontend-side by design — see its header)
 │   ├── hotkeys.ts                # recorder pure helpers: combo→accelerator, validation, labels (paired with hotkey.rs)
 │   ├── menuPlacement.ts          # model-menu drop/flip measurement (paired constants — see §5)
 │   ├── menuNav.ts                # nextHighlight(): arrow-key highlight movement for the menus (pure, unit-tested)
@@ -40,7 +42,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Settings panel: model-source rows (Default / Custom API), per-provider API keys (paste/remove), key-recorder rows (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: the "Answers come from" list (built-in + one row per provider; an unkeyed row opens its key field in place, saving commits the source), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -109,7 +111,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `http::read_body_capped` / `read_error_body`, never bare `.text()` — new
   fetch paths inherit the byte caps only through the helpers. The webview has
   no network/http/fs permissions (see `capabilities/default.json`).
-- **API keys:** pasted in **Settings → API keys**, stored per provider as
+- **API keys:** pasted in **Settings → Answers come from** (an unkeyed provider
+  row opens its key field in place; saving also makes it the answer source),
+  stored per provider as
   per-user DPAPI ciphertexts in `keys.json` (app-data; `keys.rs`, ADR:
   `vault/2026-07-26_api-key-storage-dpapi.md`) and read from the store at
   ask/model-list time — the vendor env vars (`ANTHROPIC_API_KEY` etc.) are
@@ -118,7 +122,7 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   error string, or debug payload may contain it; pinned in
   `config_guardrails.rs`). Key *presence* booleans may cross
   (`KeyStatus.hasKey`). Never logged, never displayed back — the only action
-  on a set key is Remove. A startup stderr notice (`target::warn_legacy_env`)
+  on a stored key is Remove key. A startup stderr notice (`target::warn_legacy_env`)
   names any legacy env var still set.
 - **Model precedence** (Custom mode): an explicit UI pick (footer chip menu, stored
   per provider in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
@@ -127,9 +131,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   the pre-search rewrite. `ask` takes the model id; blank falls back to the
   provider default, and ids are deliberately **not** validated Rust-side — the
   provider is the authoritative validator (a stale id surfaces in the error box).
-  In **Default mode** (Settings → Model source) this chain is bypassed: the
-  `WIKILENS_DEFAULT_*` env family defines one answer/rewrite target
-  (`target.rs`), `ask` ignores the request's provider/model args, and the
+  In **Default mode** (the "Built into WikiLens" row in Settings) this chain is
+  bypassed: the `WIKILENS_DEFAULT_*` env family defines one answer/rewrite
+  target (`target.rs`), `ask` ignores the request's provider/model args, and the
   footer shows only "Default" — the var contract lives in README's
   "Default mode" section (single source; don't re-list it here).
 - **Model lists** (`list_models`, hybrid — see the sourcing ADR in `vault/`):

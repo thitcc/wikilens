@@ -39,7 +39,9 @@ test("the chip opens the Settings panel", async () => {
 
   await user.click(screen.getByRole("button", { name: "Set up a model" }));
   expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-  await screen.findByLabelText("Anthropic API key");
+  // The dead end ends in the answer-source list: a row per provider, each one
+  // an invitation to key it.
+  await screen.findByRole("button", { name: "Add a key for Anthropic" });
 });
 
 test("submit stays blocked with no provider", async () => {
@@ -51,8 +53,9 @@ test("submit stays blocked with no provider", async () => {
   expect(backend.callsTo("ask")).toHaveLength(0);
 });
 
-test("saving a key re-fetches the providers and restores the Model chip", async () => {
-  // Stateful backend: the provider list is empty until a key is saved.
+test("the whole first run: pick a provider, key it, get the Model chip", async () => {
+  // The integration pin for the first-run flow — CTA → row → field → Save →
+  // chip. Stateful backend: the provider list is empty until a key is saved.
   let keyed = false;
   const backend = installBackend({
     list_providers: (): ProviderInfo[] => (keyed ? PROVIDERS : []),
@@ -68,18 +71,33 @@ test("saving a key re-fetches the providers and restores the Model chip", async 
   expect(backend.callsTo("list_providers")).toHaveLength(1);
 
   await user.click(screen.getByRole("button", { name: "Set up a model" }));
-  await user.type(
-    await screen.findByLabelText("Anthropic API key"),
-    "sk-ant-test",
+
+  // Clicking the unkeyed row is a pure UI move — it opens that row's field
+  // and touches no IPC until there is something to store.
+  await user.click(
+    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
   );
+  expect(backend.callsTo("set_api_key")).toHaveLength(0);
+
+  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
   await user.click(
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
 
-  // onKeysChanged bumped the fetch; the chip replaces the CTA.
+  // The CTA is replaced by the real chip, named for the provider just keyed,
+  // on its default model.
   expect(
-    await screen.findByRole("button", { name: /^Model: / }),
+    await screen.findByRole("button", {
+      name: "Model: Anthropic Claude Sonnet 5",
+    }),
   ).toBeTruthy();
-  expect(backend.callsTo("list_providers")).toHaveLength(2);
   expect(screen.queryByRole("button", { name: "Set up a model" })).toBeNull();
+  // That swap took two things: onKeysChanged bumping the provider fetch (the
+  // list was empty before the key existed)...
+  expect(backend.callsTo("list_providers")).toHaveLength(2);
+  // ...and the same Save committing the answer source — the mode leaves its
+  // never-chosen state without the player ever naming it.
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
+  // The field collapsed on success — the key never lingers on screen.
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
 });

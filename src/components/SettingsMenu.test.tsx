@@ -1,10 +1,13 @@
-// The Settings panel's contract. Recorder half: arming suspends the OS
-// hotkeys and swallows keys at capture phase; every exit path (save, refuse,
-// Esc, hide, unmount) resumes them exactly once. Keys half: a pasted key
-// crosses IPC exactly once via set_api_key and is never displayed back — a
-// stored key renders as presence + Remove only. Keyboard goes through
-// userEvent only (see harness.tsx — a raw window KeyboardEvent would invert
-// the capture/bubble ordering these tests exist to pin).
+// The Settings panel's contract. Source half: one exclusive "Answers come
+// from" list — the built-in model (when this install has one) plus every
+// provider; a keyed row commits on click, an unkeyed row opens in place into
+// a single key field (one at a time) and saving the key completes the choice.
+// A pasted key crosses IPC exactly once via set_api_key and is never displayed
+// back — a stored key renders as presence + Remove only. Recorder half: arming
+// suspends the OS hotkeys and swallows keys at capture phase; every exit path
+// (save, refuse, Esc, hide, unmount) resumes them exactly once. Keyboard goes
+// through userEvent only (see harness.tsx — a raw window KeyboardEvent would
+// invert the capture/bubble ordering these tests exist to pin).
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -15,12 +18,14 @@ import { fireBackendEvent } from "../test/harness";
 import type { KeyStatus, SettingsInfo } from "../types";
 
 /** Mounts the menu and settles the open-time list_key_status fetch (the
- * default settle target is the keyless Anthropic input; tests that override
- * the key fixtures pass their own). */
+ * default settle target is the keyless Anthropic row — at rest there is no
+ * key field anywhere; tests that override the key fixtures pass their own). */
 async function renderMenu(over?: {
   settings?: SettingsInfo;
+  selectedProviderId?: string;
   onSaved?: (next: SettingsInfo) => void;
   onKeysChanged?: () => void;
+  onPickProvider?: (id: string) => void;
   onClose?: () => void;
   settle?: () => Promise<unknown>;
 }) {
@@ -30,13 +35,16 @@ async function renderMenu(over?: {
   const result = render(
     <SettingsMenu
       settings={over?.settings ?? SETTINGS}
+      selectedProviderId={over?.selectedProviderId ?? ""}
       onSaved={onSaved}
       onKeysChanged={over?.onKeysChanged}
+      onPickProvider={over?.onPickProvider}
       onClose={onClose}
       triggerRef={triggerRef}
     />,
   );
-  await (over?.settle?.() ?? screen.findByLabelText("Anthropic API key"));
+  await (over?.settle?.() ??
+    screen.findByRole("button", { name: "Add a key for Anthropic" }));
   return result;
 }
 
@@ -59,15 +67,30 @@ const ANTHROPIC_KEYED: KeyStatus[] = KEY_STATUS.map((s) =>
   s.id === "anthropic" ? { ...s, hasKey: true } : s,
 );
 
-test("renders the three sections in order with both shortcut chips", async () => {
+/** Every provider keyed — the only state where a keyed row is NOT the source. */
+const BOTH_KEYED: KeyStatus[] = KEY_STATUS.map((s) => ({ ...s, hasKey: true }));
+
+/** Settle a render whose fixtures leave Anthropic keyed. */
+const settleKeyedAnthropic = () =>
+  screen.findByRole("button", { name: "Answer with Anthropic" });
+
+/** Open a provider's key field (an unkeyed row expands in place). */
+async function expandKeyForm(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  await user.click(screen.getByRole("button", { name: `Add a key for ${name}` }));
+  return screen.getByLabelText(`${name} API key`) as HTMLInputElement;
+}
+
+test("renders the two sections in order with both shortcut chips", async () => {
   installBackend();
   await renderMenu();
 
   const dialog = screen.getByRole("dialog", { name: "Settings" });
   const text = dialog.textContent ?? "";
   const order = [
-    text.indexOf("Model source"),
-    text.indexOf("API keys"),
+    text.indexOf("Answers come from"),
     text.indexOf("Shortcuts"),
   ];
   expect(Math.min(...order)).toBeGreaterThanOrEqual(0);
@@ -76,19 +99,29 @@ test("renders the three sections in order with both shortcut chips", async () =>
   expect(text).toContain("Ctrl+`");
   expect(text).toContain("Capture");
   expect(text).toContain("Ctrl+Shift+C");
+  // The merged sections took their old vocabulary with them.
+  expect(text).not.toContain("Model source");
+  expect(text).not.toContain("Custom API");
+  expect(text).not.toContain("API keys");
+  expect(text).not.toContain("Key set");
 });
 
-// ---- API keys -------------------------------------------------------------
+// ---- The answer-source list ----------------------------------------------
 
-test("keyless providers render masked inputs with a gated Save", async () => {
+test("an unkeyed provider row expands into a masked field with a gated Save", async () => {
   installBackend();
   const user = userEvent.setup();
   await renderMenu();
 
-  const input = screen.getByLabelText("Anthropic API key") as HTMLInputElement;
+  // At rest the list is rows only — no key field is mounted anywhere.
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Add a key for Anthropic" }).textContent,
+  ).toContain("Needs a key");
+
+  const input = await expandKeyForm(user, "Anthropic");
   expect(input.type).toBe("password");
   expect(input.getAttribute("autocomplete")).toBe("off");
-  expect(screen.getByLabelText("DeepSeek API key")).toBeTruthy();
 
   // Save arms only once there is text.
   const save = screen.getByRole("button", { name: "Save the Anthropic API key" });
@@ -97,26 +130,107 @@ test("keyless providers render masked inputs with a gated Save", async () => {
   expect(save.hasAttribute("disabled")).toBe(false);
 });
 
-test("a stored key renders as Key set with Remove only", async () => {
-  installBackend({ list_key_status: () => ANTHROPIC_KEYED });
-  await renderMenu({
-    settle: () =>
-      screen.findByRole("button", { name: "Remove the Anthropic API key" }),
-  });
+test("only one key form is open at a time", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
 
-  expect(screen.getByText("Key set")).toBeTruthy();
-  // The key itself never renders — no input for a keyed provider.
+  await expandKeyForm(user, "Anthropic");
+  await expandKeyForm(user, "DeepSeek");
+
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
-  // The keyless provider keeps its input.
   expect(screen.getByLabelText("DeepSeek API key")).toBeTruthy();
 });
 
-test("pasting a key and saving sends it once and flips the row", async () => {
+test("clicking an unkeyed row opens its field and fires no IPC", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  const before = backend.calls.length;
+  await expandKeyForm(user, "Anthropic");
+
+  expect(backend.calls.length).toBe(before);
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+});
+
+test("collapsing a key form drops the draft", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
+  // Clicking the row again collapses it — the key text goes with it.
+  await user.click(
+    screen.getByRole("button", { name: "Add a key for Anthropic" }),
+  );
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+
+  const reopened = await expandKeyForm(user, "Anthropic");
+  expect(reopened.value).toBe("");
+});
+
+test("a stored key renders as a source row with Remove and no field", async () => {
+  installBackend({ list_key_status: () => ANTHROPIC_KEYED });
+  await renderMenu({ settle: settleKeyedAnthropic });
+
+  // The key itself never renders — no input for a keyed provider.
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Remove the Anthropic API key" }),
+  ).toBeTruthy();
+  // The only keyed provider is the live source, so the check speaks alone.
+  expect(
+    screen
+      .getByRole("button", { name: "Answer with Anthropic" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+  // The keyless provider still needs a click before any field exists.
+  expect(screen.queryByLabelText("DeepSeek API key")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Add a key for DeepSeek" }),
+  ).toBeTruthy();
+});
+
+test("a keyed provider that isn't the source reads Key added", async () => {
+  installBackend({ list_key_status: () => BOTH_KEYED });
+  await renderMenu({
+    selectedProviderId: "anthropic",
+    settle: settleKeyedAnthropic,
+  });
+
+  const deepseek = screen.getByRole("button", { name: "Answer with DeepSeek" });
+  expect(deepseek.textContent).toContain("Key added");
+  expect(deepseek.getAttribute("aria-current")).toBeNull();
+  // The live source carries no note — the accent check is the whole signal.
+  expect(
+    screen.getByRole("button", { name: "Answer with Anthropic" }).textContent,
+  ).not.toContain("Key added");
+});
+
+test("picking a keyed provider commits the mode and the pick", async () => {
+  const backend = installBackend({ list_key_status: () => BOTH_KEYED });
+  const user = userEvent.setup();
+  const picks: string[] = [];
+  await renderMenu({
+    selectedProviderId: "anthropic",
+    onPickProvider: (id) => picks.push(id),
+    settle: settleKeyedAnthropic,
+  });
+
+  await user.click(screen.getByRole("button", { name: "Answer with DeepSeek" }));
+
+  // The fixture has never chosen a mode, so the pick commits Custom too.
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
+  expect(picks).toEqual(["deepseek"]);
+});
+
+test("pasting a key sends it once and flips the row to keyed", async () => {
   const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
   const user = userEvent.setup();
   await renderMenu();
 
-  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
   await user.click(
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
@@ -124,11 +238,29 @@ test("pasting a key and saving sends it once and flips the row", async () => {
   expect(backend.callsTo("set_api_key")).toEqual([
     { providerId: "anthropic", key: "sk-ant-test" },
   ]);
-  expect(await screen.findByText("Key set")).toBeTruthy();
+  expect(await settleKeyedAnthropic()).toBeTruthy();
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
 });
 
-test("a failed key save shows the error and keeps the draft", async () => {
+test("saving a key also commits the answer source", async () => {
+  const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
+  const user = userEvent.setup();
+  const picks: string[] = [];
+  await renderMenu({ onPickProvider: (id) => picks.push(id) });
+
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
+  await user.click(
+    screen.getByRole("button", { name: "Save the Anthropic API key" }),
+  );
+
+  expect(picks).toEqual(["anthropic"]);
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
+  expect((await settleKeyedAnthropic()).getAttribute("aria-current")).toBe(
+    "true",
+  );
+});
+
+test("a failed key save shows the error under the row and keeps the draft", async () => {
   const backend = installBackend();
   backend.onCommand("set_api_key", () => {
     throw "Couldn't save your API keys: the disk is full";
@@ -136,7 +268,7 @@ test("a failed key save shows the error and keeps the draft", async () => {
   const user = userEvent.setup();
   await renderMenu();
 
-  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
   await user.click(
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
@@ -146,16 +278,31 @@ test("a failed key save shows the error and keeps the draft", async () => {
   expect(input.value).toBe("sk-ant-test");
 });
 
-test("Remove sends remove_api_key and restores the paste row", async () => {
+test("the vendor link opens the provider's console externally", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await expandKeyForm(user, "Anthropic");
+  await user.click(
+    screen.getByRole("button", { name: "console.anthropic.com" }),
+  );
+
+  const opens = backend.callsTo("plugin:opener|open_url") as Array<{
+    url: string;
+  }>;
+  expect(opens.map((o) => o.url)).toEqual([
+    "https://console.anthropic.com/settings/keys",
+  ]);
+});
+
+test("Remove sends remove_api_key and the row goes back to needing a key", async () => {
   const backend = installBackend({
     list_key_status: () => ANTHROPIC_KEYED,
     remove_api_key: () => KEY_STATUS,
   });
   const user = userEvent.setup();
-  await renderMenu({
-    settle: () =>
-      screen.findByRole("button", { name: "Remove the Anthropic API key" }),
-  });
+  await renderMenu({ settle: settleKeyedAnthropic });
 
   await user.click(
     screen.getByRole("button", { name: "Remove the Anthropic API key" }),
@@ -163,8 +310,14 @@ test("Remove sends remove_api_key and restores the paste row", async () => {
   expect(backend.callsTo("remove_api_key")).toEqual([
     { providerId: "anthropic" },
   ]);
-  expect(await screen.findByLabelText("Anthropic API key")).toBeTruthy();
-  expect(screen.queryByText("Key set")).toBeNull();
+  expect(
+    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "Remove the Anthropic API key" }),
+  ).toBeNull();
+  // Removal never opens a field on its own.
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
 });
 
 test("saving a key fires onKeysChanged once; the open fetch fires none", async () => {
@@ -174,7 +327,7 @@ test("saving a key fires onKeysChanged once; the open fetch fires none", async (
   await renderMenu({ onKeysChanged: () => changed++ });
   expect(changed).toBe(0);
 
-  await user.type(screen.getByLabelText("Anthropic API key"), "sk-ant-test");
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
   await user.click(
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
@@ -191,8 +344,7 @@ test("removing a key fires onKeysChanged once; a failure fires none", async () =
   let changed = 0;
   await renderMenu({
     onKeysChanged: () => changed++,
-    settle: () =>
-      screen.findByRole("button", { name: "Remove the Anthropic API key" }),
+    settle: settleKeyedAnthropic,
   });
 
   await user.click(
@@ -204,10 +356,8 @@ test("removing a key fires onKeysChanged once; a failure fires none", async () =
   backend.onCommand("set_api_key", () => {
     throw "Couldn't save your API keys: nope";
   });
-  await user.type(
-    await screen.findByLabelText("Anthropic API key"),
-    "sk-retry",
-  );
+  await screen.findByRole("button", { name: "Add a key for Anthropic" });
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-retry");
   await user.click(
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
@@ -215,9 +365,7 @@ test("removing a key fires onKeysChanged once; a failure fires none", async () =
   expect(changed).toBe(1);
 });
 
-// ---- Model source ---------------------------------------------------------
-
-test("switching the model source calls set_mode and reports the fresh settings", async () => {
+test("picking the built-in row calls set_mode and reports the fresh settings", async () => {
   const configured: SettingsInfo = {
     ...SETTINGS,
     defaultMode: { configured: true, vision: false },
@@ -230,12 +378,14 @@ test("switching the model source calls set_mode and reports the fresh settings",
     onSaved: (next) => saved.push(next),
   });
 
-  await user.click(screen.getByRole("button", { name: "Default" }));
+  await user.click(
+    screen.getByRole("button", { name: "Answer with the built-in model" }),
+  );
   expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
   expect(saved).toHaveLength(1);
 });
 
-test("the stored mode marks its row selected", async () => {
+test("the stored default mode marks the built-in row as the source", async () => {
   const onDefault: SettingsInfo = {
     ...SETTINGS,
     mode: "default",
@@ -246,30 +396,51 @@ test("the stored mode marks its row selected", async () => {
 
   expect(
     screen
-      .getByRole("button", { name: "Default" })
+      .getByRole("button", { name: "Answer with the built-in model" })
       .getAttribute("aria-current"),
   ).toBe("true");
   expect(
     screen
-      .getByRole("button", { name: "Custom API" })
+      .getByRole("button", { name: "Add a key for Anthropic" })
       .getAttribute("aria-current"),
   ).toBeNull();
 });
 
-test("the Default row is disabled with a note when unconfigured", async () => {
+test("an install with no built-in and no keys lists no built-in row and says nothing can answer", async () => {
   installBackend();
   await renderMenu();
 
   expect(
-    screen.getByRole("button", { name: "Default" }).hasAttribute("disabled"),
-  ).toBe(true);
-  expect(screen.getByText("Default isn't set up in this install.")).toBeTruthy();
-  // Never-chosen displays as Custom.
+    screen.queryByRole("button", { name: "Answer with the built-in model" }),
+  ).toBeNull();
   expect(
-    screen
-      .getByRole("button", { name: "Custom API" })
-      .getAttribute("aria-current"),
-  ).toBe("true");
+    screen.getByText("Nothing can answer yet — pick one below and add its key."),
+  ).toBeTruthy();
+});
+
+test("a stale default mode keeps the built-in row, selected and marked not set up", async () => {
+  const stale: SettingsInfo = {
+    ...SETTINGS,
+    mode: "default",
+    defaultMode: { configured: false, vision: false },
+  };
+  installBackend();
+  await renderMenu({ settings: stale });
+
+  const builtIn = screen.getByRole("button", {
+    name: "Answer with the built-in model",
+  });
+  expect(builtIn.getAttribute("aria-current")).toBe("true");
+  expect(builtIn.textContent).toContain("Not set up here");
+});
+
+test("the dialog takes focus on mount", async () => {
+  installBackend();
+  await renderMenu();
+
+  expect(document.activeElement).toBe(
+    screen.getByRole("dialog", { name: "Settings" }),
+  );
 });
 
 // ---- Shortcuts (the recorder) ---------------------------------------------

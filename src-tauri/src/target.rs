@@ -98,7 +98,7 @@ pub fn resolve_default_targets(
     if !missing.is_empty() {
         return Err(format!(
             "Default mode isn't set up: {} not set. Set the WIKILENS_DEFAULT_* \
-             variables — or switch to Custom API in Settings.",
+             variables — or pick a different answer source in Settings.",
             missing.join(", ")
         ));
     }
@@ -114,8 +114,8 @@ pub fn resolve_default_targets(
         _ => {
             return Err(format!(
                 "Default mode is misconfigured: {VAR_API_PROVIDER} must be \
-                 \"anthropic\" or \"openai\" — fix it, or switch to Custom API \
-                 in Settings."
+                 \"anthropic\" or \"openai\" — fix it, or pick a different \
+                 answer source in Settings."
             ));
         }
     };
@@ -159,7 +159,7 @@ pub fn legacy_env_notices(env: impl Fn(&str) -> Option<String>) -> Vec<String> {
         if env(var).is_some() {
             notices.push(format!(
                 "wikilens: {var} is set but WikiLens no longer reads it — paste \
-                 the key in Settings → API keys instead."
+                 the key in Settings instead."
             ));
         }
     }
@@ -210,7 +210,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("should fail without {missing}"));
             assert!(err.contains(missing), "must name {missing}: {err}");
             assert!(err.contains("Settings"), "must point at Settings: {err}");
-            assert!(err.contains("Custom API"), "must offer the way out: {err}");
+            assert!(err.contains("answer source"), "must offer the way out: {err}");
         }
     }
 
