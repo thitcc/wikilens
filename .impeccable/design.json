@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-18",
+  "generatedAt": "2026-07-28",
   "title": "Design System: WikiLens",
   "extensions": {
     "colorMeta": {
@@ -22,6 +22,12 @@
         "canonical": "#9a9aa8",
         "tonalRamp": ["#131317", "#232329", "#35353d", "#484851", "#5c5c66", "#71717c", "#9a9aa8", "#c9c9d4"]
       },
+      "ink-strong": {
+        "role": "neutral",
+        "displayName": "Strong Ink",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#17171a", "#2b2b30", "#414147", "#58585f", "#717179", "#8d8d96", "#c4c4cc", "#ffffff"]
+      },
       "smoked-glass": {
         "role": "neutral",
         "displayName": "Smoked Glass",
@@ -40,11 +46,41 @@
         "canonical": "rgba(255, 255, 255, 0.06)",
         "tonalRamp": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.06)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)", "rgba(255,255,255,0.18)", "rgba(255,255,255,0.28)", "rgba(255,255,255,0.45)", "rgba(255,255,255,0.7)"]
       },
+      "veil-raised": {
+        "role": "neutral",
+        "displayName": "Raised Veil",
+        "canonical": "rgba(255, 255, 255, 0.08)",
+        "tonalRamp": ["rgba(255,255,255,0.04)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)", "rgba(255,255,255,0.16)", "rgba(255,255,255,0.24)", "rgba(255,255,255,0.34)", "rgba(255,255,255,0.5)", "rgba(255,255,255,0.75)"]
+      },
+      "ink-well": {
+        "role": "neutral",
+        "displayName": "Ink Well",
+        "canonical": "rgba(0, 0, 0, 0.3)",
+        "tonalRamp": ["rgba(0,0,0,0.08)", "rgba(0,0,0,0.15)", "rgba(0,0,0,0.3)", "rgba(0,0,0,0.42)", "rgba(0,0,0,0.55)", "rgba(0,0,0,0.68)", "rgba(0,0,0,0.8)", "rgba(0,0,0,0.92)"]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "rgba(255, 255, 255, 0.08)",
+        "tonalRamp": ["rgba(255,255,255,0.04)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.12)", "rgba(255,255,255,0.16)", "rgba(255,255,255,0.24)", "rgba(255,255,255,0.34)", "rgba(255,255,255,0.5)", "rgba(255,255,255,0.75)"]
+      },
       "rose-signal": {
         "role": "error",
         "displayName": "Rose Signal",
         "canonical": "#ffb3bd",
         "tonalRamp": ["#2b0d12", "#4d1620", "#701f2d", "#93303f", "#b64c5a", "#d97785", "#ffb3bd", "#ffd9de"]
+      },
+      "rose-wash": {
+        "role": "error",
+        "displayName": "Rose Wash",
+        "canonical": "rgba(120, 30, 40, 0.35)",
+        "tonalRamp": ["rgba(120,30,40,0.12)", "rgba(120,30,40,0.2)", "rgba(120,30,40,0.35)", "rgba(120,30,40,0.5)", "rgba(120,30,40,0.65)", "rgba(120,30,40,0.8)", "rgba(120,30,40,0.9)", "rgba(120,30,40,1)"]
+      },
+      "rose-line": {
+        "role": "error",
+        "displayName": "Rose Line",
+        "canonical": "rgba(255, 120, 140, 0.25)",
+        "tonalRamp": ["rgba(255,120,140,0.1)", "rgba(255,120,140,0.18)", "rgba(255,120,140,0.25)", "rgba(255,120,140,0.4)", "rgba(255,120,140,0.55)", "rgba(255,120,140,0.7)", "rgba(255,120,140,0.85)", "rgba(255,120,140,1)"]
       }
     },
     "typographyMeta": {
@@ -52,7 +88,9 @@
       "body": { "displayName": "Body", "purpose": "Questions and streamed answers; 1.5 leading, relaxing to 1.55 in the answer." },
       "status": { "displayName": "Status", "purpose": "Chips, statuses, menu rows, hints — the working size of most controls." },
       "label": { "displayName": "Label", "purpose": "Uppercase tracked section headings inside menus, badges, metadata." },
-      "code": { "displayName": "Code", "purpose": "The instrument voice: model ids, timings, monograms, inline code." }
+      "code": { "displayName": "Code", "purpose": "The instrument voice: model ids, timings, monograms, inline code." },
+      "caret": { "displayName": "Caret", "purpose": "The 9px menu caret glyph — typography used as iconography, never as copy; sits below the ramp's 12px reading floor." },
+      "monogram": { "displayName": "Monogram", "purpose": "The 10px mono lettering inside the 20×20 monogram tile — the system's only \"icon\", and it's typography, not copy." }
     },
     "shadows": [
       { "name": "panel-float", "value": "0 12px 32px rgba(0, 0, 0, 0.32)", "purpose": "Lifts the glass sheet off the game frame; with the 12px backdrop blur and 1px hairline it forms the glass material." },
@@ -60,7 +98,7 @@
     ],
     "motion": [
       { "name": "instant-state", "value": "none", "purpose": "State changes (hover, focus, open) apply instantly — the player is mid-game; new motion enters only through Named-Question-Rule admission." },
-      { "name": "panel-summon", "value": "A-01 — panel-summon 120ms ease-out (translateX 12px → 0 + fade), armed per overlay://shown, dropped on animationend and on hide", "purpose": "Its question: \"the panel came from the right edge.\" Hiding stays instant." },
+      { "name": "panel-summon", "value": "A-01 — panel-summon 120ms ease-out (translateX 12px → 0 + fade); a pre-summon hold keeps the hidden panel in the keyframe's \"from\" state, and overlay://shown arms the entrance frame-synced (double rAF, timer backstop) so the resuming webview can't burn the 120ms clock before it presents a frame; dropped on animationend and on hide", "purpose": "Its question: \"the panel came from the right edge.\" Hiding stays instant. Rust force-disables DWM's own window transitions (DWMWA_TRANSITIONS_FORCEDISABLED, window.rs) so the OS's one-time first-show fade + rise can't layer over the entrance." },
       { "name": "hover-release", "value": "A-02 — background-color/color 120ms ease-out transition on release only (:hover and .is-open cut to none)", "purpose": "Its question: \"the control heard you.\" The on-path (hover and open) is a hard cut; the release fades on pointer-leave and menu-close alike — the inventory's one named deviation from the transform/opacity bound (a chip-sized repaint), accepted as-is in the live test." },
       { "name": "attach-confirm", "value": "A-03 — attach-confirm 150ms ease-out (translateY 4px → 0 + fade) on mount", "purpose": "Its question: \"your grab landed.\" Removal unmounts — instant exit." },
       { "name": "menu-arrive", "value": "A-04 — menu-arrive-up/-down 120ms ease-out (translateY ±4px → 0 + fade) on mount, direction-aware per anchor chip", "purpose": "Its question: \"this came from that chip.\" Closing unmounts — instant exit." },
@@ -85,6 +123,14 @@
       "css": ".ds-bed { display: inline-flex; gap: 8px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; background: transparent; border: none; border-radius: 5px; color: #9a9aa8; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; } .ds-chip:hover:not(:disabled), .ds-chip--open { background: rgba(255,255,255,0.06); color: #e8e8ee; } .ds-chip:focus-visible { outline: 1px solid #8ab4ff; outline-offset: 2px; } .ds-chip:disabled { opacity: 0.6; cursor: default; } .ds-chip-caret { font-size: 9px; opacity: 0.7; }"
     },
     {
+      "name": "Static Chip",
+      "kind": "chip",
+      "refersTo": "static-chip",
+      "description": "The Default-mode footer label: quiet-chip anatomy with the interactivity removed — default cursor, hover neutralized, no ring. It states the mode; it never invites a click.",
+      "html": "<div class=\"ds-bed\"><span class=\"ds-static\">Default</span></div>",
+      "css": ".ds-bed { display: inline-flex; gap: 8px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-static { display: inline-flex; align-items: center; padding: 2px 4px; border-radius: 5px; color: #9a9aa8; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: default; } .ds-static:hover { background: transparent; color: #9a9aa8; }"
+    },
+    {
       "name": "Prompt Input",
       "kind": "input",
       "refersTo": "prompt-input",
@@ -99,6 +145,14 @@
       "description": "Every picker is this owned card on near-opaque Menu Glass: filter, uppercase group header, rows with an accent selection check; the arrow-key highlight wears the hover veil, and keyboard focus rings inset.",
       "html": "<div class=\"ds-menu\"><div class=\"ds-menu-search\"><input placeholder=\"Filter models…\" /></div><div class=\"ds-menu-list\"><button class=\"ds-group\"><span class=\"ds-group-caret\">▾</span>Anthropic</button><button class=\"ds-row ds-row--selected\"><span class=\"ds-row-name\">claude-haiku-4-5</span><span class=\"ds-row-side\"><span class=\"ds-badge ds-badge--accent\">Image</span><span class=\"ds-check\">✓</span></span></button><button class=\"ds-row ds-row--highlighted\"><span class=\"ds-row-name\">claude-sonnet-5</span><span class=\"ds-row-side\"><span class=\"ds-badge ds-badge--accent\">Image</span><span class=\"ds-check\">✓</span></span></button><button class=\"ds-action\">Add a game…</button></div></div>",
       "css": ".ds-menu { display: flex; flex-direction: column; width: 300px; background: rgba(24,24,32,0.97); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.45); overflow: hidden; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #e8e8ee; } .ds-menu-search { padding: 8px 8px 0; } .ds-menu-search input { width: 100%; padding: 5px 8px; color: #e8e8ee; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; font: inherit; box-sizing: border-box; } .ds-menu-search input::placeholder { color: #9a9aa8; } .ds-menu-search input:focus { outline: none; border-color: #8ab4ff; } .ds-menu-list { display: flex; flex-direction: column; padding: 4px 6px 6px; } .ds-group { display: flex; align-items: center; gap: 6px; padding: 6px; background: none; border: none; border-radius: 5px; color: #9a9aa8; font-family: inherit; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; text-align: left; cursor: pointer; } .ds-group:hover { color: #e8e8ee; } .ds-group-caret { font-size: 9px; } .ds-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; background: none; border: none; border-radius: 8px; color: #e8e8ee; font: inherit; text-align: left; cursor: pointer; } .ds-row:hover { background: rgba(255,255,255,0.06); } .ds-row--highlighted { background: rgba(255,255,255,0.06); } .ds-row:focus-visible, .ds-group:focus-visible, .ds-action:focus-visible { outline: 1px solid #8ab4ff; outline-offset: -1px; } .ds-row-side { display: inline-flex; align-items: center; gap: 6px; } .ds-check { color: #8ab4ff; opacity: 0; } .ds-row--selected .ds-check { opacity: 1; } .ds-badge { padding: 1px 5px; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; background: rgba(255,255,255,0.08); color: #9a9aa8; font-size: 12px; line-height: 1; } .ds-badge--accent { color: #8ab4ff; } .ds-action { padding: 5px 8px; background: none; border: none; border-radius: 8px; color: #8ab4ff; font: inherit; text-align: left; cursor: pointer; } .ds-action:hover { background: rgba(255,255,255,0.06); }"
+    },
+    {
+      "name": "Key Recorder Row",
+      "kind": "custom",
+      "refersTo": "hotkey-row",
+      "description": "Settings → Shortcuts anatomy: combos render as key-cap chips on a borderless row; arming for recording speaks with a Moonlight Blue border only (recording is an interactive state — the One Signal Rule covers it), and refusals use the rose failure voice.",
+      "html": "<div class=\"ds-bed-col\"><div class=\"ds-hkrow\"><span class=\"ds-hkrole\">Summon</span><span class=\"ds-hkcombo\"><kbd class=\"ds-kcap\">Ctrl</kbd><kbd class=\"ds-kcap\">`</kbd></span><span class=\"ds-hkactions\"><button class=\"ds-hkbtn\">Change</button><button class=\"ds-hkbtn\">Reset</button></span></div><div class=\"ds-hkrow ds-hkrow--armed\"><span class=\"ds-hkrole\">Capture</span><span class=\"ds-hkwait\">Press a combo…</span><span class=\"ds-hkactions\"><button class=\"ds-hkbtn\">Cancel</button></span></div></div>",
+      "css": ".ds-bed-col { display: flex; flex-direction: column; gap: 4px; padding: 12px; background: #16161d; border-radius: 8px; min-width: 280px; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-hkrow { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid transparent; border-radius: 8px; color: #e8e8ee; } .ds-hkrow--armed { border-color: #8ab4ff; } .ds-hkrole { flex: 0 0 auto; } .ds-hkcombo { display: inline-flex; align-items: center; gap: 2px; color: #9a9aa8; } .ds-kcap { padding: 1px 5px; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; background: rgba(255,255,255,0.08); font-family: inherit; font-size: 12px; line-height: 1.4; } .ds-hkwait { color: #9a9aa8; font-size: 12px; } .ds-hkactions { margin-left: auto; display: inline-flex; gap: 4px; } .ds-hkbtn { padding: 2px 4px; color: #9a9aa8; background: none; border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; font: inherit; font-size: 12px; cursor: pointer; } .ds-hkbtn:hover { background: rgba(255,255,255,0.06); color: #e8e8ee; } .ds-hkbtn:focus-visible { outline: 1px solid #8ab4ff; outline-offset: 2px; }"
     },
     {
       "name": "Capability Badge",
