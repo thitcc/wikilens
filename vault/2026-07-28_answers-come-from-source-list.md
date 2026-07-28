@@ -1,7 +1,7 @@
 ---
 title: One answer-source list — merging Model source and API keys in Settings
 type: plan
-status: active
+status: done
 created: 2026-07-28
 updated: 2026-07-28
 tags: [frontend, overlay, llm]
@@ -10,7 +10,7 @@ related:
     "[[2026-07-26_default-mode-and-byo-api-keys]]",
     "[[2026-07-26_api-key-storage-dpapi]]",
   ]
-commit:
+commit: adca15d
 ---
 
 # One answer-source list — merging Model source and API keys in Settings
@@ -141,3 +141,21 @@ docs sweep → `/check` → `/vault-lint`.
 - 2026-07-28 — created. Critique run (21/40, 7 verified findings, 4×P2), shape
   run completed (4 approaches, 3 judges, synthesis), owner confirmed the merged
   direction and both copy rulings. Implementation starting.
+- 2026-07-28 — landed (`adca15d`). All four P2 findings closed. Nine recorder
+  tests stayed byte-identical (refusing a fourth Esc layer is what bought
+  that); `SettingsMenu.test.tsx` grew to 29 tests, and every security
+  assertion carried over verbatim — the once-and-only-once
+  `callsTo("set_api_key")` equality, the `queryByLabelText` null check on a
+  keyed provider, the masked-field attributes. `/check` green: 146 Vitest, 38
+  Node, 290 Rust, clippy `-D warnings`, `tsc` clean.
+- Two bugs the test agent caught in review, both fixed before the commit: the
+  in-flight label was driven by a panel-wide `action`, so with two keyed
+  providers both Remove buttons read "Removing…" for one click (now tagged
+  with `actionRow`); and the zero-source lead line said "…and add its key"
+  even on installs offering the built-in row, which needs no key.
+- **Follow-ups, deliberately not in this PR.** The footer chip still reads
+  "Default" while the panel says "Built into WikiLens" — one word for one
+  state, on a surface with its own tests; the vocabularies should converge on
+  the footer's terms. And `CLAUDE.md` crossed the sync-agents size warning
+  (31174 → 31978 bytes, against Codex's 32768 cap) — the file needs a trim
+  pass of its own before the next doc-heavy change.
