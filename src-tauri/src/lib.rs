@@ -37,6 +37,9 @@ pub fn run() {
     // OS env vars are NOT overwritten, so exported/`setx` vars take precedence.
     // `.ok()` ignores "no .env found". See CLAUDE.md for the packaged-app caveat.
     dotenvy::dotenv().ok();
+    // Returning-dev nudge: name any env var this build no longer reads
+    // (vendor keys → the DPAPI store; rewrite pins → the picked model).
+    target::warn_legacy_env();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

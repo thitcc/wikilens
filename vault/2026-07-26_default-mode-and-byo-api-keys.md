@@ -1,12 +1,12 @@
 ---
 title: Default mode and bring-your-own API keys
 type: plan
-status: active
+status: done
 created: 2026-07-26
 updated: 2026-07-26
 tags: [llm, security, frontend, rust, tauri]
 related: ["[[2026-07-26_api-key-storage-dpapi]]", "[[2026-07-02_multi-provider-llm]]", "[[2026-07-19_hotkey-config]]", "[[2026-07-05_model-list-sourcing]]"]
-commit:
+commit: ["346f81d", "e7d7ec8", "8dfc876", "9da984d"]
 ---
 
 # Default mode and bring-your-own API keys
@@ -224,3 +224,12 @@ never a stuck status.
   chip, the zero-keys "Set up a model" chip, key-change → provider re-fetch, and capture
   gated on `defaultMode.vision` with Default-mode copy. Remaining: phase 4 (legacy
   `WIKILENS_REWRITE_*` removal + docs sweep + breaker-notice copy).
+- 2026-07-26 — phase 4 (legacy sweep) landed (9da984d) — **feature complete, plan closed**.
+  `WIKILENS_REWRITE_MODEL`/`_PROVIDER` retired: the picked model drives both the answer and
+  the rewrite in Custom mode (the invariant the model menu's "Fast models" note promised);
+  `target::legacy_env_notices` prints a one-line startup nudge per stale legacy var (vendor
+  keys or rewrite pins), values never echoed; breaker-notice copy is mode-neutral; docs swept
+  (README retrieval table → three vars, .env.example, smoke checklist grew a "Model source:
+  Default vs Custom" section + store-aware packaged items, ai-workflow.html minimal edits,
+  design.json error-demo copy, CLAUDE.md counts + invariant). Four PRs total: #44 #45 #46 +
+  this one — every goal in §Goal holds, every degenerate state in consequence 13 shipped.

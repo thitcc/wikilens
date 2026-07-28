@@ -379,10 +379,11 @@ fn build_user_message(question: &str, pages: &[WikiPage]) -> String {
 
 /// Max output tokens for the query-rewrite completion — the JSON object is tiny,
 /// so keep the cap tight. The rewrite is meant to run on a fast *non-reasoning*
-/// model (`WIKILENS_REWRITE_MODEL`); known-Reasoning models never reach this
-/// call (`run_ask` skips them outright), so the tight cap is the fail-fast for
-/// *untagged* reasoning models — they burn the budget in seconds (empty
-/// `content`, seen in the trace) rather than reasoning at length.
+/// model (the picked model in Custom mode, `WIKILENS_DEFAULT_REWRITE_MODEL` in
+/// Default mode); known-Reasoning models never reach this call (`run_ask`
+/// skips them outright), so the tight cap is the fail-fast for *untagged*
+/// reasoning models — they burn the budget in seconds (empty `content`, seen
+/// in the trace) rather than reasoning at length.
 const REWRITE_MAX_TOKENS: u32 = 256;
 
 /// Total-request cap for the rewrite completion. `run_ask` joins the rewrite

@@ -159,7 +159,7 @@ fn default_mode_info(env: impl Fn(&str) -> Option<String>) -> DefaultModeInfo {
 
 /// The impure half: real env reads (`env_nonempty` trims and drops blanks).
 fn sense_default_mode() -> DefaultModeInfo {
-    default_mode_info(env_nonempty)
+    default_mode_info(providers::env_nonempty)
 }
 
 /// One row per registry provider, in registry order. Presence only — reading
@@ -705,8 +705,7 @@ impl Drop for AskGuard<'_> {
 }
 
 /// Custom-mode target resolution: registry provider + stored key + the picked
-/// model, with the `WIKILENS_REWRITE_*` overrides (registry-coupled, so
-/// Custom-only — Default mode has its own optional rewrite var).
+/// model, which drives both the answer and the pre-search rewrite.
 fn resolve_custom_targets(
     keys: &dyn KeyStore,
     provider_id: &str,
@@ -729,34 +728,23 @@ fn resolve_custom_targets(
         provider: provider.name,
     })?;
     let model = effective_model(model, provider.model());
-    // The query rewrite is a lightweight utility task that wants a *fast,
-    // non-reasoning* model. A whole provider can be reasoning-only (DeepSeek v4
-    // flash and pro both reason), so allow pinning the rewrite to a model on any
-    // provider with a stored key: `WIKILENS_REWRITE_PROVIDER` and
-    // `WIKILENS_REWRITE_MODEL`. Both optional; each falls back to the answer
-    // provider/model — a deliberate default: the player's question already goes
-    // to that provider for the answer, so the rewrite adds no new destination
-    // for player text; pinning a different provider is an explicit choice to
-    // send the question there too. Not validated here — the provider is the
-    // authoritative validator.
-    let rewrite_model = env_nonempty("WIKILENS_REWRITE_MODEL").unwrap_or_else(|| model.clone());
-    let (rewrite_provider, rewrite_key) = env_nonempty("WIKILENS_REWRITE_PROVIDER")
-        .and_then(|pid| providers::find_provider(&pid))
-        .and_then(|p| keys.get(p.id).map(|k| (p, k)))
-        .unwrap_or_else(|| (provider, api_key.clone()));
-    // A known-Reasoning rewrite model is a call we *know* fails: its reply
-    // lands in `reasoning_content`, the parser reads `content` → zero
+    // The picked model drives both the answer and the pre-search rewrite —
+    // one model choice, one destination for player text. (Default mode has
+    // its own optional WIKILENS_DEFAULT_REWRITE_MODEL.)
+    // A known-Reasoning model makes the rewrite a call we *know* fails: its
+    // reply lands in `reasoning_content`, the parser reads `content` → zero
     // candidates after a multi-second think. Skip it outright (zero latency,
-    // zero cost). Judged on the *effective* pair, after the env overrides;
-    // unknown models stay eligible — the circuit breaker bounds their worst
-    // case (`vault/2026-07-10_reasoning-skip-and-capability-tags.md`).
-    let rewrite_skip_reasoning = rewrite_provider
-        .model_reasoning(&rewrite_model)
-        .or_else(|| models::reasoning_from_id(&rewrite_model))
+    // zero cost); unknown models stay eligible — the circuit breaker bounds
+    // their worst case (`vault/2026-07-10_reasoning-skip-and-capability-tags.md`).
+    let rewrite_skip_reasoning = provider
+        .model_reasoning(&model)
+        .or_else(|| models::reasoning_from_id(&model))
         == Some(true);
+    // Construct-twice (LlmTarget isn't Clone): identical debug_id + model
+    // strings keep the debug table's rewrite-row suppression working.
     Ok(AskTargets {
-        answer: LlmTarget::from_provider(provider, api_key.clone(), model),
-        rewrite: LlmTarget::from_provider(rewrite_provider, rewrite_key, rewrite_model),
+        answer: LlmTarget::from_provider(provider, api_key.clone(), model.clone()),
+        rewrite: LlmTarget::from_provider(provider, api_key, model),
         rewrite_skip_reasoning,
     })
 }
@@ -1328,14 +1316,6 @@ fn truncate_detail(s: &str) -> String {
     }
 }
 
-/// A trimmed, non-empty environment variable, or `None` if unset/blank.
-fn env_nonempty(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
 /// An optional retrieval stage (the zero-hit title index, the eager LLM rewrite)
 /// is on unless its env var is explicitly falsey (`0`/`false`/`off`) — an
 /// off-switch for the two unvalidated stages that needs no rebuild.
@@ -1399,6 +1379,47 @@ mod tests {
         keys.set("anthropic", "sk-2").unwrap();
         let ids: Vec<String> = provider_infos(&keys).into_iter().map(|p| p.id).collect();
         assert_eq!(ids, vec!["anthropic", "deepseek"], "registry order, keyed only");
+    }
+
+    #[test]
+    fn resolve_custom_targets_pairs_answer_and_rewrite_on_the_picked_model() {
+        let keys = InMemoryKeyStore::default();
+        keys.set("anthropic", "sk-1").unwrap();
+        let targets = resolve_custom_targets(&keys, "anthropic", "claude-haiku-4-5-20251001")
+            .expect("keyed provider resolves");
+        // One model choice drives both calls — identical strings keep the
+        // debug table's rewrite-row suppression working.
+        assert_eq!(targets.answer.model, targets.rewrite.model);
+        assert_eq!(targets.answer.debug_id, targets.rewrite.debug_id);
+        assert_eq!(targets.answer.api_key, targets.rewrite.api_key);
+        assert!(!targets.rewrite_skip_reasoning, "curated non-reasoning model");
+    }
+
+    #[test]
+    fn resolve_custom_targets_skips_rewrite_for_a_reasoning_model() {
+        let keys = InMemoryKeyStore::default();
+        keys.set("deepseek", "sk-1").unwrap();
+        let targets = resolve_custom_targets(&keys, "deepseek", "deepseek-v4-flash")
+            .expect("keyed provider resolves");
+        assert!(targets.rewrite_skip_reasoning, "curated reasoning model");
+    }
+
+    #[test]
+    fn resolve_custom_targets_requires_a_stored_key() {
+        let keys = InMemoryKeyStore::default();
+        assert!(matches!(
+            resolve_custom_targets(&keys, "anthropic", ""),
+            Err(AppError::MissingApiKey { .. })
+        ));
+    }
+
+    #[test]
+    fn resolve_custom_targets_falls_back_on_a_blank_provider() {
+        let keys = InMemoryKeyStore::default();
+        keys.set("anthropic", "sk-1").unwrap();
+        let targets = resolve_custom_targets(&keys, "  ", "").expect("default provider");
+        assert_eq!(targets.answer.debug_id, "anthropic");
+        assert!(!targets.answer.model.is_empty(), "provider default model");
     }
 
     #[test]

@@ -11,13 +11,15 @@ Copy the boxes into the release notes/log and tick them as you go.
 ## Prerequisites
 
 - A game running in **borderless/windowed** mode (exclusive fullscreen is only
-  needed for item 7).
-- At least one provider API key configured; for item 6 you need both a
-  vision-capable and a text-only model reachable from the model menu.
+  needed for item 8).
+- At least one provider key pasted in **Settings → API keys** (Custom mode);
+  for item 6 you need both a vision-capable and a text-only model reachable
+  from the model menu. Item 7 additionally needs a working
+  `WIKILENS_DEFAULT_*` set (see README's "Default mode" section).
 - If available, a second monitor at **>100% DPI scaling** for item 3 — if not,
   note "single monitor" in the run log.
-- Items 1–8 run on `npm run tauri dev` (item 8 needs `WIKILENS_DEBUG=1` set);
-  item 9 runs on the packaged installer from `npm run tauri build`.
+- Items 1–9 run on `npm run tauri dev` (item 9 needs `WIKILENS_DEBUG=1` set);
+  item 10 runs on the packaged installer from `npm run tauri build`.
 
 ### 1. Hotkey + tray
 
@@ -36,7 +38,7 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 - [ ] A capital `C` **types into the prompt** (regression check: the old
       Shift+C default swallowed it system-wide — that trap must stay dead).
-- [ ] Header gear → **Shortcuts** → **Change** on Summon, press a test combo
+- [ ] Header gear → **Settings** → Shortcuts → **Change** on Summon, press a test combo
       (e.g. Ctrl+Alt+P): the row updates, the old combo stops toggling, the
       new one toggles — and still does after an app restart. **Reset**
       restores Ctrl+` (and the tray tooltip follows).
@@ -86,13 +88,32 @@ Copy the boxes into the release notes/log and tick them as you go.
       announces "Answer ready — N sources" once; a cancelled (Stop) or failed
       ask announces no answer-ready.
 
-### 7. Exclusive fullscreen (expected failure)
+### 7. Model source: Default vs Custom
+
+- [ ] A pasted key shows **Key set** in Settings → API keys and still works
+      after an app restart (the DPAPI store survives; no re-paste).
+- [ ] Delete `settings.json` from the app-data dir, set the
+      `WIKILENS_DEFAULT_*` block, relaunch: first launch lands in **Default**
+      mode (footer reads just "Default", no provider or model anywhere).
+      Repeat without the vars: first launch lands in **Custom API**.
+- [ ] In Default mode an ask succeeds end-to-end with no vendor name visible
+      anywhere in the UI; switching to Custom API in Settings restores the
+      provider/model chip and menu.
+- [ ] The capture chip follows `WIKILENS_DEFAULT_VISION`: disabled with the
+      "can't read images" copy when unset, armed when truthy.
+- [ ] In Custom mode, **Remove** on the selected provider's key drops it from
+      the model menu; with zero keys the footer shows **Set up a model** and
+      it opens Settings.
+- [ ] Paste a garbage key and ask: the vendor's 401 shows verbatim in the
+      error box, and the model menu degrades to the "offline list" note.
+
+### 8. Exclusive fullscreen (expected failure)
 
 - [ ] An exclusive-fullscreen game covers the overlay. Verify this is still
       documented (README caveats, CLAUDE.md gotchas) — do **not** log it as a
       bug.
 
-### 8. Debug window (`WIKILENS_DEBUG=1`)
+### 9. Debug window (`WIKILENS_DEBUG=1`)
 
 - [ ] With the flag set, **nothing extra shows at launch** (the debug
       window starts hidden, like the overlay). The overlay footer's
@@ -118,12 +139,15 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] Drag it to the >100% scale monitor: text renders sharp and the window
       geometry stays sane.
 
-### 9. Packaged build
+### 10. Packaged build
 
 - [ ] The `npm run tauri build` installer runs and the installed app launches.
-- [ ] With no `.env` present, API keys resolve from OS environment variables
-      and an ask succeeds (`.env` is dev-only; a packaged app's cwd is
-      unpredictable).
+- [ ] With no `.env` present, a Custom-mode ask succeeds from the
+      DPAPI-stored key alone (keys never ride env; the store lives in
+      app-data).
+- [ ] With the `WIKILENS_DEFAULT_*` block set as **OS environment variables**
+      (`.env` is dev-only; a packaged app's cwd is unpredictable), Default
+      mode works in the installed app.
 - [ ] Source links still open in the browser (the opener URL scope is present
       at runtime — this fails as `ForbiddenUrl`, not at compile time).
 
