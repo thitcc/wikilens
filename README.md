@@ -28,16 +28,19 @@ permissions and never sees your API key.
 - An **API key** for at least one supported LLM provider — **Anthropic**,
   **DeepSeek**, or **OpenRouter**.
 
-## Setup: API keys
+## Setup: where answers come from
 
-WikiLens supports three LLM providers — choose one from the provider dropdown in
-the panel. Keys are pasted **into the app**: open the header gear (**Settings**)
-→ **API keys** and paste the key for the provider(s) you use. Stored keys are
-encrypted for your Windows user (DPAPI) in the app-data dir, are read **in the
-Rust process only**, and are never displayed back in any form — the only action
-on a set key is **Remove**. Keys are read at ask time, so adding one needs no
-restart. If the selected provider has no key yet, the app answers with
-*"No API key for `<provider>` yet — add one in Settings → API keys."*
+Open the header gear (**Settings**): the **Answers come from** list holds every
+source this install can answer with — the built-in model when it has one, plus
+one row per supported LLM provider (Anthropic, DeepSeek, OpenRouter). Exactly
+one row wears the check, and that's the one writing your answers. Picking a
+provider you haven't keyed yet opens its key field right there in the list;
+paste the key and press **Save**, and that provider becomes your answer source.
+Stored keys are encrypted for your Windows user (DPAPI) in the app-data dir, are
+read **in the Rust process only**, and are never displayed back in any form —
+the only action on a stored key is **Remove key**. Keys are read at ask time, so
+adding one needs no restart. If the selected provider has no key yet, the app
+answers with *"No API key for `<provider>` yet — add one in Settings."*
 
 | Provider | Default model | Model override var |
 |---|---|---|
@@ -47,9 +50,9 @@ restart. If the selected provider has no key yet, the app answers with
 
 > **Migrating from the env-var era:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` /
 > `OPENROUTER_API_KEY` are no longer read. Paste those keys into
-> **Settings → API keys** once, then remove them from your `.env` — it now only
-> serves the model overrides and tuning vars below. WikiLens prints a one-line
-> startup reminder if any legacy variable is still set.
+> **Settings → Answers come from** once, then remove them from your `.env` — it
+> now only serves the model overrides and tuning vars below. WikiLens prints a
+> one-line startup reminder if any legacy variable is still set.
 
 **Changing the model:** each provider ships a sensible default; override it without
 touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matters
@@ -60,8 +63,9 @@ in favor of `deepseek-v4-flash`).
 
 One env-configured model source with the vendor hidden: the footer chip reads
 just **Default**, there is no provider or model menu, and asks resolve entirely
-from these variables. Switch between **Default** and **Custom API** in
-Settings → Model source; on first launch WikiLens auto-senses (a complete
+from these variables. It appears in Settings → **Answers come from** as
+**Built into WikiLens**; picking it, or any provider row below it, switches
+between the two. On first launch WikiLens auto-senses (a complete
 `WIKILENS_DEFAULT_*` set selects Default once — your stored choice wins forever
 after). All four are required together:
 
@@ -188,12 +192,11 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 2. Wait for the tray icon to appear (the window starts hidden), then press
    **Ctrl+`** (the key left of 1).
 3. The panel slides in from the right and focuses the input.
-4. Add a key: the header gear (**Settings**) → **API keys** — paste one
-   provider's key and press **Save** (it shows as "Key set"; it won't be
-   displayed again).
-5. Choose your **provider** (the one you keyed) and a **game**, then ask a
-   question — e.g. **Conan Exiles** → *"how do I make steel bars?"*, or **Core
-   Keeper** → *"best way to get wood"*.
+4. Add a key: the header gear (**Settings**) → **Answers come from** — click a
+   provider's row, paste its key in the field that opens, and press **Save**
+   (that provider becomes the answer source; the key is never displayed again).
+5. Choose a **game**, then ask a question — e.g. **Conan Exiles** → *"how do I
+   make steel bars?"*, or **Core Keeper** → *"best way to get wood"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer
    to **stream in** as markdown, and **2–4 source links** to appear beneath it.
    Clicking a source opens the wiki page in your browser.

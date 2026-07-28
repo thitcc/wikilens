@@ -12,10 +12,10 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 - A game running in **borderless/windowed** mode (exclusive fullscreen is only
   needed for item 8).
-- At least one provider key pasted in **Settings → API keys** (Custom mode);
-  for item 6 you need both a vision-capable and a text-only model reachable
-  from the model menu. Item 7 additionally needs a working
-  `WIKILENS_DEFAULT_*` set (see README's "Default mode" section).
+- At least one provider keyed from **Settings → Answers come from**; for item 6
+  you need both a vision-capable and a text-only model reachable from the model
+  menu. Item 7 additionally needs a working `WIKILENS_DEFAULT_*` set (see
+  README's "Default mode" section).
 - If available, a second monitor at **>100% DPI scaling** for item 3 — if not,
   note "single monitor" in the run log.
 - Items 1–9 run on `npm run tauri dev` (item 9 needs `WIKILENS_DEBUG=1` set);
@@ -88,22 +88,29 @@ Copy the boxes into the release notes/log and tick them as you go.
       announces "Answer ready — N sources" once; a cancelled (Stop) or failed
       ask announces no answer-ready.
 
-### 7. Model source: Default vs Custom
+### 7. Answers come from: built-in vs provider
 
-- [ ] A pasted key shows **Key set** in Settings → API keys and still works
-      after an app restart (the DPAPI store survives; no re-paste).
+- [ ] Settings → **Answers come from**: clicking an unkeyed provider row opens
+      its key field in place (only one field open at a time; clicking another
+      row collapses it and drops what you typed). **Save** collapses the field
+      and moves the accent check to that row.
+- [ ] The keyed row then reads **Key added** whenever it isn't the source, keeps
+      a **Remove key** button, and still answers after an app restart (the DPAPI
+      store survives; no re-paste) — the key itself never shows anywhere again.
 - [ ] Delete `settings.json` from the app-data dir, set the
       `WIKILENS_DEFAULT_*` block, relaunch: first launch lands in **Default**
-      mode (footer reads just "Default", no provider or model anywhere).
-      Repeat without the vars: first launch lands in **Custom API**.
+      mode (footer reads just "Default", no provider or model anywhere, and
+      **Built into WikiLens** wears the check). Repeat without the vars: first
+      launch lands on a provider — no built-in row in the list at all.
 - [ ] In Default mode an ask succeeds end-to-end with no vendor name visible
-      anywhere in the UI; switching to Custom API in Settings restores the
-      provider/model chip and menu.
+      anywhere in the UI; picking a keyed provider row in Settings restores the
+      provider/model chip and menu, and picking **Built into WikiLens** again
+      goes back.
 - [ ] The capture chip follows `WIKILENS_DEFAULT_VISION`: disabled with the
       "can't read images" copy when unset, armed when truthy.
-- [ ] In Custom mode, **Remove** on the selected provider's key drops it from
-      the model menu; with zero keys the footer shows **Set up a model** and
-      it opens Settings.
+- [ ] **Remove key** on the source provider's row (one click, no confirmation)
+      drops it from the model menu; with zero keys the footer shows **Set up a
+      model** and it opens Settings.
 - [ ] Paste a garbage key and ask: the vendor's 401 shows verbatim in the
       error box, and the model menu degrades to the "offline list" note.
 

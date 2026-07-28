@@ -61,7 +61,9 @@ test("the header gear opens the Settings panel", async () => {
 
   await user.click(screen.getByRole("button", { name: "Settings" }));
   expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-  await screen.findByLabelText("Anthropic API key");
+  // Settle the open-time key-status fetch on the unkeyed Anthropic row (the
+  // key field only exists once that row is clicked open).
+  await screen.findByRole("button", { name: "Add a key for Anthropic" });
 
   // Esc layering holds for the settings menu too.
   await user.keyboard("{Escape}");
@@ -76,7 +78,7 @@ test("the settings menu joins the one-open-menu rule", async () => {
 
   await user.click(screen.getByRole("button", { name: "Settings" }));
   expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
-  await screen.findByLabelText("Anthropic API key");
+  await screen.findByRole("button", { name: "Add a key for Anthropic" });
 
   // Clicking the game chip: outside-pointerdown closes settings, the chip
   // click opens the game menu — never both.
