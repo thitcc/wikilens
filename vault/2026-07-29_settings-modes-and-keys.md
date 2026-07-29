@@ -1,7 +1,7 @@
 ---
 title: Settings, split in two — answer modes above, provider keys below
 type: plan
-status: active
+status: done
 created: 2026-07-29
 updated: 2026-07-29
 tags: [frontend, overlay, llm, testing]
@@ -11,7 +11,7 @@ related:
     "[[2026-07-28_answers-come-from-source-list]]",
     "[[2026-07-26_default-mode-and-byo-api-keys]]",
   ]
-commit:
+commit: 03140b9
 ---
 
 # Settings, split in two — answer modes above, provider keys below
@@ -101,3 +101,9 @@ change if it reads as noise on device.
 ## Status log
 
 - 2026-07-29 — created; branch cut, work starting.
+- 2026-07-29 — landed (`03140b9`). /check green: tsc, 155 frontend tests (was 134
+  passing + 12 failing), 38 tooling tests, clippy clean, 290 Rust tests.
+  Thirteen tests touched — App.zeroKeys was green only because of the
+  auto-switch this removed — and nine net new, covering the caret, the keyed
+  line's Replace label, both directions of the mode/disclosure reconcile, and
+  the notes' silence while the key-status fetch is open.

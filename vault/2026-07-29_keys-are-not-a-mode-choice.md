@@ -11,7 +11,7 @@ related:
     "[[2026-07-28_answers-come-from-source-list]]",
     "[[2026-07-26_default-mode-and-byo-api-keys]]",
   ]
-commit:
+commit: 03140b9
 ---
 
 # A stored API key is not a mode choice
