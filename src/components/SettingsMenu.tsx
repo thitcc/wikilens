@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import {
   listKeyStatus,
   onOverlayHidden,
@@ -30,15 +30,11 @@ import { keyHelp } from "../providerHelp";
 
 interface SettingsMenuProps {
   settings: SettingsInfo;
-  /** The provider the footer chip is on — the source check follows it. */
-  selectedProviderId: string;
   /** A shortcut or the mode was saved (already persisted Rust-side). */
   onSaved: (next: SettingsInfo) => void;
   /** A key was saved or removed — App re-fetches the keyed-provider list.
    * Never fired by the open-time status fetch (nothing changed then). */
   onKeysChanged?: () => void;
-  /** A provider became the answer source — picked, or its key just landed. */
-  onPickProvider?: (id: string) => void;
   onClose: () => void;
   /** The header gear; outside-click close ignores it (see GameChip). */
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -49,8 +45,33 @@ const ROLE_NAMES: Record<HotkeyRole, string> = {
   capture: "Capture",
 };
 
-/** The built-in source's row id — never a provider id (those come from Rust). */
-const BUILTIN = "builtin";
+/** The error tag for the panel-wide key-status fetch. The other `sourceError`
+ * ids are a mode ("default"/"custom") or a provider id, so this one must be
+ * neither — its slot sits under the heading, not on a row. */
+const KEYS_ROW = "keys";
+
+/** The Custom row's label. Rendered twice — once in the row, once as the
+ * caret rail's invisible width spacer — so it lives in one place. */
+const CUSTOM_MODE_LABEL = "Your own provider";
+
+/** The disclosed key list, for the caret's `aria-controls`. A module constant
+ * is safe: App's `openMenu` union guarantees one mounted SettingsMenu. */
+const KEYS_NEST_ID = "settings-keys";
+
+/** Bootstrap Icons "trash" (MIT), sized like the header gear. Static, so it
+ * lives at module scope rather than being rebuilt on every render. */
+const TRASH_ICON = (
+  <svg
+    aria-hidden="true"
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="currentColor"
+  >
+    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z" />
+    <path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z" />
+  </svg>
+);
 
 /** A combo's <kbd> chips with "+" separators, shared by both row states. */
 function comboKeys(parts: string[]) {
@@ -63,16 +84,24 @@ function comboKeys(parts: string[]) {
 }
 
 /**
- * The Settings panel: one answer-source list (the built-in model when this
- * install has one, then every provider) and the two key recorders.
+ * The Settings panel: where answers come from, and the two key recorders.
  *
- * The list is exclusive — exactly one row wears the check, and it is the row
- * answers are coming from right now. Picking means one thing: make this my
- * source. A keyed row commits immediately; an unkeyed provider has nothing to
- * commit yet, so its row opens in place into a single key field (one at a
- * time), and saving the key completes the choice. A pasted key crosses IPC
- * once and is never displayed back — the only action on a stored key is
- * Remove.
+ * Two jobs, not one list. The rows under "Answers" pick a MODE — the built-in
+ * model (when this install has one) or your own provider — and exactly one of
+ * them wears the check. The provider lines below it are not choices: they only
+ * set and clear keys, because which provider answers is picked from the footer
+ * chip on the main panel. A line opens in place into a single key field (one
+ * at a time); a stored key's only action is the trash. Whether a key is there
+ * is said by ink strength — keyed lines read at full ink, unkeyed ones recede
+ * — with no wording or mark; each line's aria-label carries the same fact for
+ * assistive tech. A pasted key crosses IPC once and is never displayed back.
+ *
+ * Two rules follow from the split, and both are load-bearing. A key never moves
+ * the check: saving one stores it and nothing else
+ * (vault/2026-07-29_keys-are-not-a-mode-choice.md). And the disclosure follows
+ * the mode: landing on your own provider reveals the keys, landing on the
+ * built-in model puts them away, so the list can never sit open under a row
+ * that isn't answering.
  *
  * Arming a recorder suspends the OS registrations (pressing the current combo
  * mid-recording must not toggle the overlay) and swallows every keydown at
@@ -83,10 +112,8 @@ function comboKeys(parts: string[]) {
  */
 export function SettingsMenu({
   settings,
-  selectedProviderId,
   onSaved,
   onKeysChanged,
-  onPickProvider,
   onClose,
   triggerRef,
 }: SettingsMenuProps) {
@@ -114,6 +141,15 @@ export function SettingsMenu({
     rowId: string;
     message: string;
   } | null>(null);
+  /** Whether the provider key lines are disclosed under the Custom row. Mount
+   * seed only — `pickMode` owns every reconciliation after that. A stale
+   * default install (Default chosen, nothing configured behind it) opens too:
+   * the guidance under the heading says "add a key below", and a collapsed
+   * list would point at nothing. `defaultMode.configured` is known
+   * synchronously here; `statuses` is not. */
+  const [keysOpen, setKeysOpen] = useState(
+    settings.mode !== "default" || !settings.defaultMode.configured,
+  );
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Whether THIS menu suspended the registrations — resume exactly once per
   // suspend, whatever exit path runs (save, cancel, hide, unmount).
@@ -128,16 +164,6 @@ export function SettingsMenu({
    * actually in must stay visible and one click from a fix. */
   const showBuiltIn =
     settings.defaultMode.configured || currentMode === "default";
-  const keyed = statuses?.filter((s) => s.hasKey) ?? [];
-  /** Which row wears the check. Derived, never stored, so it cannot disagree
-   * with App's own first-keyed-provider fallback. */
-  const sourceId =
-    currentMode === "default"
-      ? BUILTIN
-      : (keyed.find((s) => s.id === selectedProviderId)?.id ??
-        keyed[0]?.id ??
-        null);
-
   // Key statuses are fetched per open (the menu mounts fresh each time).
   useEffect(() => {
     let active = true;
@@ -146,7 +172,10 @@ export function SettingsMenu({
         if (active) setStatuses(list);
       })
       .catch((e) => {
-        if (active) setSourceError({ rowId: BUILTIN, message: String(e) });
+        // Tagged for the slot under the heading, not a row: on a fresh install
+        // the built-in row doesn't exist, and burying this behind the caret
+        // would hide it in exactly the case where it matters most.
+        if (active) setSourceError({ rowId: KEYS_ROW, message: String(e) });
       });
     return () => {
       active = false;
@@ -170,38 +199,11 @@ export function SettingsMenu({
     if (document.activeElement === document.body) menuRef.current?.focus();
   }, [busyAll]);
 
-  /** Make a row the answer source. An unkeyed provider has nothing to commit
-   * yet — it opens its key field instead, and fires no IPC. */
-  async function pickSource(rowId: string, hasKey: boolean) {
-    if (busyAll) return;
-    if (rowId !== BUILTIN && !hasKey) {
-      // Toggle the form; collapsing drops the draft.
-      setSourceError(null);
-      setDraft("");
-      setOpenKey((open) => (open === rowId ? null : rowId));
-      return;
-    }
-    if (rowId === sourceId) return;
-    setAction("source");
-    setActionRow(rowId);
-    setSourceError(null);
-    setOpenKey(null);
-    try {
-      if (rowId === BUILTIN) {
-        onSaved(await setMode("default"));
-      } else {
-        if (settings.mode !== "custom") onSaved(await setMode("custom"));
-        onPickProvider?.(rowId);
-      }
-    } catch (e) {
-      setSourceError({ rowId, message: String(e) });
-    } finally {
-      setAction("idle");
-      setActionRow(null);
-    }
-  }
-
-  /** Save the open field's key, which also completes the source choice. */
+  /** Store the open field's key. That is the whole job — a key is not a choice
+   * (vault/2026-07-29_keys-are-not-a-mode-choice.md), so the mode stays where
+   * the player put it and the check does not move. `onKeysChanged` is all App
+   * needs: its provider re-fetch is what makes a newly-keyed provider reachable
+   * from the footer chip. */
   async function handleSaveKey(providerId: string) {
     const key = draft.trim();
     if (busyAll || key === "") return;
@@ -209,14 +211,12 @@ export function SettingsMenu({
     setActionRow(providerId);
     setSourceError(null);
     try {
+      // The fresh statuses land first, so the Custom row's "Needs a key" note
+      // clears in the same commit the key does.
       setStatuses(await setApiKey(providerId, key));
       // Success collapses the form; drop the key text from state too.
       setDraft("");
       setOpenKey(null);
-      // Order matters: the pick must be stored before onKeysChanged bumps
-      // App's provider re-fetch, and the mode must be custom for it to run.
-      onPickProvider?.(providerId);
-      if (settings.mode !== "custom") onSaved(await setMode("custom"));
       onKeysChanged?.();
     } catch (e) {
       // The draft stays for a retry.
@@ -438,69 +438,6 @@ export function SettingsMenu({
     );
   }
 
-  /** One row of the source list. `note` is the right cell's single signal —
-   * the accent check speaks for the live source, so it carries none. */
-  function sourceRow(opts: {
-    rowId: string;
-    name: string;
-    label: string;
-    note: string | null;
-    opens: boolean;
-    onRemove?: () => void;
-  }) {
-    const selected = sourceId === opts.rowId;
-    const open = openKey === opts.rowId;
-    return (
-      <div className="source-row">
-        <button
-          type="button"
-          className={
-            "model-row" +
-            (selected ? " selected" : "") +
-            (open ? " is-open" : "")
-          }
-          disabled={busyAll}
-          aria-current={selected ? "true" : undefined}
-          aria-expanded={opts.opens ? open : undefined}
-          aria-label={opts.label}
-          onClick={() => void pickSource(opts.rowId, !opts.opens)}
-        >
-          <span className="row-main">
-            <span
-              className={
-                "group-caret" +
-                (opts.opens ? (open ? "" : " is-collapsed") : " is-blank")
-              }
-              aria-hidden="true"
-            >
-              ▾
-            </span>
-            <span className="row-name">{opts.name}</span>
-          </span>
-          <span className="row-side">
-            {opts.note && <span className="row-note">{opts.note}</span>}
-            <span className="check" aria-hidden="true">
-              ✓
-            </span>
-          </span>
-        </button>
-        {opts.onRemove && (
-          <button
-            type="button"
-            className="remove-btn"
-            disabled={busyAll}
-            aria-label={`Remove the ${opts.name} API key`}
-            onClick={opts.onRemove}
-          >
-            {action === "remove-key" && actionRow === opts.rowId
-              ? "Removing…"
-              : "Remove key"}
-          </button>
-        )}
-      </div>
-    );
-  }
-
   /** The one open key field, mounted as a plain sibling of its row — no fill,
    * no border, no shadow, so it claims no second altitude inside the card. */
   function keyForm(status: KeyStatus) {
@@ -560,7 +497,176 @@ export function SettingsMenu({
     );
   }
 
-  const nothingLive = sourceId === null;
+  // The list picks a MODE (built-in vs your own provider), and the provider
+  // lines below only set/clear a key — the provider itself is picked from the
+  // footer chip on the main panel.
+
+  /** No provider has a key. Gated on the fetch having landed: derived from a
+   * bare `some()` it reads false while `statuses` is null, so both notes below
+   * flashed on every open and pinned forever when the fetch failed. */
+  const needsKey = statuses !== null && !statuses.some((s) => s.hasKey);
+  /** Nothing on this install can answer at all — no configured built-in model
+   * and no key. Keys on `configured` rather than `showBuiltIn`, so a stale
+   * default (row visible, nothing behind it) still reads as dead. */
+  const nothingCanAnswer = needsKey && !settings.defaultMode.configured;
+
+  async function pickMode(next: Mode) {
+    if (busyAll || currentMode === next) return;
+    setAction("source");
+    setActionRow(next);
+    setSourceError(null);
+    setOpenKey(null);
+    try {
+      onSaved(await setMode(next));
+      // The disclosure follows the mode: your own provider reveals its keys,
+      // the built-in model puts them away. Inside the try and after the await
+      // on purpose — a rejected set_mode must not move the list for a flip
+      // that never happened. Re-clicking the mode you're already on returns
+      // above, so a manually collapsed list stays collapsed.
+      setKeysOpen(next === "custom");
+    } catch (e) {
+      setSourceError({ rowId: next, message: String(e) });
+    } finally {
+      setAction("idle");
+      setActionRow(null);
+    }
+  }
+
+  function toggleKeyForm(id: string) {
+    setSourceError(null);
+    setDraft("");
+    setOpenKey((open) => (open === id ? null : id));
+  }
+
+  /** The caret. Collapsing takes any open field with it — the same
+   * key-residency rule `toggleKeyForm` honors, one level out: a typed key must
+   * not sit alive behind a closed disclosure. */
+  function toggleKeys() {
+    const next = !keysOpen;
+    setKeysOpen(next);
+    if (!next) {
+      setOpenKey(null);
+      setDraft("");
+    }
+  }
+
+  /** One mode row: the whole of the answer choice. `disclosure` is the caret
+   * rail on the Custom row — both rows go through here so neither can lose its
+   * error slot the way a hand-written twin did. */
+  const modeRow = (opts: {
+    mode: Mode;
+    name: string;
+    label: string;
+    note: string | null;
+    disclosure?: ReactNode;
+  }) => {
+    const selected = currentMode === opts.mode;
+    return (
+      <Fragment key={opts.mode}>
+        <div
+          className={
+            "source-row" + (opts.disclosure ? " source-row--disclosing" : "")
+          }
+        >
+          <button
+            type="button"
+            className={"model-row" + (selected ? " selected" : "")}
+            disabled={busyAll}
+            aria-current={selected ? "true" : undefined}
+            aria-label={opts.label}
+            onClick={() => void pickMode(opts.mode)}
+          >
+            <span className="row-main">
+              <span className="row-name">{opts.name}</span>
+            </span>
+            <span className="row-side">
+              {opts.note && <span className="row-note">{opts.note}</span>}
+              <span className="check" aria-hidden="true">
+                ✓
+              </span>
+            </span>
+          </button>
+          {opts.disclosure}
+        </div>
+        {sourceError?.rowId === opts.mode && (
+          <div className="menu-error">{sourceError.message}</div>
+        )}
+      </Fragment>
+    );
+  };
+
+  /* A key line: the name opens the field, the trash clears a stored key.
+     Nothing here is a choice — only the two mode rows above are. */
+  const keyLine = (status: KeyStatus) => (
+    <Fragment key={status.id}>
+      <div className={"key-line" + (status.hasKey ? " is-keyed" : "")}>
+        <button
+          type="button"
+          className={"model-row" + (openKey === status.id ? " is-open" : "")}
+          disabled={busyAll}
+          aria-expanded={openKey === status.id}
+          aria-label={
+            status.hasKey
+              ? `Replace the ${status.name} API key`
+              : `Add a key for ${status.name}`
+          }
+          onClick={() => toggleKeyForm(status.id)}
+        >
+          {/* No note and no mark: ink strength says whether the key is there,
+              and the aria-label above says it for assistive tech. */}
+          <span className="row-main">
+            <span className="row-name">{status.name}</span>
+          </span>
+        </button>
+        {status.hasKey && (
+          <button
+            type="button"
+            className="remove-btn remove-btn--icon"
+            disabled={busyAll}
+            aria-label={`Remove the ${status.name} API key`}
+            title="Remove key"
+            onClick={() => void handleRemoveKey(status.id)}
+          >
+            {action === "remove-key" && actionRow === status.id
+              ? "…"
+              : TRASH_ICON}
+          </button>
+        )}
+      </div>
+      {openKey === status.id && keyForm(status)}
+      {sourceError?.rowId === status.id && (
+        <div className="menu-error">{sourceError.message}</div>
+      )}
+    </Fragment>
+  );
+
+  /** The Custom row's caret, floated over the row by `.caret-rail` so it lands
+   * right after the label while every pixel of the row still picks the mode.
+   * Its own control on purpose: the keys can be opened without changing which
+   * mode is answering. */
+  const keysCaret = (
+    <span className="caret-rail">
+      <span className="caret-ghost" aria-hidden="true">
+        {CUSTOM_MODE_LABEL}
+      </span>
+      <button
+        type="button"
+        className="caret-toggle"
+        disabled={busyAll}
+        aria-expanded={keysOpen}
+        aria-controls={KEYS_NEST_ID}
+        aria-label={keysOpen ? "Hide provider keys" : "Show provider keys"}
+        onClick={toggleKeys}
+      >
+        <span
+          className={"group-caret" + (keysOpen ? "" : " is-collapsed")}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
+      </button>
+    </span>
+  );
 
   return (
     <div
@@ -570,57 +676,45 @@ export function SettingsMenu({
       role="dialog"
       aria-label="Settings"
     >
-      <div className="menu-list">
-        <div className="menu-heading">Answers come from</div>
-        <div className="menu-note">
-          {!nothingLive
-            ? "WikiLens finds the wiki pages. The one you pick here writes the answer."
-            : showBuiltIn
-              ? // The built-in row needs no key, so don't ask for one.
-                "Nothing can answer yet — pick one below."
-              : "Nothing can answer yet — pick one below and add its key."}
-        </div>
-
-        {showBuiltIn && (
-          <>
-            {sourceRow({
-              rowId: BUILTIN,
-              name: "Built into WikiLens",
-              label: "Answer with the built-in model",
-              note: settings.defaultMode.configured ? null : "Not set up here",
-              opens: false,
-            })}
-            {sourceError?.rowId === BUILTIN && (
-              <div className="menu-error">{sourceError.message}</div>
-            )}
-          </>
+      <div className="menu-list menu-list--settings">
+        <div className="menu-heading">Answers</div>
+        {/* Panel-scope, so it sits above the rows rather than on one: a failed
+            key-status read would otherwise be tagged to a row that may not
+            exist, or be hidden behind the caret. */}
+        {sourceError?.rowId === KEYS_ROW && (
+          <div className="menu-error">{sourceError.message}</div>
         )}
+        {nothingCanAnswer && (
+          <div className="menu-note">
+            Nothing can answer yet — add a key below.
+          </div>
+        )}
+        {showBuiltIn &&
+          modeRow({
+            mode: "default",
+            name: "Built into WikiLens",
+            label: "Answer with the built-in model",
+            note: settings.defaultMode.configured ? null : "Not set up here",
+          })}
+        {modeRow({
+          mode: "custom",
+          name: CUSTOM_MODE_LABEL,
+          label: "Answer with your own provider",
+          note: needsKey ? "Needs a key" : null,
+          disclosure: keysCaret,
+        })}
 
-        {statuses === null && <div className="menu-note">Loading…</div>}
-        {statuses?.map((status) => (
-          <Fragment key={status.id}>
-            {sourceRow({
-              rowId: status.id,
-              name: status.name,
-              label: status.hasKey
-                ? `Answer with ${status.name}`
-                : `Add a key for ${status.name}`,
-              note: !status.hasKey
-                ? "Needs a key"
-                : sourceId === status.id
-                  ? null
-                  : "Key added",
-              opens: !status.hasKey,
-              onRemove: status.hasKey
-                ? () => void handleRemoveKey(status.id)
-                : undefined,
-            })}
-            {openKey === status.id && keyForm(status)}
-            {sourceError?.rowId === status.id && (
-              <div className="menu-error">{sourceError.message}</div>
+        {keysOpen && (
+          <div className="keys-nest" id={KEYS_NEST_ID}>
+            {statuses === null && <div className="menu-note">Loading…</div>}
+            {statuses?.length === 0 && (
+              <div className="menu-note">
+                No providers to key on this install.
+              </div>
             )}
-          </Fragment>
-        ))}
+            {statuses?.map(keyLine)}
+          </div>
+        )}
 
         <div className="menu-heading">Shortcuts</div>
         {row("summon", settings.hotkeys.summon)}
@@ -631,6 +725,7 @@ export function SettingsMenu({
           Shortcuts work in-game, even while this panel is hidden.
         </div>
       </div>
+
     </div>
   );
 }

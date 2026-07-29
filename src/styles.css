@@ -122,9 +122,10 @@ body {
 
 /* Authored keyboard-focus rings (One Signal Rule: Moonlight Blue marks the
    interactive, the selected, and the focused). :focus-visible only — pointer
-   presses never ring. Standalone controls ring outside; in-list rows ring
-   inset so touching rows don't overlap; inputs keep their accent
-   border-shift instead (see .prompt-input:focus). */
+   presses never ring. Standalone controls ring outside; in-list rows — and
+   anything painted ON a row, like the settings caret — ring inset so the two
+   rings don't overlap; inputs keep their accent border-shift instead (see
+   .prompt-input:focus). */
 .quiet-chip:focus-visible,
 .status-stop:focus-visible,
 .hotkey-btn:focus-visible,
@@ -139,7 +140,8 @@ body {
 
 .model-row:focus-visible,
 .group-header:focus-visible,
-.menu-action:focus-visible {
+.menu-action:focus-visible,
+.caret-toggle:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
@@ -387,6 +389,10 @@ body {
   flex: 1 1 auto;
   padding: var(--space-4) var(--space-6) var(--space-6);
   overflow-y: auto;
+  /* overflow-y:auto computes overflow-x to auto, so an over-wide child would
+     raise a horizontal bar across the list. Rows ring inset and the padding is
+     6px, so there is nothing here that wants to bleed sideways. */
+  overflow-x: hidden;
 }
 
 /* Owned lists scroll; the native popup never showed a bar here. */
@@ -434,12 +440,6 @@ body {
 
 .group-caret.is-collapsed {
   transform: rotate(-90deg);
-}
-
-/* Width reserved on rows that don't open anything, so every source-row name
-   sits on one left edge (the same trick .model-row .check uses). */
-.group-caret.is-blank {
-  opacity: 0;
 }
 
 /* Muted "offline list" marker on fallback groups; lowercase against the
@@ -632,20 +632,26 @@ body {
   font-size: var(--text-label);
 }
 
-/* ---- Settings source list ("Answers come from") ---- */
+/* ---- Settings: the Answers mode rows ---- */
 
-/* One row per answer source. The row itself is the pick; a keyed provider's
-   Remove sits beside it rather than inside it (a button can't nest in a
-   button) — the .custom-game-row + .remove-btn pairing, made pickable. */
+/* One row per answer MODE — the built-in model, or your own provider. The row
+   is the whole pick; the Custom row also carries the disclosure caret as a
+   sibling (a button can't nest in a button), floated over it by .caret-rail.
+   The padding-right matches .key-line's below, so the mode rows and the key
+   lines land their right clusters on one edge. */
 .source-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  padding-right: var(--space-4);
 }
 
+/* Settings-only, so the airier rows can't reach the game / model / add-game
+   menus — they share .menu-list and .model-row, but not .source-row. */
 .source-row .model-row {
   flex: 1 1 auto;
   min-width: 0;
+  padding: var(--space-8);
 }
 
 /* The open row's key field: a plain sibling of the row that owns it — no
@@ -685,7 +691,8 @@ body {
 }
 
 /* Right-aligned host hint on a candidate row (wiki.gg vs Fandom), and the
-   source list's single right-cell signal ("Needs a key" / "Key added"). */
+   settings mode rows' single right-cell signal ("Needs a key" on your own
+   provider, "Not set up here" on the built-in model). */
 .row-note {
   flex: 0 0 auto;
   color: var(--fg-muted);
@@ -732,6 +739,131 @@ body {
   font-size: var(--text-status);
   line-height: var(--leading-compact);
   white-space: pre-wrap;
+}
+
+/* ---- Settings key lines -------------------------------------------------- */
+
+/* A key line is the provider's row plus its trash. Nothing here is a choice —
+   the two rows above pick the mode, and the provider itself is picked from the
+   footer chip; these lines only set and clear a key. */
+.key-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding-right: var(--space-4);
+}
+
+.key-line > .model-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: var(--space-8);
+}
+
+/* Whether a key is stored is said by ink strength alone — no mark, no wording
+   (the row's aria-label carries it for assistive tech). A provider you've
+   keyed reads at full ink; one you haven't sits back at muted, the same
+   muted → ink hierarchy the rest of the panel uses. */
+.key-line .row-name {
+  color: var(--fg-muted);
+}
+
+.key-line.is-keyed .row-name {
+  color: var(--fg);
+}
+
+/* The trash wears the .remove-btn anatomy above — muted ink at rest, rose on
+   hover — in a fixed square. The square is the point: the button swaps its
+   12px glyph for a "…" while the removal is in flight, and a content-sized box
+   (or `line-height: 0`, which zeroes the text line) would collapse the button
+   mid-action and jolt the row. */
+.remove-btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-20);
+  height: var(--space-20);
+  padding: 0;
+}
+
+/* The settings rows breathe. Scoped to .source-row / .key-line — never
+   .menu-list or .model-row, which the game, model and add-game menus share. */
+.menu-list--settings > * + *,
+.keys-nest > * + * {
+  margin-top: var(--space-2);
+}
+
+/* The key lines are disclosed under the "Your own provider" row and indented
+   beneath it, so their belonging is structural rather than announced. */
+.keys-nest {
+  padding-left: var(--space-20);
+}
+
+/* The disclosure caret is its own control — the keys can be opened without
+   changing which mode is answering. Quiet-chip anatomy (bare ink at rest, veil
+   on hover) in the same fixed square as the trash, for the same reason: a
+   content-sized box around a 9px glyph is barely a hit target, and
+   `line-height: 0` would zero the caret's own line box. */
+.caret-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-20);
+  height: var(--space-20);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.caret-toggle:hover:not(:disabled) {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
+.caret-toggle:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+/* The caret sits right after the label AND the row keeps its full width: the
+   rail floats over the row and only the caret inside it takes pointer events,
+   so every pixel of the row still picks the mode. The rail's leading ghost is
+   an invisible copy of the label whose width places the caret — PAIRED
+   CONSTANTS: its padding-left and font-size must track .source-row .model-row's
+   padding and .row-name's type, or the caret drifts off the words. Bounded on
+   the right so a longer label can't push the rail past the row: .menu-list
+   scrolls on Y, which computes overflow-x to auto, and an over-wide child
+   there would raise a horizontal scrollbar across the whole list. */
+.source-row--disclosing {
+  position: relative;
+}
+
+.caret-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: var(--space-8);
+  pointer-events: none;
+}
+
+.caret-ghost {
+  visibility: hidden;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-status);
+  white-space: nowrap;
+}
+
+.caret-rail .caret-toggle {
+  pointer-events: auto;
 }
 
 /* Settings popover: one row per shortcut. Armed = accent border only (One

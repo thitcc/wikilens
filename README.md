@@ -30,16 +30,19 @@ permissions and never sees your API key.
 
 ## Setup: where answers come from
 
-Open the header gear (**Settings**): the **Answers come from** list holds every
-source this install can answer with — the built-in model when it has one, plus
-one row per supported LLM provider (Anthropic, DeepSeek, OpenRouter). Exactly
-one row wears the check, and that's the one writing your answers. Picking a
-provider you haven't keyed yet opens its key field right there in the list;
-paste the key and press **Save**, and that provider becomes your answer source.
+Open the header gear (**Settings**). The **Answers** rows say which model writes
+your answers: the built-in model when this install has one, and **your own
+provider**. Exactly one wears the check.
+
+The provider lines below — Anthropic, DeepSeek, OpenRouter — are not that
+choice. They only hold keys: click one to paste a key in the field that opens,
+and press **Save**. Saving stores the key and nothing else, so it never switches
+what is answering out from under you; when you want your own provider to answer,
+click that row. Which provider it uses is the footer chip on the panel itself.
 Stored keys are encrypted for your Windows user (DPAPI) in the app-data dir, are
 read **in the Rust process only**, and are never displayed back in any form —
-the only action on a stored key is **Remove key**. Keys are read at ask time, so
-adding one needs no restart. If the selected provider has no key yet, the app
+the only action on a stored key is the trash beside its line. Keys are read at
+ask time, so adding one needs no restart. If the selected provider has no key yet, the app
 answers with *"No API key for `<provider>` yet — add one in Settings."*
 
 | Provider | Default model | Model override var |
@@ -50,7 +53,7 @@ answers with *"No API key for `<provider>` yet — add one in Settings."*
 
 > **Migrating from the env-var era:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` /
 > `OPENROUTER_API_KEY` are no longer read. Paste those keys into
-> **Settings → Answers come from** once, then remove them from your `.env` — it
+> **Settings → Answers** once, then remove them from your `.env` — it
 > now only serves the model overrides and tuning vars below. WikiLens prints a
 > one-line startup reminder if any legacy variable is still set.
 
@@ -63,9 +66,9 @@ in favor of `deepseek-v4-flash`).
 
 One env-configured model source with the vendor hidden: the footer chip reads
 just **Default**, there is no provider or model menu, and asks resolve entirely
-from these variables. It appears in Settings → **Answers come from** as
-**Built into WikiLens**; picking it, or any provider row below it, switches
-between the two. On first launch WikiLens auto-senses (a complete
+from these variables. It appears in Settings → **Answers** as **Built into
+WikiLens**; that row and **Your own provider** are what switch between the
+two. On first launch WikiLens auto-senses (a complete
 `WIKILENS_DEFAULT_*` set selects Default once — your stored choice wins forever
 after). All four are required together:
 
@@ -192,9 +195,10 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 2. Wait for the tray icon to appear (the window starts hidden), then press
    **Ctrl+`** (the key left of 1).
 3. The panel slides in from the right and focuses the input.
-4. Add a key: the header gear (**Settings**) → **Answers come from** — click a
-   provider's row, paste its key in the field that opens, and press **Save**
-   (that provider becomes the answer source; the key is never displayed again).
+4. Add a key: the header gear (**Settings**) → **Answers** — click a provider's
+   line, paste its key in the field that opens, and press **Save** (the key is
+   never displayed again). Then click **Your own provider** to answer with it,
+   and pick which provider from the footer chip.
 5. Choose a **game**, then ask a question — e.g. **Conan Exiles** → *"how do I
    make steel bars?"*, or **Core Keeper** → *"best way to get wood"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer

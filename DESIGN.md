@@ -312,6 +312,12 @@ field with a border needs no second voice.
   while the row's key form is open (the third voice of the same state: a row
   that opened something stays lit until it closes); selection is a Moonlight
   Blue check (and monogram tiles promote to ink on hover/selected).
+- **Rows, the one exception:** the Settings provider key lines rest at *muted*
+  ink and promote to full ink to say a key is stored — ink strength carrying
+  **state**, not only hierarchy. It is the quietest signal the system can make
+  (no mark, no wording, no new hue, and the accent check stays on the mode rows
+  where it belongs), and it is legible by comparison, so it only works in a
+  list. Each line's `aria-label` carries the same fact for assistive tech.
 - **Keyboard:** focus stays on the filter input; Up/Down move the highlight
   through the pickable rows only (no wrap — Home/End jump), Enter picks the
   highlighted row, and typing keeps filtering. Group headers and pinned
@@ -331,7 +337,9 @@ field with a border needs no second voice.
 
 A 20×20 rounded tile bearing a 10px mono monogram ("SV", "CE") — the scan
 anchor for a growing game list. Raised-veil fill, muted ink promoting to full
-ink on hover/selection. The system's only "icon", and it's typography.
+ink on hover/selection. The system's only *pictorial* mark that is typography —
+the two vector glyphs beside it, the header gear and the key line's trash, are
+12px Bootstrap Icons, admitted where no typographic mark reads as the action.
 
 ## 6. Motion
 
@@ -417,7 +425,10 @@ same PR.
   `prefers-reduced-motion` with a static fallback (the debug shimmer is the
   template).
 - **Do** retune paired constants together — `styles.css` margins ↔
-  `window.rs` floats, `--menu-clearance*` ↔ `menuPlacement.ts` — whenever
+  `window.rs` floats, `--menu-clearance*` ↔ `menuPlacement.ts`, and
+  `.caret-ghost`'s padding/type ↔ `.source-row .model-row`'s (the ghost is an
+  invisible copy of the label whose width places the settings caret; the text
+  can't drift, since both render one constant, but the metrics can) — whenever
   geometry tokens change.
 
 ### Don't:

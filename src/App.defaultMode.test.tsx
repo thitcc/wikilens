@@ -104,12 +104,9 @@ test("a stale pre-badges pick never fetches models in Default mode", async () =>
   expect(backend.callsTo("list_providers")).toHaveLength(0);
 });
 
-test("keying a provider leaves Default mode and restores the Model chip", async () => {
+test("keying a provider in Default mode stores the key and stays in Default", async () => {
   const backend = installBackend({
     get_settings: () => SETTINGS_DEFAULT,
-    // The install keeps its configured Default target — the player just
-    // stopped answering with it.
-    set_mode: () => ({ ...SETTINGS_DEFAULT, mode: "custom" as const }),
     set_api_key: () =>
       KEY_STATUS.map((s) =>
         s.id === "anthropic" ? { ...s, hasKey: true } : s,
@@ -121,14 +118,15 @@ test("keying a provider leaves Default mode and restores the Model chip", async 
 
   await user.click(screen.getByRole("button", { name: "Settings" }));
   // Default mode owns the check: the built-in row is the live answer source.
-  const builtIn = await screen.findByRole("button", {
+  await screen.findByText("Needs a key");
+  const builtIn = screen.getByRole("button", {
     name: "Answer with the built-in model",
   });
   expect(builtIn.getAttribute("aria-current")).toBe("true");
 
-  // Leaving Default is the same move as arriving anywhere else — pick another
-  // row. Anthropic has no key yet, so its row opens a field and the Save
-  // carries the mode flip with it.
+  // Default mode mounts the key lines collapsed — reaching them is a click on
+  // the caret, and that click is not a mode change.
+  await user.click(screen.getByRole("button", { name: "Show provider keys" }));
   await user.click(
     await screen.findByRole("button", { name: "Add a key for Anthropic" }),
   );
@@ -137,10 +135,50 @@ test("keying a provider leaves Default mode and restores the Model chip", async 
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
 
+  expect(backend.callsTo("set_api_key")).toEqual([
+    { providerId: "anthropic", key: "sk-ant-test" },
+  ]);
+  // A key is storage, not a choice
+  // (vault/2026-07-29_keys-are-not-a-mode-choice.md): the mode never moves, so
+  // the provider fetch never arms and the footer keeps its static chip.
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+  expect(backend.callsTo("list_providers")).toHaveLength(0);
+  expect(
+    screen
+      .getByRole("button", { name: "Answer with the built-in model" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+  expect(screen.queryByRole("button", { name: /^Model: / })).toBeNull();
+  expect(screen.getByText("Default")).toBeTruthy();
+});
+
+test("picking your own provider leaves Default mode and restores the Model chip", async () => {
+  const backend = installBackend({
+    get_settings: () => SETTINGS_DEFAULT,
+    // The install keeps its configured Default target — the player just
+    // stopped answering with it.
+    set_mode: () => ({ ...SETTINGS_DEFAULT, mode: "custom" as const }),
+  });
+  const user = userEvent.setup();
+  await renderDefaultApp();
+  expect(backend.callsTo("list_providers")).toHaveLength(0);
+
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  await screen.findByText("Needs a key");
+
+  // Leaving Default is now one thing only: pick the other mode row.
+  await user.click(
+    screen.getByRole("button", { name: "Answer with your own provider" }),
+  );
+
   // The mode flip re-arms the provider fetch; the footer swaps to the chip.
   expect(await screen.findByRole("button", { name: /^Model: / })).toBeTruthy();
   expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
   expect(backend.callsTo("list_providers")).toHaveLength(1);
+  // And the disclosure follows the mode, so the keys you now need are open.
+  expect(
+    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeTruthy();
 
   // Nothing in the panel says "Default" any more — the built-in row reads
   // "Built into WikiLens" — so this is purely about the footer: close the
