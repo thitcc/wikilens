@@ -1,31 +1,37 @@
-// The Settings panel's contract. Source half: one exclusive "Answers come
-// from" list — the built-in model (when this install has one) plus every
-// provider; a keyed row commits on click, an unkeyed row opens in place into
-// a single key field (one at a time) and saving the key completes the choice.
-// A pasted key crosses IPC exactly once via set_api_key and is never displayed
-// back — a stored key renders as presence + Remove only. Recorder half: arming
-// suspends the OS hotkeys and swallows keys at capture phase; every exit path
-// (save, refuse, Esc, hide, unmount) resumes them exactly once. Keyboard goes
-// through userEvent only (see harness.tsx — a raw window KeyboardEvent would
-// invert the capture/bubble ordering these tests exist to pin).
+// The Settings panel's contract. Answers half: two MODE rows — the built-in
+// model (when this install has one) and your own provider — and exactly one
+// wears the check. The provider lines under the caret are never choices: they
+// only set and clear keys, because which provider answers is picked from the
+// footer chip. Two rules follow and both are pinned below: a key never moves
+// the check (vault/2026-07-29_keys-are-not-a-mode-choice.md), and the
+// disclosure follows the mode in both directions. A pasted key crosses IPC
+// exactly once via set_api_key and is never displayed back. Recorder half:
+// arming suspends the OS hotkeys and swallows keys at capture phase; every
+// exit path (save, refuse, Esc, hide, unmount) resumes them exactly once.
+// Keyboard goes through userEvent only (see harness.tsx — a raw window
+// KeyboardEvent would invert the capture/bubble ordering these tests exist to
+// pin).
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { SettingsMenu } from "./SettingsMenu";
-import { KEY_STATUS, SETTINGS, installBackend } from "../test/backend";
+import { KEY_STATUS, SETTINGS, deferred, installBackend } from "../test/backend";
 import { fireBackendEvent } from "../test/harness";
 import type { KeyStatus, SettingsInfo } from "../types";
 
-/** Mounts the menu and settles the open-time list_key_status fetch (the
- * default settle target is the keyless Anthropic row — at rest there is no
- * key field anywhere; tests that override the key fixtures pass their own). */
+/** Mounts the menu and settles the open-time list_key_status fetch.
+ *
+ * The default settle target is the unkeyed Anthropic key line, and it resolves
+ * only because the shared SETTINGS fixture has never chosen a mode — that
+ * normalizes to Custom, which mounts the key lines disclosed. A Default-mode
+ * fixture mounts them collapsed and needs `settle: settleNoKeys`. That coupling
+ * is silent, so it is spelled out here: it is what broke three tests when the
+ * caret landed. */
 async function renderMenu(over?: {
   settings?: SettingsInfo;
-  selectedProviderId?: string;
   onSaved?: (next: SettingsInfo) => void;
   onKeysChanged?: () => void;
-  onPickProvider?: (id: string) => void;
   onClose?: () => void;
   settle?: () => Promise<unknown>;
 }) {
@@ -35,10 +41,8 @@ async function renderMenu(over?: {
   const result = render(
     <SettingsMenu
       settings={over?.settings ?? SETTINGS}
-      selectedProviderId={over?.selectedProviderId ?? ""}
       onSaved={onSaved}
       onKeysChanged={over?.onKeysChanged}
-      onPickProvider={over?.onPickProvider}
       onClose={onClose}
       triggerRef={triggerRef}
     />,
@@ -70,11 +74,23 @@ const ANTHROPIC_KEYED: KeyStatus[] = KEY_STATUS.map((s) =>
 /** Every provider keyed — the only state where a keyed row is NOT the source. */
 const BOTH_KEYED: KeyStatus[] = KEY_STATUS.map((s) => ({ ...s, hasKey: true }));
 
-/** Settle a render whose fixtures leave Anthropic keyed. */
+/** Settle a render whose fixtures leave Anthropic keyed. A keyed line offers to
+ * replace, never to answer — the label is the only thing that says so. */
 const settleKeyedAnthropic = () =>
-  screen.findByRole("button", { name: "Answer with Anthropic" });
+  screen.findByRole("button", { name: "Replace the Anthropic API key" });
 
-/** Open a provider's key field (an unkeyed row expands in place). */
+/** Settle a Default-mode render, where the key lines mount collapsed. The note
+ * is the fetch's own consequence (it is gated on `statuses` landing); awaiting
+ * the caret instead would resolve synchronously and leave setStatuses outside
+ * act(). */
+const settleNoKeys = () => screen.findByText("Needs a key");
+
+/** Disclose the key lines (Default mode mounts them shut). */
+async function openKeys(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Show provider keys" }));
+}
+
+/** Open a provider's key field (a key line expands in place). */
 async function expandKeyForm(
   user: ReturnType<typeof userEvent.setup>,
   name: string,
@@ -83,16 +99,20 @@ async function expandKeyForm(
   return screen.getByLabelText(`${name} API key`) as HTMLInputElement;
 }
 
+/** SETTINGS with Default mode chosen and configured behind it. */
+const ON_DEFAULT: SettingsInfo = {
+  ...SETTINGS,
+  mode: "default",
+  defaultMode: { configured: true, vision: false },
+};
+
 test("renders the two sections in order with both shortcut chips", async () => {
   installBackend();
   await renderMenu();
 
   const dialog = screen.getByRole("dialog", { name: "Settings" });
   const text = dialog.textContent ?? "";
-  const order = [
-    text.indexOf("Answers come from"),
-    text.indexOf("Shortcuts"),
-  ];
+  const order = [text.indexOf("Answers"), text.indexOf("Shortcuts")];
   expect(Math.min(...order)).toBeGreaterThanOrEqual(0);
   expect([...order].sort((a, b) => a - b)).toEqual(order);
   expect(text).toContain("Summon");
@@ -104,19 +124,27 @@ test("renders the two sections in order with both shortcut chips", async () => {
   expect(text).not.toContain("Custom API");
   expect(text).not.toContain("API keys");
   expect(text).not.toContain("Key set");
+  // "Key added" went with the one-list IA: a key line has no note at all.
+  expect(text).not.toContain("Key added");
 });
 
-// ---- The answer-source list ----------------------------------------------
+// ---- The answer modes and their key lines ---------------------------------
 
-test("an unkeyed provider row expands into a masked field with a gated Save", async () => {
+test("an unkeyed key line expands into a masked field with a gated Save", async () => {
   installBackend();
   const user = userEvent.setup();
   await renderMenu();
 
-  // At rest the list is rows only — no key field is mounted anywhere.
+  // At rest the list is lines only — no key field is mounted anywhere.
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  // A key line carries its name and nothing else; the only "needs a key" in
+  // the panel sits on the mode row it actually blocks.
   expect(
     screen.getByRole("button", { name: "Add a key for Anthropic" }).textContent,
+  ).toBe("Anthropic");
+  expect(
+    screen.getByRole("button", { name: "Answer with your own provider" })
+      .textContent,
   ).toContain("Needs a key");
 
   const input = await expandKeyForm(user, "Anthropic");
@@ -170,7 +198,7 @@ test("collapsing a key form drops the draft", async () => {
   expect(reopened.value).toBe("");
 });
 
-test("a stored key renders as a source row with Remove and no field", async () => {
+test("a keyed line reads Replace, keeps the trash, and never renders the key", async () => {
   installBackend({ list_key_status: () => ANTHROPIC_KEYED });
   await renderMenu({ settle: settleKeyedAnthropic });
 
@@ -179,12 +207,13 @@ test("a stored key renders as a source row with Remove and no field", async () =
   expect(
     screen.getByRole("button", { name: "Remove the Anthropic API key" }),
   ).toBeTruthy();
-  // The only keyed provider is the live source, so the check speaks alone.
+  // A key line is not a choice: the check lives on the mode rows only, and a
+  // stored key must not move it — nor imply it.
   expect(
     screen
-      .getByRole("button", { name: "Answer with Anthropic" })
+      .getByRole("button", { name: "Replace the Anthropic API key" })
       .getAttribute("aria-current"),
-  ).toBe("true");
+  ).toBeNull();
   // The keyless provider still needs a click before any field exists.
   expect(screen.queryByLabelText("DeepSeek API key")).toBeNull();
   expect(
@@ -192,37 +221,45 @@ test("a stored key renders as a source row with Remove and no field", async () =
   ).toBeTruthy();
 });
 
-test("a keyed provider that isn't the source reads Key added", async () => {
+test("every keyed line is storage, not a choice; the mode row keeps the only check", async () => {
   installBackend({ list_key_status: () => BOTH_KEYED });
-  await renderMenu({
-    selectedProviderId: "anthropic",
-    settle: settleKeyedAnthropic,
-  });
+  await renderMenu({ settle: settleKeyedAnthropic });
 
-  const deepseek = screen.getByRole("button", { name: "Answer with DeepSeek" });
-  expect(deepseek.textContent).toContain("Key added");
-  expect(deepseek.getAttribute("aria-current")).toBeNull();
-  // The live source carries no note — the accent check is the whole signal.
-  expect(
-    screen.getByRole("button", { name: "Answer with Anthropic" }).textContent,
-  ).not.toContain("Key added");
+  // Both providers are keyed. Under the old one-list IA one of them would have
+  // been "the source" and the other would have read "Key added"; now neither
+  // is pickable at all.
+  for (const name of ["Anthropic", "DeepSeek"]) {
+    expect(
+      screen
+        .getByRole("button", { name: `Replace the ${name} API key` })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+  }
+  expect(screen.queryAllByText("Key added")).toHaveLength(0);
+
+  const custom = screen.getByRole("button", {
+    name: "Answer with your own provider",
+  });
+  expect(custom.getAttribute("aria-current")).toBe("true");
+  expect(custom.textContent).not.toContain("Needs a key");
 });
 
-test("picking a keyed provider commits the mode and the pick", async () => {
-  const backend = installBackend({ list_key_status: () => BOTH_KEYED });
+test("clicking a keyed line opens a blank field to replace the key and fires no IPC", async () => {
+  const backend = installBackend({ list_key_status: () => ANTHROPIC_KEYED });
   const user = userEvent.setup();
-  const picks: string[] = [];
-  await renderMenu({
-    selectedProviderId: "anthropic",
-    onPickProvider: (id) => picks.push(id),
-    settle: settleKeyedAnthropic,
-  });
+  await renderMenu({ settle: settleKeyedAnthropic });
 
-  await user.click(screen.getByRole("button", { name: "Answer with DeepSeek" }));
+  const before = backend.calls.length;
+  await user.click(
+    screen.getByRole("button", { name: "Replace the Anthropic API key" }),
+  );
 
-  // The fixture has never chosen a mode, so the pick commits Custom too.
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
-  expect(picks).toEqual(["deepseek"]);
+  expect(backend.calls.length).toBe(before);
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+  // The stored key is never seeded back into the field — replacing means
+  // typing a new one, and the old one stays write-only.
+  const input = screen.getByLabelText("Anthropic API key") as HTMLInputElement;
+  expect(input.value).toBe("");
 });
 
 test("pasting a key sends it once and flips the row to keyed", async () => {
@@ -240,24 +277,46 @@ test("pasting a key sends it once and flips the row to keyed", async () => {
   ]);
   expect(await settleKeyedAnthropic()).toBeTruthy();
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  // The trash is the other half of the flip: it exists only on a keyed line.
+  expect(
+    screen.getByRole("button", { name: "Remove the Anthropic API key" }),
+  ).toBeTruthy();
 });
 
-test("saving a key also commits the answer source", async () => {
+test("saving a key stores it and leaves the mode where it was", async () => {
   const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
   const user = userEvent.setup();
-  const picks: string[] = [];
-  await renderMenu({ onPickProvider: (id) => picks.push(id) });
+  const saved: SettingsInfo[] = [];
+  // Run it from Default, where "stays put" is actually visible.
+  await renderMenu({
+    settings: ON_DEFAULT,
+    onSaved: (next) => saved.push(next),
+    settle: settleNoKeys,
+  });
+  await openKeys(user);
 
   await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
   await user.click(
     screen.getByRole("button", { name: "Save the Anthropic API key" }),
   );
 
-  expect(picks).toEqual(["anthropic"]);
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
-  expect((await settleKeyedAnthropic()).getAttribute("aria-current")).toBe(
-    "true",
-  );
+  expect(backend.callsTo("set_api_key")).toEqual([
+    { providerId: "anthropic", key: "sk-ant-test" },
+  ]);
+  // The whole point of the split: a key is storage, not a choice. It commits
+  // no mode, reports no settings, and leaves the check on the built-in model.
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+  expect(saved).toHaveLength(0);
+  expect(
+    screen
+      .getByRole("button", { name: "Answer with the built-in model" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+  expect(
+    await screen.findByRole("button", {
+      name: "Replace the Anthropic API key",
+    }),
+  ).toBeTruthy();
 });
 
 test("a failed key save shows the error under the row and keeps the draft", async () => {
@@ -296,7 +355,7 @@ test("the vendor link opens the provider's console externally", async () => {
   ]);
 });
 
-test("Remove sends remove_api_key and the row goes back to needing a key", async () => {
+test("Remove sends remove_api_key and the line goes back to Add a key", async () => {
   const backend = installBackend({
     list_key_status: () => ANTHROPIC_KEYED,
     remove_api_key: () => KEY_STATUS,
@@ -386,22 +445,22 @@ test("picking the built-in row calls set_mode and reports the fresh settings", a
 });
 
 test("the stored default mode marks the built-in row as the source", async () => {
-  const onDefault: SettingsInfo = {
-    ...SETTINGS,
-    mode: "default",
-    defaultMode: { configured: true, vision: false },
-  };
   installBackend();
-  await renderMenu({ settings: onDefault });
+  await renderMenu({ settings: ON_DEFAULT, settle: settleNoKeys });
 
   expect(
     screen
       .getByRole("button", { name: "Answer with the built-in model" })
       .getAttribute("aria-current"),
   ).toBe("true");
+  // Default mode mounts the key lines collapsed, and nothing behind that caret
+  // is a choice — so nothing there can contradict the check.
+  expect(
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
   expect(
     screen
-      .getByRole("button", { name: "Add a key for Anthropic" })
+      .getByRole("button", { name: "Answer with your own provider" })
       .getAttribute("aria-current"),
   ).toBeNull();
 });
@@ -414,7 +473,7 @@ test("an install with no built-in and no keys lists no built-in row and says not
     screen.queryByRole("button", { name: "Answer with the built-in model" }),
   ).toBeNull();
   expect(
-    screen.getByText("Nothing can answer yet — pick one below and add its key."),
+    screen.getByText("Nothing can answer yet — add a key below."),
   ).toBeTruthy();
 });
 
@@ -425,6 +484,9 @@ test("a stale default mode keeps the built-in row, selected and marked not set u
     defaultMode: { configured: false, vision: false },
   };
   installBackend();
+  // No settle override: nothing is configured behind the chosen Default, so
+  // the seed opens the key lines — which is what keeps "add a key below"
+  // pointing at something.
   await renderMenu({ settings: stale });
 
   const builtIn = screen.getByRole("button", {
@@ -432,6 +494,187 @@ test("a stale default mode keeps the built-in row, selected and marked not set u
   });
   expect(builtIn.getAttribute("aria-current")).toBe("true");
   expect(builtIn.textContent).toContain("Not set up here");
+  expect(
+    screen.getByText("Nothing can answer yet — add a key below."),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeTruthy();
+});
+
+// ---- The disclosure --------------------------------------------------------
+
+test("the caret shows and hides the key lines without touching the mode", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  const caret = screen.getByRole("button", { name: "Hide provider keys" });
+  expect(caret.getAttribute("aria-expanded")).toBe("true");
+  // The disclosed region names itself, so the relationship survives for AT —
+  // the caret floats in a rail over a different row than the one it opens.
+  expect(caret.getAttribute("aria-controls")).toBe(
+    screen.getByRole("button", { name: "Add a key for Anthropic" }).closest(".keys-nest")?.id,
+  );
+
+  await user.click(caret);
+  expect(
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Show provider keys" })
+      .getAttribute("aria-expanded"),
+  ).toBe("false");
+  // Looking at your keys is not picking one: the caret commits nothing and
+  // leaves the check where it was.
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+  expect(
+    screen
+      .getByRole("button", { name: "Answer with your own provider" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+
+  await user.click(screen.getByRole("button", { name: "Show provider keys" }));
+  expect(
+    screen.getByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeTruthy();
+});
+
+test("collapsing the caret drops an open key draft", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
+  // Same key-residency rule the per-row collapse honors, one level out: a
+  // typed key must not sit alive behind a closed disclosure.
+  await user.click(screen.getByRole("button", { name: "Hide provider keys" }));
+  await openKeys(user);
+
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  expect((await expandKeyForm(user, "Anthropic")).value).toBe("");
+});
+
+test("picking your own provider reveals the key lines", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu({ settings: ON_DEFAULT, settle: settleNoKeys });
+
+  expect(
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
+
+  await user.click(
+    screen.getByRole("button", { name: "Answer with your own provider" }),
+  );
+
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
+  // Landing on Custom with nothing keyed used to strand the player: the mode
+  // committed, the note said "add a key below", and the list stayed shut.
+  expect(
+    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Hide provider keys" }),
+  ).toBeTruthy();
+});
+
+test("picking the built-in model puts the key lines away", async () => {
+  const configured: SettingsInfo = {
+    ...SETTINGS,
+    mode: "custom",
+    defaultMode: { configured: true, vision: false },
+  };
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu({ settings: configured });
+
+  await user.click(
+    screen.getByRole("button", { name: "Answer with the built-in model" }),
+  );
+
+  // The mirror half, and the one that rots silently: a list left open under a
+  // row that isn't answering implies a disclosure relationship that is a lie.
+  expect(
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Show provider keys" }),
+  ).toBeTruthy();
+});
+
+test("a failed mode flip says so and leaves the disclosure alone", async () => {
+  const backend = installBackend();
+  backend.onCommand("set_mode", () => {
+    throw "Couldn't save your choice: the disk is full";
+  });
+  const user = userEvent.setup();
+  await renderMenu({ settings: ON_DEFAULT, settle: settleNoKeys });
+
+  await user.click(
+    screen.getByRole("button", { name: "Answer with your own provider" }),
+  );
+
+  expect(await screen.findByText(/the disk is full/)).toBeTruthy();
+  // The reconcile sits after the await inside the try, so a flip that never
+  // happened moves nothing — neither the list nor the check.
+  expect(
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Answer with the built-in model" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+});
+
+// ---- What the panel says before it knows -----------------------------------
+
+test("neither key note speaks while the status fetch is still open", async () => {
+  const gate = deferred<KeyStatus[]>();
+  const backend = installBackend();
+  backend.onCommand("list_key_status", () => gate.promise);
+  await renderMenu({ settle: () => screen.findByText("Loading…") });
+
+  // Derived from a bare some(), these read false while statuses is null — so
+  // they flashed on every open and pinned forever when the fetch failed.
+  expect(screen.queryByText(/Nothing can answer yet/)).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Answer with your own provider" })
+      .textContent,
+  ).not.toContain("Needs a key");
+
+  await act(async () => {
+    gate.resolve(KEY_STATUS);
+  });
+  expect(
+    await screen.findByText("Nothing can answer yet — add a key below."),
+  ).toBeTruthy();
+});
+
+test("a failed key-status read says so instead of reading as no keys", async () => {
+  installBackend({
+    list_key_status: () => {
+      throw "Couldn't read your API keys: the store is unreadable";
+    },
+  });
+  await renderMenu({ settle: () => screen.findByText(/store is unreadable/) });
+
+  // The failure is panel-scope: tagged to a row it would have gone unrendered
+  // on a fresh install, and behind the caret it would have gone unseen.
+  expect(screen.queryByText(/Nothing can answer yet/)).toBeNull();
+});
+
+test("an empty provider list says so instead of showing an empty box", async () => {
+  installBackend({ list_key_status: () => [] });
+  await renderMenu({
+    settle: () => screen.findByText("No providers to key on this install."),
+  });
+
+  expect(
+    screen.queryByRole("button", { name: /^Add a key for/ }),
+  ).toBeNull();
 });
 
 test("the dialog takes focus on mount", async () => {

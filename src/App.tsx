@@ -477,14 +477,6 @@ function App() {
       });
   }
 
-  /** Settings picked a provider as the answer source. The model itself stays
-   * the stored pick (or the provider default) — the model-pick effect reads it
-   * off the provider change, exactly as the footer menu's path does. */
-  function handleProviderPick(providerId: string) {
-    localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
-    setSelectedProvider(providerId);
-  }
-
   function handleModelSelect(providerId: string, model: ModelInfo) {
     // Storage first: the provider-change effect re-reads the stored pick.
     localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
@@ -875,10 +867,8 @@ function App() {
       {openMenu === "settings" && settings && (
         <SettingsMenu
           settings={settings}
-          selectedProviderId={selectedProvider}
           onSaved={setSettings}
           onKeysChanged={() => setKeysVersion((v) => v + 1)}
-          onPickProvider={handleProviderPick}
           onClose={closeMenu}
           triggerRef={settingsChipRef}
         />

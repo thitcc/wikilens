@@ -72,10 +72,18 @@ test("the whole first run: pick a provider, key it, get the Model chip", async (
 
   await user.click(screen.getByRole("button", { name: "Set up a model" }));
 
-  // Clicking the unkeyed row is a pure UI move — it opens that row's field
+  // A never-chosen mode normalizes to Custom, so the key lines mount already
+  // disclosed and the line below is reachable without a caret click. Asserted
+  // rather than assumed: this exact fixture dependency is what silently broke
+  // three SettingsMenu tests when the disclosure landed.
+  expect(
+    await screen.findByRole("button", { name: "Hide provider keys" }),
+  ).toBeTruthy();
+
+  // Clicking the unkeyed line is a pure UI move — it opens that line's field
   // and touches no IPC until there is something to store.
   await user.click(
-    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
+    screen.getByRole("button", { name: "Add a key for Anthropic" }),
   );
   expect(backend.callsTo("set_api_key")).toHaveLength(0);
 
@@ -92,12 +100,14 @@ test("the whole first run: pick a provider, key it, get the Model chip", async (
     }),
   ).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Set up a model" })).toBeNull();
-  // That swap took two things: onKeysChanged bumping the provider fetch (the
-  // list was empty before the key existed)...
+  // That swap took one thing only: onKeysChanged bumping the provider fetch,
+  // whose list was empty before the key existed. The chip lands on Anthropic
+  // because it is now list[0] — incidental, not chosen.
   expect(backend.callsTo("list_providers")).toHaveLength(2);
-  // ...and the same Save committing the answer source — the mode leaves its
-  // never-chosen state without the player ever naming it.
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
+  // The never-chosen mode already normalizes to Custom, so there is nothing to
+  // commit — and a key would not commit it anyway
+  // (vault/2026-07-29_keys-are-not-a-mode-choice.md).
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
   // The field collapsed on success — the key never lingers on screen.
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
 });

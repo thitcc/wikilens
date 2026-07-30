@@ -9,10 +9,10 @@ content (hotkey → panel → RAG over the wiki → streamed answer + sources). 
 second hotkey (**Ctrl+Shift+C** by default) — or the footer capture chip — grabs
 a screen region and attaches it to the prompt as an image (vision-capable models
 only). Both shortcuts are configurable from the header gear's **Settings**
-panel (persisted to `settings.json` in the app-data dir), whose **Answers come
-from** list is both the answer-source choice and where provider API keys get
-pasted. Works over **borderless/windowed** games only — exclusive fullscreen
-covers the overlay.
+panel (persisted to `settings.json` in the app-data dir), whose **Answers** rows
+pick which model answers — built-in or your own provider — with provider keys
+pasted on the lines below. Works over **borderless/windowed** games only —
+exclusive fullscreen covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
 ## 2. Architecture map
@@ -42,7 +42,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Settings panel: the "Answers come from" list (built-in + one row per provider; an unkeyed row opens its key field in place, saving commits the source), key-recorder rows (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows (built-in vs your own provider) + provider key lines behind a caret (a line opens its key field in place; a key never changes the mode), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -111,9 +111,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `http::read_body_capped` / `read_error_body`, never bare `.text()` — new
   fetch paths inherit the byte caps only through the helpers. The webview has
   no network/http/fs permissions (see `capabilities/default.json`).
-- **API keys:** pasted in **Settings → Answers come from** (an unkeyed provider
-  row opens its key field in place; saving also makes it the answer source),
-  stored per provider as
+- **API keys:** pasted in **Settings → Answers** (a provider line opens its key
+  field in place; a key is storage only — it never changes which model answers,
+  ADR: `vault/2026-07-29_keys-are-not-a-mode-choice.md`), stored per provider as
   per-user DPAPI ciphertexts in `keys.json` (app-data; `keys.rs`, ADR:
   `vault/2026-07-26_api-key-storage-dpapi.md`) and read from the store at
   ask/model-list time — the vendor env vars (`ANTHROPIC_API_KEY` etc.) are

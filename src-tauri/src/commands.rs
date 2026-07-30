@@ -500,8 +500,8 @@ pub async fn resume_hotkeys(
     Ok(())
 }
 
-/// Key presence per provider, for the settings panel's "Answers come from"
-/// list (one row per provider; presence decides keyed vs. needs-a-key).
+/// Key presence per provider, for the settings panel's key lines (one line per
+/// provider; presence decides whether it offers Replace + a trash, or Add).
 #[tauri::command]
 pub fn list_key_status(keys: State<'_, DpapiKeyStore>) -> Vec<KeyStatus> {
     key_status(&*keys)

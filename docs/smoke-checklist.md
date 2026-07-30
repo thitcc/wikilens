@@ -12,7 +12,7 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 - A game running in **borderless/windowed** mode (exclusive fullscreen is only
   needed for item 8).
-- At least one provider keyed from **Settings → Answers come from**; for item 6
+- At least one provider keyed from **Settings → Answers**; for item 6
   you need both a vision-capable and a text-only model reachable from the model
   menu. Item 7 additionally needs a working `WIKILENS_DEFAULT_*` set (see
   README's "Default mode" section).
@@ -88,29 +88,35 @@ Copy the boxes into the release notes/log and tick them as you go.
       announces "Answer ready — N sources" once; a cancelled (Stop) or failed
       ask announces no answer-ready.
 
-### 7. Answers come from: built-in vs provider
+### 7. Answers: the mode rows and the key lines
 
-- [ ] Settings → **Answers come from**: clicking an unkeyed provider row opens
-      its key field in place (only one field open at a time; clicking another
-      row collapses it and drops what you typed). **Save** collapses the field
-      and moves the accent check to that row.
-- [ ] The keyed row then reads **Key added** whenever it isn't the source, keeps
-      a **Remove key** button, and still answers after an app restart (the DPAPI
-      store survives; no re-paste) — the key itself never shows anywhere again.
+- [ ] Settings → **Answers**: clicking a provider line opens its key field in
+      place (only one field open at a time; clicking another line collapses it
+      and drops what you typed). **Save** collapses the field and moves
+      **nothing** — the check stays exactly where it was.
+- [ ] The keyed line then reads at full ink against the unkeyed ones, carries a
+      trash icon that turns rose on hover, and still answers after an app
+      restart (the DPAPI store survives; no re-paste) — the key itself never
+      shows anywhere again.
+- [ ] The disclosure caret follows the mode in both directions: picking **Your
+      own provider** opens the key lines, picking **Built into WikiLens** puts
+      them away. The caret alone changes no mode.
+- [ ] Click the trash and watch the button, not the row: it holds its box while
+      the "…" shows. (jsdom can't see a collapsed line box; this needs eyes.)
 - [ ] Delete `settings.json` from the app-data dir, set the
       `WIKILENS_DEFAULT_*` block, relaunch: first launch lands in **Default**
       mode (footer reads just "Default", no provider or model anywhere, and
       **Built into WikiLens** wears the check). Repeat without the vars: first
-      launch lands on a provider — no built-in row in the list at all.
+      launch lands on your own provider — no built-in row in the list at all.
 - [ ] In Default mode an ask succeeds end-to-end with no vendor name visible
-      anywhere in the UI; picking a keyed provider row in Settings restores the
+      anywhere in the UI; picking **Your own provider** in Settings restores the
       provider/model chip and menu, and picking **Built into WikiLens** again
       goes back.
 - [ ] The capture chip follows `WIKILENS_DEFAULT_VISION`: disabled with the
       "can't read images" copy when unset, armed when truthy.
-- [ ] **Remove key** on the source provider's row (one click, no confirmation)
-      drops it from the model menu; with zero keys the footer shows **Set up a
-      model** and it opens Settings.
+- [ ] The trash on the answering provider's key line (one click, no
+      confirmation) drops it from the model menu; with zero keys the footer
+      shows **Set up a model** and it opens Settings.
 - [ ] Paste a garbage key and ask: the vendor's 401 shows verbatim in the
       error box, and the model menu degrades to the "offline list" note.
 
