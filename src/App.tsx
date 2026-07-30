@@ -809,7 +809,6 @@ function App() {
               <span className="chip-name">Debug</span>
             </button>
           )}
-          {!vision && <span className="chip-hint">text-only model</span>}
           <button
             type="button"
             className="quiet-chip capture-chip"

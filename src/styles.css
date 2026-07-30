@@ -266,19 +266,12 @@ body {
   cursor: default;
 }
 
-/* Footer capture cluster: the chip plus an optional "text-only model" hint,
-   pushed to the right edge opposite the model chip. */
+/* Footer capture cluster, pushed to the right edge opposite the model chip. */
 .capture-cluster {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: var(--space-6);
-}
-
-/* Muted hint beside the gated (disabled) capture chip. */
-.chip-hint {
-  color: var(--fg-muted);
-  font-size: var(--text-label);
 }
 
 .quiet-chip .caret {

@@ -65,7 +65,8 @@ test("capture is gated off when the Default target is text-only", async () => {
   const backend = installBackend({ get_settings: () => SETTINGS_DEFAULT });
   await renderDefaultApp();
 
-  expect(screen.getByText("text-only model")).toBeTruthy();
+  // No footer label for text-only targets — the chip's title carries the why.
+  expect(screen.queryByText("text-only model")).toBeNull();
   const capture = screen.getByTitle("This model can't read images");
   expect(capture.hasAttribute("disabled")).toBe(true);
 
@@ -84,7 +85,6 @@ test("capture arms when WIKILENS_DEFAULT_VISION is on", async () => {
   });
   await renderDefaultApp();
 
-  expect(screen.queryByText("text-only model")).toBeNull();
   await fireBackendEvent("capture://hotkey");
   expect(backend.callsTo("begin_capture")).toHaveLength(1);
 });
