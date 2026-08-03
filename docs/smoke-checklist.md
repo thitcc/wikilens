@@ -33,6 +33,10 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] Tray icon is present and its tooltip names the current summon combo;
       Show/Hide works; Quit exits the app (the panel's close paths only hide
       it).
+- [ ] With the panel open and **idle**, click the game just below the glass
+      (where the full-cap window used to sit): the click reaches the game and
+      focus leaves WikiLens — the window now hugs the panel
+      (vault/2026-08-03_window-follows-panel-height.md).
 
 ### 2. Hotkey configuration
 
@@ -53,16 +57,24 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 - [ ] The panel floats top-right with the correct gap on each monitor,
       including the >100% scale display — no drift off the edge, no clipping.
+- [ ] On the >100% scale display, stream a long answer: the window grows to
+      the 70% cap with no 1px grow/shrink jitter (the DPI report ping-pong
+      guard).
 
 ### 4. Transparency
 
 - [ ] No black rectangle behind the glass panel (transparency regression).
-- [ ] The drop shadow is fully visible, not clipped at the window edge.
+- [ ] The drop shadow is fully visible, not clipped at the window edge —
+      including below a **short, idle** panel (the hugged window must still
+      hold the 44px shadow apron).
 
 ### 5. Menus + Esc layering
 
 - [ ] Game, model, and add-game menus open and close; only one menu is open at
       a time.
+- [ ] From an **idle** panel, every menu opens full-size (the window expands
+      to the cap on open, shrinks back on close) — and afterwards a click
+      below the panel reaches the game again.
 - [ ] With a menu open, the first Esc closes the menu (panel stays); the
       second Esc hides the panel.
 - [ ] Opening a menu highlights the selected row (veil fill); Up/Down move
@@ -87,17 +99,24 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] With Narrator or NVDA running, the phases are spoken and the resolve
       announces "Answer ready — N sources" once; a cancelled (Stop) or failed
       ask announces no answer-ready.
+- [ ] The header's whirl-arrow (**Start over**) appears once there's a draft,
+      answer, error, or screenshot; clicking it returns the default panel
+      (placeholder, empty prompt, no attachment strip) with focus in the
+      prompt — and mid-ask it also stops the stream, with nothing
+      reappearing when the ask settles.
 
 ### 7. Answers: the mode rows and the key lines
 
-- [ ] Settings → **Answers**: clicking a provider line opens its key field in
-      place (only one field open at a time; clicking another line collapses it
-      and drops what you typed). **Save** collapses the field and moves
-      **nothing** — the check stays exactly where it was.
-- [ ] The keyed line then reads at full ink against the unkeyed ones, carries a
+- [ ] Settings → **Answers**: clicking an **unkeyed** provider line opens its
+      key field in place (only one field open at a time; clicking another line
+      collapses it and drops what you typed). **Save** collapses the field and
+      moves **nothing** — the check stays exactly where it was.
+- [ ] The keyed line then wears a neutral **Set** pill at full ink, no longer
+      opens anything when clicked (no hover veil, arrow cursor), carries a
       trash icon that turns rose on hover, and still answers after an app
       restart (the DPAPI store survives; no re-paste) — the key itself never
-      shows anywhere again.
+      shows anywhere again. Trash it: the line returns to click-to-add (no
+      field auto-opens) and keyboard focus lands on that line, not the panel.
 - [ ] The disclosure caret follows the mode in both directions: picking **Your
       own provider** opens the key lines, picking **Built into WikiLens** puts
       them away. The caret alone changes no mode.

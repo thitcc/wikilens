@@ -72,6 +72,9 @@ pub fn run() {
                 .build(),
         )
         .manage(AppState::new())
+        // The overlay's reported panel height (window.rs) — window-geometry
+        // state, deliberately outside session-scoped AppState.
+        .manage(window::OverlayHeight::default())
         .setup(|app| {
             let handle = app.handle();
             // Settings load first: tray creation and hotkey registration both
@@ -152,6 +155,7 @@ pub fn run() {
             commands::list_models,
             commands::hide_overlay,
             commands::show_overlay,
+            commands::set_overlay_height,
             commands::debug_available,
             commands::toggle_debug_window,
             commands::get_settings,

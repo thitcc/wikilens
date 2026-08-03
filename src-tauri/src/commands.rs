@@ -402,6 +402,15 @@ pub fn show_overlay(app: AppHandle) {
     window::show_overlay_if_hidden(&app);
 }
 
+/// Frontend height report: the panel's rendered height in logical CSS px (or
+/// a huge sentinel while a menu is open — Rust owns the clamp to the 70% cap
+/// and the DPI math). Keeps the transparent apron below an idle panel from
+/// eating the game's clicks.
+#[tauri::command]
+pub fn set_overlay_height(app: AppHandle, height: f64) {
+    window::set_overlay_height(&app, height);
+}
+
 /// Whether the visual debug window exists this session (`WIKILENS_DEBUG` was
 /// truthy at startup) — the overlay renders its footer Debug chip only then.
 /// Reveals a single bool about the local environment, never key material.

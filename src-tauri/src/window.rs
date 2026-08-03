@@ -1,5 +1,7 @@
 //! Overlay window control: toggle/show/hide and top-right float placement.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 /// Window label from `tauri.conf.json`.
@@ -14,9 +16,49 @@ pub const PANEL_GAP: u32 = 12;
 pub const SHADOW_ROOM_LEFT: u32 = 32;
 pub const SHADOW_ROOM_BOTTOM: u32 = 44;
 /// Maximum panel height as a fraction of the monitor height (design
-/// exploration 1a). The window is always sized for the cap; the CSS lets the
-/// panel hug its content up to it.
+/// exploration 1a). The window is sized for the frontend's reported panel
+/// height clamped to this cap — no report yet, or a menu-open sentinel,
+/// holds the cap. The window must hug the glass because the transparent
+/// remainder still captures mouse input (Tauri transparent windows aren't
+/// click-through): an idle panel over a full-cap window ate the game's
+/// clicks (vault/2026-08-03_window-follows-panel-height.md).
 pub const PANEL_HEIGHT_FRAC: f64 = 0.70;
+/// Smallest panel height a report may request (logical px) — a degenerate
+/// measurement must never collapse the window to just chrome.
+pub const MIN_PANEL_HEIGHT: u32 = 120;
+
+/// Frontend-reported desired panel height, logical CSS px, managed in
+/// `lib.rs`. 0 = no report yet → size for the 70% cap (the safe default for
+/// a first summon racing the webview's first report).
+#[derive(Default)]
+pub struct OverlayHeight(AtomicU32);
+
+impl OverlayHeight {
+    fn desired(&self) -> Option<u32> {
+        match self.0.load(Ordering::SeqCst) {
+            0 => None,
+            h => Some(h),
+        }
+    }
+
+    fn set(&self, height: u32) {
+        self.0.store(height, Ordering::SeqCst);
+    }
+}
+
+/// Physical window height for a reported logical panel height (`None` = no
+/// report yet → the 70% cap). `ceil` on logical→physical so the granted CSS
+/// room is never a fraction short of the request — rounding down would
+/// recreate ~1px of `.content` overflow and ping-pong reports at 125%/150%
+/// DPI scaling. (The chrome term also moved round→ceil: identical at every
+/// standard Windows scale, at most +1 physical px of apron at odd custom
+/// fractions — accepted.)
+fn overlay_window_height(monitor_height: u32, scale: f64, desired: Option<u32>) -> u32 {
+    let to_phys = |logical: u32| (logical as f64 * scale).ceil() as u32;
+    let cap = (monitor_height as f64 * PANEL_HEIGHT_FRAC).round() as u32;
+    let panel = desired.map_or(cap, |d| to_phys(d).min(cap));
+    (panel + to_phys(PANEL_GAP + SHADOW_ROOM_BOTTOM)).min(monitor_height)
+}
 
 /// Event emitted after the panel is shown so the frontend can focus the input.
 const EVENT_SHOWN: &str = "overlay://shown";
@@ -139,10 +181,12 @@ pub fn hide_overlay(app: &AppHandle) {
     }
 }
 
-/// Size the window around the floating panel (70% of monitor height, gap at
-/// top/right, shadow apron at left/bottom) and pin it to the top-right corner
-/// of whichever monitor currently hosts it. The CSS margins in styles.css
-/// carve the same gap/apron regions out of the webview, so the two must agree.
+/// Size the window around the floating panel (the reported panel height
+/// capped at 70% of the monitor, gap at top/right, shadow apron at
+/// left/bottom) and pin it to the top-right corner of whichever monitor
+/// currently hosts it. The CSS margins in styles.css carve the same
+/// gap/apron regions out of the webview, so the two must agree. The one
+/// sizer: `set_overlay_height` routes through here too.
 ///
 /// Works in physical pixels throughout and adds the monitor's own offset, which
 /// is what makes placement correct on multi-monitor and high-DPI setups.
@@ -161,13 +205,80 @@ pub fn position_top_right(win: &WebviewWindow) -> tauri::Result<()> {
     let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
 
     let win_w = to_phys(SHADOW_ROOM_LEFT + PANEL_WIDTH + PANEL_GAP);
-    let panel_h = (size.height as f64 * PANEL_HEIGHT_FRAC).round() as u32;
-    let win_h = (panel_h + to_phys(PANEL_GAP + SHADOW_ROOM_BOTTOM)).min(size.height);
+    let desired = win
+        .app_handle()
+        .try_state::<OverlayHeight>()
+        .and_then(|s| s.desired());
+    let win_h = overlay_window_height(size.height, scale, desired);
     win.set_size(PhysicalSize::new(win_w, win_h))?;
 
     let x = origin.x + size.width as i32 - win_w as i32;
     let y = origin.y;
-    win.set_position(PhysicalPosition::new(x, y))?;
+    let target_size = PhysicalSize::new(win_w, win_h);
+    let target_pos = PhysicalPosition::new(x, y);
+    // Skip the OS round trip when the geometry is already right — an answer
+    // streaming past the cap re-reports growing logical values that all
+    // clamp to the same physical size. Deduping HERE (against the real
+    // window) instead of at the store means a report after a failed resize
+    // still retries.
+    if win.outer_size()? == target_size && win.outer_position()? == target_pos {
+        return Ok(());
+    }
+    win.set_size(target_size)?;
+    win.set_position(target_pos)?;
 
     Ok(())
+}
+
+/// Store the frontend's height report and resize the window in place through
+/// `position_top_right` (the one sizer — top-anchored, so height never moves
+/// the panel; it no-ops against the window's real geometry, so repeated
+/// reports are cheap). Fine while hidden: the next show re-derives anyway.
+/// A NaN degrades safely (`as u32` saturates to 0 → "no report" → the cap).
+pub fn set_overlay_height(app: &AppHandle, height: f64) {
+    let Some(state) = app.try_state::<OverlayHeight>() else {
+        return;
+    };
+    state.set(height.clamp(MIN_PANEL_HEIGHT as f64, 100_000.0).round() as u32);
+    let Some(win) = overlay_window(app) else {
+        return;
+    };
+    if let Err(e) = position_top_right(&win) {
+        eprintln!("[wikilens] failed to resize overlay: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_report_sizes_for_the_cap() {
+        // 1080 * 0.70 = 756 panel + 56 chrome — today's exact pre-hug size.
+        assert_eq!(overlay_window_height(1080, 1.0, None), 812);
+    }
+
+    #[test]
+    fn a_short_report_hugs_the_panel() {
+        assert_eq!(overlay_window_height(1080, 1.0, Some(220)), 276);
+    }
+
+    #[test]
+    fn a_huge_report_clamps_to_the_cap() {
+        // The menu-open sentinel path: the frontend never learns the cap.
+        assert_eq!(overlay_window_height(1080, 1.0, Some(100_000)), 812);
+    }
+
+    #[test]
+    fn dpi_scales_the_logical_report_with_ceil() {
+        // ceil(401 * 1.5) = 602 panel + ceil(56 * 1.5) = 84 chrome. `round`
+        // would grant 601 physical px for a 401px request — a fraction short,
+        // re-creating 1px of .content overflow and a report ping-pong.
+        assert_eq!(overlay_window_height(2160, 1.5, Some(401)), 686);
+    }
+
+    #[test]
+    fn the_window_never_exceeds_the_monitor() {
+        assert_eq!(overlay_window_height(100, 1.0, None), 100);
+    }
 }

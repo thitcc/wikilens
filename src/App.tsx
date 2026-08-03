@@ -18,6 +18,8 @@ import {
   onCaptureHotkey,
   onOverlayHidden,
   onOverlayShown,
+  PANEL_HEIGHT_UNBOUNDED,
+  setOverlayHeight,
   showOverlay,
   toggleDebugWindow,
 } from "./api";
@@ -57,6 +59,25 @@ import "./styles.css";
 
 const GAME_STORAGE_KEY = "wikilens.selectedGame";
 const RECENT_GAMES_KEY = "wikilens.recentGames";
+
+/** Bootstrap Icons "arrow-counterclockwise" (MIT), sized like the header
+ * gear. Static, so it lives at module scope rather than being rebuilt on
+ * every render. */
+const RESET_ICON = (
+  <svg
+    aria-hidden="true"
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="currentColor"
+  >
+    <path
+      fillRule="evenodd"
+      d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2z"
+    />
+    <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466" />
+  </svg>
+);
 
 /** How many recent game ids to remember (the menu shows the top 3). */
 const RECENT_GAMES_STORED = 5;
@@ -205,6 +226,27 @@ function App() {
   // in flight, and by the arm itself so the slower of its two paths
   // (double-rAF vs the backstop timer) no-ops.
   const summonArmRef = useRef(0);
+  // Window-height reporting (set_overlay_height): panel + .content + the
+  // .content-sizer wrapper feed reportOverlayHeight; openMenuRef mirrors
+  // state for the mount-only observer; lastHeightRef dedupes (±1px DPI
+  // tolerance); heightTimerRef is the trailing throttle.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const contentSizerRef = useRef<HTMLDivElement | null>(null);
+  const openMenuRef = useRef<"game" | "addGame" | "model" | "settings" | null>(
+    null,
+  );
+  const lastHeightRef = useRef<number | null>(null);
+  const heightTimerRef = useRef<number | null>(null);
+  // Bumped by Start over: an ask that settles after a clear must not
+  // resurrect its answer or error. Stop's "never reset state here" rule
+  // holds — the resolve path checks the epoch instead.
+  const askEpochRef = useRef(0);
+  // The epoch the in-flight ask was submitted under. The ask://delta and
+  // ask://status listeners compare it to askEpochRef before applying: a
+  // chunk already in flight when Start over wipes the panel must not
+  // repaint orphan text on it (deltas keep draining until the abort lands).
+  const streamEpochRef = useRef(0);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -390,6 +432,10 @@ function App() {
     }).then(register);
     void onOverlayHidden(() => {
       lastHiddenAtRef.current = Date.now();
+      // Close any menu now, not on the next show: a menu holds the window at
+      // the 70% cap, and closing while hidden lets the shrink-to-content
+      // happen invisibly instead of on re-summon.
+      setOpenMenu(null);
       // Cancel a pending arm and re-hold the panel for the next entrance.
       // Reduced-motion never fires animationend; a mid-animation hide
       // shouldn't leave the class armed either.
@@ -397,8 +443,18 @@ function App() {
       setSummoning(false);
       setPreSummon(true);
     }).then(register);
-    void onAskStatus((s) => setStatus(s)).then(register);
-    void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);
+    // Both stream listeners are gated on the clear epoch: after Start over,
+    // stragglers from the aborted ask are dropped instead of resurrecting
+    // text or the status row on the cleared panel. A plain Stop keeps
+    // streaming until the abort drains — the kept-partial behavior.
+    void onAskStatus((s) => {
+      if (streamEpochRef.current === askEpochRef.current) setStatus(s);
+    }).then(register);
+    void onAskDelta((chunk) => {
+      if (streamEpochRef.current === askEpochRef.current) {
+        setAnswer((prev) => prev + chunk);
+      }
+    }).then(register);
     void onCaptureAttached((info) => {
       setAttachment(info);
       setError(null);
@@ -421,6 +477,75 @@ function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  /** Report the panel's desired height to Rust (which clamps to the 70% cap
+   * and resizes the window). Menu open → the unbounded sentinel: menus render
+   * into the window space around the panel and assume the cap. Otherwise the
+   * panel's border box plus `.content`'s scrollback — once the window hugs,
+   * `.panel`'s max-height equals its own height and streamed growth lives
+   * only in the scrollback, so the border box alone would go silent. The
+   * ±1px tolerance absorbs the fractional-DPI echo of our own resize. */
+  function reportOverlayHeight() {
+    const panel = panelRef.current;
+    const content = contentRef.current;
+    if (!panel || !content) return;
+    const desired =
+      openMenuRef.current !== null
+        ? PANEL_HEIGHT_UNBOUNDED
+        : Math.ceil(
+            panel.getBoundingClientRect().height +
+              Math.max(0, content.scrollHeight - content.clientHeight),
+          );
+    const last = lastHeightRef.current;
+    if (last !== null && Math.abs(desired - last) <= 1) return;
+    // Optimistic (collapses bursts), but re-armed on failure: a swallowed
+    // report must not convince the dedupe it landed — a lost menu-open
+    // sentinel would leave the menu clipped with no resize to correct it.
+    lastHeightRef.current = desired;
+    void setOverlayHeight(desired).catch(() => {
+      lastHeightRef.current = null;
+    });
+  }
+
+  // Mount + every menu open/close. Opening must pin the window at the cap
+  // (the OS resize lands async — ModelMenu re-measures on `resize`); closing
+  // hugs the content again. openMenu starts null, so this is also the
+  // initial mount report.
+  useEffect(() => {
+    reportOverlayHeight();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openMenu]);
+
+  // Content growth/shrink → resize the window. Three targets, one observer:
+  // .panel (attachment strip mounts), .content (squeezed by siblings while
+  // the panel sits at max-height), and .content-sizer (an answer streaming
+  // past the cap grows only scrollback — the outer two boxes go silent
+  // there). Trailing 100ms throttle: ≤10 IPC/s while streaming, measured at
+  // fire time so the last report always sees the settled layout.
+  useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      if (heightTimerRef.current !== null) return;
+      heightTimerRef.current = window.setTimeout(() => {
+        heightTimerRef.current = null;
+        reportOverlayHeight();
+      }, 100);
+    });
+    for (const el of [
+      panelRef.current,
+      contentRef.current,
+      contentSizerRef.current,
+    ]) {
+      if (el) observer.observe(el);
+    }
+    return () => {
+      observer.disconnect();
+      if (heightTimerRef.current !== null) {
+        window.clearTimeout(heightTimerRef.current);
+        heightTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Arm a per-phase slow-wiki timer; any status/busy change resets it. A
@@ -516,6 +641,8 @@ function App() {
   }
   // Point the mount-only hotkey listener at the current closure each render.
   requestCaptureRef.current = handleCaptureRequest;
+  // Mirror for the mount-only ResizeObserver's report closure.
+  openMenuRef.current = openMenu;
 
   function handleRemoveAttachment() {
     setAttachment(null);
@@ -531,6 +658,27 @@ function App() {
   // otherwise drop focus to <body> (the closeMenu trap).
   function handleStop() {
     void cancelAsk().catch(() => {});
+    inputRef.current?.focus();
+  }
+
+  // The header's Start over: back to the default panel — draft, answer,
+  // sources, error, announcement, and screenshot all go; a running ask is
+  // stopped. Unlike Stop, this DOES reset state: the epoch bump makes an ask
+  // that settles afterwards drop its own result instead of clobbering the
+  // cleared panel (the resolve path checks it).
+  function handleClear() {
+    askEpochRef.current += 1;
+    if (busy) void cancelAsk().catch(() => {});
+    setQuestion("");
+    setAnswer("");
+    setSources([]);
+    setError(null);
+    setStatus(null);
+    setAnnouncement(null);
+    setSlowHint(false);
+    setAttachment(null);
+    // Same rule as the attachment ✕: a failed Rust clear is harmless.
+    void clearCapture().catch(() => {});
     inputRef.current?.focus();
   }
 
@@ -552,6 +700,10 @@ function App() {
     setSources([]);
     setAnnouncement(null);
     setStatus("searching");
+    // Start over invalidates this ask's right to publish its result — and
+    // its stream (the delta/status listeners compare these two refs).
+    const epoch = askEpochRef.current;
+    streamEpochRef.current = epoch;
 
     try {
       // Custom mode: the explicit pick when there is one, else the provider
@@ -568,6 +720,8 @@ function App() {
         trimmed,
         attachment?.id,
       );
+      // A Start over while we awaited owns the panel now — drop the result.
+      if (epoch !== askEpochRef.current) return;
       setAnswer(result.answer);
       setSources(result.sources);
       setAnnouncement(answerReadyLabel(result.sources.length));
@@ -576,16 +730,26 @@ function App() {
       setAttachment(null);
     } catch (e) {
       // A cancelled ask resets quietly: no error box, and whatever partial
-      // answer already streamed stays on screen. (A delta racing the abort may
-      // still append after this settles — harmless, it lands on the kept text.)
-      if (String(e) !== ASK_CANCELLED) setError(String(e));
+      // answer already streamed stays on screen. (After a plain Stop, a delta
+      // racing the abort may still append — harmless, it lands on the kept
+      // text; after Start over the stream gate drops it.) A cleared ask
+      // (epoch moved) swallows its error the same way.
+      if (epoch === askEpochRef.current && String(e) !== ASK_CANCELLED) {
+        setError(String(e));
+      }
     } finally {
+      // Unconditional: busy/status describe the in-flight request, not the
+      // panel content — a post-clear settle must still release them.
       setBusy(false);
       setStatus(null);
     }
   }
 
   const showPlaceholder = !error && !busy && !answer;
+  // Start over renders only when there's something to start over from — the
+  // same "no affordance without an action" rule as SettingsMenu's Reset.
+  const clearable =
+    question !== "" || answer !== "" || error !== null || attachment !== null || busy;
   // The phase to display, null outside a healthy busy ask. A narrowed value
   // (not a boolean) so STATUS_LABEL[activeStatus] type-checks in the JSX.
   const activeStatus = !error && busy ? status : null;
@@ -598,6 +762,7 @@ function App() {
 
   return (
     <div
+      ref={panelRef}
       className={
         "panel" +
         (preSummon ? " panel--pre-summon" : "") +
@@ -616,7 +781,7 @@ function App() {
             type="button"
             ref={settingsChipRef}
             className={
-              "quiet-chip settings-chip" +
+              "quiet-chip icon-chip settings-chip" +
               (openMenu === "settings" ? " is-open" : "")
             }
             disabled={busy || !settings}
@@ -643,6 +808,22 @@ function App() {
               <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z" />
             </svg>
           </button>
+          {clearable && (
+            <button
+              type="button"
+              className="quiet-chip icon-chip reset-chip"
+              aria-label="Start over"
+              title="Start over"
+              // Keep the pointer press from stealing focus off the prompt —
+              // the same invariant as Stop; handleClear refocuses for
+              // keyboard users. Deliberately NOT disabled while busy: its
+              // whole job includes abandoning a running ask.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleClear}
+            >
+              {RESET_ICON}
+            </button>
+          )}
         </span>
         <GameChip
           gameName={
@@ -705,7 +886,12 @@ function App() {
         </div>
       )}
 
-      <div className="content">
+      <div className="content" ref={contentRef}>
+        {/* .content-sizer wraps the scrollable children so the height
+            reporter can observe natural content growth even while .content
+            itself is pinned and scrolling (see reportOverlayHeight). Menus
+            are NOT here — they stay direct .panel children. */}
+        <div className="content-sizer" ref={contentSizerRef}>
         {error && (
           <div className="error" role="alert">
             {error}
@@ -764,6 +950,7 @@ function App() {
             straight from the game's wiki.
           </div>
         )}
+        </div>
       </div>
 
       <footer className="panel-footer">

@@ -59,6 +59,18 @@ export function hideOverlay(): Promise<void> {
   return invoke<void>("hide_overlay");
 }
 
+/** "Size for the cap" sentinel — sent while a menu is open (menus render into
+ * the free window space below/above the panel). Rust clamps it to the 70%
+ * cap; the frontend never learns the monitor height. */
+export const PANEL_HEIGHT_UNBOUNDED = 100_000;
+
+/** Report the panel's desired height in logical CSS px; Rust clamps to the
+ * 70% cap, converts per-monitor DPI, and resizes the overlay window — the
+ * transparent remainder of an oversized window would eat the game's clicks. */
+export function setOverlayHeight(height: number): Promise<void> {
+  return invoke<void>("set_overlay_height", { height });
+}
+
 /** Show the overlay window if it's hidden; a visible panel is untouched (no
  * `overlay://shown` re-fire, so an open draft is never re-selected). */
 export function showOverlay(): Promise<void> {

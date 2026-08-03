@@ -42,7 +42,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows (built-in vs your own provider) + provider key lines behind a caret (a line opens its key field in place; a key never changes the mode), key-recorder rows (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows + provider key lines behind a caret (unkeyed opens its key field; keyed wears a "Set" pill, only the trash; a key never changes the mode), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -57,11 +57,11 @@ wikilens/
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
         ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys + the persisted mode choice; loaded in setup before registration
         ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); read by the key commands and at ask/model-list time
-        ├── window.rs             # toggle/show/hide + top-right float, DPI-aware sizing
+        ├── window.rs             # toggle/show/hide, top-right float, height-follows-panel (DPI-aware)
         ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
@@ -111,8 +111,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `http::read_body_capped` / `read_error_body`, never bare `.text()` — new
   fetch paths inherit the byte caps only through the helpers. The webview has
   no network/http/fs permissions (see `capabilities/default.json`).
-- **API keys:** pasted in **Settings → Answers** (a provider line opens its key
-  field in place; a key is storage only — it never changes which model answers,
+- **API keys:** pasted in **Settings → Answers** (an unkeyed provider line opens
+  its key field; a key is storage only — it never changes which model answers,
   ADR: `vault/2026-07-29_keys-are-not-a-mode-choice.md`), stored per provider as
   per-user DPAPI ciphertexts in `keys.json` (app-data; `keys.rs`, ADR:
   `vault/2026-07-26_api-key-storage-dpapi.md`) and read from the store at
@@ -121,8 +121,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `set_api_key` request, webview → Rust — and never back (no response, event,
   error string, or debug payload may contain it; pinned in
   `config_guardrails.rs`). Key *presence* booleans may cross
-  (`KeyStatus.hasKey`). Never logged, never displayed back — the only action
-  on a stored key is Remove key. A startup stderr notice (`target::warn_legacy_env`)
+  (`KeyStatus.hasKey`). Never logged, never displayed back — a stored key's
+  only action is the trash. A startup stderr notice (`target::warn_legacy_env`)
   names any legacy env var still set.
 - **Model precedence** (Custom mode): an explicit UI pick (footer chip menu, stored
   per provider in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
@@ -265,13 +265,14 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `src/debug/styles.css` for the debug window (each bundle has its own sheet).
 - Position with **monitor offset + scale factor** (see `window::position_top_right`)
   — required for correct placement on multi-monitor / high-DPI setups.
-- The floating panel's geometry is **split across two runtimes**: `window.rs`
-  constants (`PANEL_GAP`, `SHADOW_ROOM_*`, `PANEL_HEIGHT_FRAC`) size the window;
-  the CSS margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css`
+- Panel geometry is **split across two runtimes**: `window.rs` constants
+  (`PANEL_GAP`, `SHADOW_ROOM_*`, `PANEL_HEIGHT_FRAC`) size the window; the
+  CSS margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css`
   must match, or the shadow clips and the panel drifts off its gap. The
-  transparent gap/apron ring still captures mouse input while the overlay is
-  shown (Tauri transparent windows aren't click-through) — kept small on
-  purpose.
+  window **follows the panel's measured height** (ResizeObserver →
+  `set_overlay_height`; clamped to the 70% cap, held while a menu is open):
+  transparent window area still eats mouse input (not click-through) — an
+  idle panel's dead zone stole the game's clicks.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - Windows plays its **own one-time open transition** (fade + short rise) the
   first time an HWND is presented — on our hidden-created windows that lands
@@ -344,14 +345,15 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   Top-anchored menus (game, add-game) cap their height against the **window
   viewport** (`100vh` minus gap/clearance/apron), not the panel — the panel
   hugs its content, and a panel-relative cap strangles the menu to one row on
-  an idle panel (the window always holds the 70% cap, and `.panel` doesn't
-  clip its absolute children). The **model menu measures per open**
+  an idle panel (the window **expands to** the 70% cap while a menu is open,
+  and `.panel` doesn't clip its absolute children). The **model menu measures per open**
   (`src/menuPlacement.ts`, constants paired with their CSS/window.rs twins by
   comment): it drops below the panel at a fixed ~460px (`.menu--down`), and
   flips to the upward `--menu-clearance` anchoring with
   `height = min(460, room above)` when a tall panel leaves more room above
-  than below. Geometry is **not** re-measured while a menu is open (a panel
-  growing under a streaming answer is accepted — the next open corrects).
+  than below. Placement re-measures on window `resize` while open (the cap
+  expansion lands async); a panel growing under a streaming answer is still
+  accepted — the next open corrects.
   Retune the clearances when the footer's or header's metrics change.
 - OpenRouter's catalog is 300+ models (~1–2 MB raw; reqwest's `gzip` feature
   keeps it ~150–300 KB on the wire) — parsers trim to `{id, label}` before IPC,

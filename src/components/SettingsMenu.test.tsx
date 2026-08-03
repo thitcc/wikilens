@@ -4,8 +4,11 @@
 // only set and clear keys, because which provider answers is picked from the
 // footer chip. Two rules follow and both are pinned below: a key never moves
 // the check (vault/2026-07-29_keys-are-not-a-mode-choice.md), and the
-// disclosure follows the mode in both directions. A pasted key crosses IPC
-// exactly once via set_api_key and is never displayed back. Recorder half:
+// disclosure follows the mode in both directions. A keyed line is static —
+// a "Set" pill and the trash, no button — so the only re-key path is trash,
+// then the unkeyed line (vault/2026-08-02_keyed-lines-are-static.md). A
+// pasted key crosses IPC exactly once via set_api_key and is never displayed
+// back. Recorder half:
 // arming suspends the OS hotkeys and swallows keys at capture phase; every
 // exit path (save, refuse, Esc, hide, unmount) resumes them exactly once.
 // Keyboard goes through userEvent only (see harness.tsx — a raw window
@@ -74,10 +77,11 @@ const ANTHROPIC_KEYED: KeyStatus[] = KEY_STATUS.map((s) =>
 /** Every provider keyed — the only state where a keyed row is NOT the source. */
 const BOTH_KEYED: KeyStatus[] = KEY_STATUS.map((s) => ({ ...s, hasKey: true }));
 
-/** Settle a render whose fixtures leave Anthropic keyed. A keyed line offers to
- * replace, never to answer — the label is the only thing that says so. */
+/** Settle a render whose fixtures leave Anthropic keyed. The trash is the
+ * only control a keyed line has, so it is the settle target — the line
+ * itself is static. */
 const settleKeyedAnthropic = () =>
-  screen.findByRole("button", { name: "Replace the Anthropic API key" });
+  screen.findByRole("button", { name: "Remove the Anthropic API key" });
 
 /** Settle a Default-mode render, where the key lines mount collapsed. The note
  * is the fetch's own consequence (it is gated on `statuses` landing); awaiting
@@ -124,8 +128,11 @@ test("renders the two sections in order with both shortcut chips", async () => {
   expect(text).not.toContain("Custom API");
   expect(text).not.toContain("API keys");
   expect(text).not.toContain("Key set");
-  // "Key added" went with the one-list IA: a key line has no note at all.
+  // "Key added" went with the one-list IA. An UNKEYED line has no note or
+  // mark at all (this fixture is all-unkeyed — no "Set" pill either); the
+  // keyed pill is pinned in the keyed tests below.
   expect(text).not.toContain("Key added");
+  expect(screen.queryByText("Set")).toBeNull();
 });
 
 // ---- The answer modes and their key lines ---------------------------------
@@ -198,7 +205,7 @@ test("collapsing a key form drops the draft", async () => {
   expect(reopened.value).toBe("");
 });
 
-test("a keyed line reads Replace, keeps the trash, and never renders the key", async () => {
+test("a keyed line is static — Set pill, trash, no replace button, never the key", async () => {
   installBackend({ list_key_status: () => ANTHROPIC_KEYED });
   await renderMenu({ settle: settleKeyedAnthropic });
 
@@ -207,18 +214,18 @@ test("a keyed line reads Replace, keeps the trash, and never renders the key", a
   expect(
     screen.getByRole("button", { name: "Remove the Anthropic API key" }),
   ).toBeTruthy();
-  // A key line is not a choice: the check lives on the mode rows only, and a
-  // stored key must not move it — nor imply it.
+  // The line is not a control: no replace affordance, and the name sits in
+  // no button at all. The Set pill is the mark that the key is stored.
   expect(
-    screen
-      .getByRole("button", { name: "Replace the Anthropic API key" })
-      .getAttribute("aria-current"),
+    screen.queryByRole("button", { name: "Replace the Anthropic API key" }),
   ).toBeNull();
-  // The keyless provider still needs a click before any field exists.
+  expect(screen.getByText("Anthropic").closest("button")).toBeNull();
+  expect(screen.getByText("Set")).toBeTruthy();
+  // The keyless provider still needs a click before any field exists — and
+  // wears no pill.
   expect(screen.queryByLabelText("DeepSeek API key")).toBeNull();
-  expect(
-    screen.getByRole("button", { name: "Add a key for DeepSeek" }),
-  ).toBeTruthy();
+  const deepseek = screen.getByRole("button", { name: "Add a key for DeepSeek" });
+  expect(deepseek.textContent).toBe("DeepSeek");
 });
 
 test("every keyed line is storage, not a choice; the mode row keeps the only check", async () => {
@@ -227,14 +234,14 @@ test("every keyed line is storage, not a choice; the mode row keeps the only che
 
   // Both providers are keyed. Under the old one-list IA one of them would have
   // been "the source" and the other would have read "Key added"; now neither
-  // is pickable at all.
+  // is pickable at all — both lines are static pill-wearing storage.
   for (const name of ["Anthropic", "DeepSeek"]) {
     expect(
-      screen
-        .getByRole("button", { name: `Replace the ${name} API key` })
-        .getAttribute("aria-current"),
+      screen.queryByRole("button", { name: `Replace the ${name} API key` }),
     ).toBeNull();
+    expect(screen.getByText(name).closest("button")).toBeNull();
   }
+  expect(screen.getAllByText("Set")).toHaveLength(2);
   expect(screen.queryAllByText("Key added")).toHaveLength(0);
 
   const custom = screen.getByRole("button", {
@@ -244,21 +251,27 @@ test("every keyed line is storage, not a choice; the mode row keeps the only che
   expect(custom.textContent).not.toContain("Needs a key");
 });
 
-test("clicking a keyed line opens a blank field to replace the key and fires no IPC", async () => {
-  const backend = installBackend({ list_key_status: () => ANTHROPIC_KEYED });
+test("a keyed line offers no click-to-replace; the only re-key path is trash, then the unkeyed line", async () => {
+  const backend = installBackend({
+    list_key_status: () => ANTHROPIC_KEYED,
+    remove_api_key: () => KEY_STATUS,
+  });
   const user = userEvent.setup();
   await renderMenu({ settle: settleKeyedAnthropic });
 
+  // Clicking the static line does nothing: no field, no IPC.
   const before = backend.calls.length;
-  await user.click(
-    screen.getByRole("button", { name: "Replace the Anthropic API key" }),
-  );
-
+  await user.click(screen.getByText("Anthropic"));
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
   expect(backend.calls.length).toBe(before);
-  expect(backend.callsTo("set_mode")).toHaveLength(0);
-  // The stored key is never seeded back into the field — replacing means
-  // typing a new one, and the old one stays write-only.
-  const input = screen.getByLabelText("Anthropic API key") as HTMLInputElement;
+
+  // The whole re-key loop: trash → the line comes back unkeyed → click →
+  // an empty field (the old key was write-only and is gone).
+  await user.click(
+    screen.getByRole("button", { name: "Remove the Anthropic API key" }),
+  );
+  await screen.findByRole("button", { name: "Add a key for Anthropic" });
+  const input = await expandKeyForm(user, "Anthropic");
   expect(input.value).toBe("");
 });
 
@@ -277,10 +290,12 @@ test("pasting a key sends it once and flips the row to keyed", async () => {
   ]);
   expect(await settleKeyedAnthropic()).toBeTruthy();
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
-  // The trash is the other half of the flip: it exists only on a keyed line.
+  // The flip's other half: the Set pill lands, and the click-to-open button
+  // is gone — the line is storage now, the trash its only control.
+  expect(screen.getByText("Set")).toBeTruthy();
   expect(
-    screen.getByRole("button", { name: "Remove the Anthropic API key" }),
-  ).toBeTruthy();
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
 });
 
 test("saving a key stores it and leaves the mode where it was", async () => {
@@ -314,7 +329,7 @@ test("saving a key stores it and leaves the mode where it was", async () => {
   ).toBe("true");
   expect(
     await screen.findByRole("button", {
-      name: "Replace the Anthropic API key",
+      name: "Remove the Anthropic API key",
     }),
   ).toBeTruthy();
 });
@@ -369,14 +384,19 @@ test("Remove sends remove_api_key and the line goes back to Add a key", async ()
   expect(backend.callsTo("remove_api_key")).toEqual([
     { providerId: "anthropic" },
   ]);
-  expect(
-    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
-  ).toBeTruthy();
+  const addButton = await screen.findByRole("button", {
+    name: "Add a key for Anthropic",
+  });
   expect(
     screen.queryByRole("button", { name: "Remove the Anthropic API key" }),
   ).toBeNull();
+  // The pill goes with the key.
+  expect(screen.queryByText("Set")).toBeNull();
   // Removal never opens a field on its own.
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  // The trash that had focus unmounted — focus lands on the now-unkeyed
+  // line, not the dialog, so re-keying is Enter away.
+  expect(document.activeElement).toBe(addButton);
 });
 
 test("saving a key fires onKeysChanged once; the open fetch fires none", async () => {
