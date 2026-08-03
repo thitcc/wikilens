@@ -3,13 +3,14 @@
 
 use std::sync::atomic::Ordering;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 use crate::capture::{self, CropRect};
 use crate::debug::DebugReport;
 use crate::error::AppError;
+use crate::history::{HistoryEntry, HistoryStore, NewEntry};
 use crate::keys::{DpapiKeyStore, KeyStore};
 use crate::models::{self, ModelInfo, ModelSource};
 use crate::settings::{HotkeyRole, Mode, SettingsStore};
@@ -54,8 +55,9 @@ pub struct ModelList {
     pub source: ModelSource,
 }
 
-/// A wiki page used as a source for an answer.
-#[derive(Debug, Clone, Serialize)]
+/// A wiki page used as a source for an answer. `Deserialize` because it also
+/// rides inside persisted `HistoryEntry` records (`history.rs`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Source {
     pub title: String,
     pub url: String,
@@ -591,6 +593,20 @@ pub fn clear_capture(state: State<'_, AppState>) {
     capture::clear(&state);
 }
 
+/// Past answered asks, newest first, for the header History menu. Plain data
+/// like `list_games` — a store that couldn't be read at startup is simply an
+/// empty history here; refuse-with-an-error is reserved for mutations.
+#[tauri::command]
+pub fn list_history(history: State<'_, HistoryStore>) -> Vec<HistoryEntry> {
+    history.list()
+}
+
+/// Wipe the answer history (the menu's pinned "Clear history" action).
+#[tauri::command]
+pub fn clear_history(history: State<'_, HistoryStore>) -> Result<(), String> {
+    history.clear().map_err(String::from)
+}
+
 /// The `ask` command's settle value after `cancel_ask` wins the race — the one
 /// deliberately machine-readable command error (every other message is
 /// user-readable prose). The frontend compares against its mirror constant in
@@ -612,7 +628,7 @@ pub const ASK_CANCELLED: &str = "wikilens::ask-cancelled";
 /// `image_id` optionally names an attached screenshot (from `finish_capture`);
 /// a mismatch with the stored attachment fails fast as "capture it again". The
 /// attachment is cleared only after the model actually answers.
-// The arg list is the IPC contract: five managed handles + one arg per
+// The arg list is the IPC contract: six managed handles + one arg per
 // frontend payload field. Bundling them into a struct would only move the count.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -622,6 +638,7 @@ pub async fn ask(
     store: State<'_, UserWikiStore>,
     keys: State<'_, DpapiKeyStore>,
     settings: State<'_, SettingsStore>,
+    history: State<'_, HistoryStore>,
     game_id: String,
     provider_id: String,
     model: String,
@@ -651,6 +668,7 @@ pub async fn ask(
         &store,
         &*keys,
         &settings,
+        &history,
         &game_id,
         &provider_id,
         &model,
@@ -766,6 +784,7 @@ async fn run_ask(
     store: &UserWikiStore,
     keys: &dyn KeyStore,
     settings: &SettingsStore,
+    history: &HistoryStore,
     game_id: &str,
     provider_id: &str,
     model: &str,
@@ -1122,7 +1141,7 @@ async fn run_ask(
     // attached for a retry (stays-on-error).
     capture::clear(state);
 
-    let sources = pages
+    let sources: Vec<Source> = pages
         .iter()
         .map(|p| Source {
             title: p.title.clone(),
@@ -1130,7 +1149,34 @@ async fn run_ask(
         })
         .collect();
 
+    // Record the answered ask for the History menu — best-effort: history is
+    // convenience data, so a failed write must never fail the ask that just
+    // produced this answer. Every earlier return (no results, unreadable
+    // pages, errors, cancellation) skips recording by construction.
+    if let Err(e) = history.append(NewEntry {
+        game_id: game_id.to_string(),
+        game_name: wiki.name.clone(),
+        question: question.to_string(),
+        answer: answer.clone(),
+        sources: sources.clone(),
+        provider_name: targets.answer.name.to_string(),
+        model: history_model(mode, &targets.answer),
+        had_image: image_png.is_some(),
+    }) {
+        eprintln!("wikilens: couldn't record the ask in history: {e}");
+    }
+
     Ok(AskResult { answer, sources })
+}
+
+/// The model a history entry records: the resolved model in Custom mode,
+/// `None` in Default mode — the vendor model id stays dev-only there (the
+/// debug table's carve-out doesn't extend to a user-facing, persisted store).
+fn history_model(mode: Mode, answer: &LlmTarget) -> Option<String> {
+    match mode {
+        Mode::Default => None,
+        Mode::Custom => Some(answer.model.clone()),
+    }
 }
 
 /// The model an `ask` should use: the frontend's requested id, or the
@@ -1195,6 +1241,40 @@ fn merge_hits(raw: &[String], rewrite: &[String], limit: usize) -> Vec<String> {
 fn push_unique(out: &mut Vec<String>, title: &str, limit: usize) {
     if out.len() < limit && !out.iter().any(|e| e.eq_ignore_ascii_case(title)) {
         out.push(title.to_string());
+    }
+}
+
+#[cfg(test)]
+mod history_model_tests {
+    use super::*;
+    use crate::providers::ProviderKind;
+
+    fn target(model: &str) -> LlmTarget {
+        LlmTarget {
+            kind: ProviderKind::Anthropic,
+            endpoint: "https://api.example/v1/messages".to_string(),
+            api_key: "test-key".to_string(),
+            model: model.to_string(),
+            name: "Anthropic",
+            debug_id: "anthropic",
+            extra_headers: &[],
+        }
+    }
+
+    #[test]
+    fn custom_mode_records_the_resolved_model() {
+        assert_eq!(
+            history_model(Mode::Custom, &target("claude-sonnet-5")),
+            Some("claude-sonnet-5".to_string())
+        );
+    }
+
+    #[test]
+    fn default_mode_keeps_the_vendor_model_dev_only() {
+        assert_eq!(
+            history_model(Mode::Default, &target("some-vendor-model")),
+            None
+        );
     }
 }
 

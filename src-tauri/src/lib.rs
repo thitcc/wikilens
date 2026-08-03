@@ -10,6 +10,7 @@ mod config_guardrails;
 mod debug;
 mod debug_window;
 mod error;
+mod history;
 mod hotkey;
 mod http;
 mod keys;
@@ -104,6 +105,10 @@ pub fn run() {
             // time. Store-only: the vendor env keys are gone
             // (vault/2026-07-26_default-mode-and-byo-api-keys.md, phase 2).
             app.manage(keys::DpapiKeyStore::load(data_dir.join("keys.json")));
+            // Answered asks, recallable from the header History menu. Recorded
+            // at the ask success tail (commands.rs), plain JSON — answers are
+            // wiki-derived game content, not secret material like keys.
+            app.manage(history::HistoryStore::load(data_dir.join("history.json")));
             // Only now do the overlay/capture webviews get built: both are
             // `"create": false` in tauri.conf.json because Tauri creates
             // `create: true` config windows BEFORE this hook runs, and the
@@ -170,6 +175,8 @@ pub fn run() {
             commands::finish_capture,
             commands::cancel_capture,
             commands::clear_capture,
+            commands::list_history,
+            commands::clear_history,
             commands::ask,
             commands::cancel_ask,
         ])

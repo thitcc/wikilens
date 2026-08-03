@@ -95,6 +95,8 @@ components:
     padding: "5px 8px"
   menu-row-hover:
     backgroundColor: "{colors.veil}"
+  history-row-meta:
+    textColor: "{colors.ink-muted}"
   badge:
     backgroundColor: "{colors.veil-raised}"
     textColor: "{colors.ink-muted}"

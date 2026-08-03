@@ -10,6 +10,7 @@ import type {
   AskStatus,
   AttachmentInfo,
   GameInfo,
+  HistoryEntry,
   HotkeyRole,
   KeyStatus,
   Mode,
@@ -192,6 +193,18 @@ export function beginCapture(): Promise<void> {
 /** Drop the attached screenshot (the prompt strip's "×"). */
 export function clearCapture(): Promise<void> {
   return invoke<void>("clear_capture");
+}
+
+/** Past answered asks, newest first, for the header History menu. Recorded
+ * Rust-side at the ask success tail; persisted across restarts. */
+export function listHistory(): Promise<HistoryEntry[]> {
+  return invoke<HistoryEntry[]>("list_history");
+}
+
+/** Wipe the answer history (the menu's pinned "Clear history" action).
+ * Rejects with a user-readable message when the store can't be written. */
+export function clearHistory(): Promise<void> {
+  return invoke<void>("clear_history");
 }
 
 /** Open a URL in the user's default browser (source links). */

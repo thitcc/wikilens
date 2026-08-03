@@ -104,6 +104,12 @@ Copy the boxes into the release notes/log and tick them as you go.
       (placeholder, empty prompt, no attachment strip) with focus in the
       prompt — and mid-ask it also stops the stream, with nothing
       reappearing when the ask settles.
+- [ ] Ask two questions, then open the header's clock (**History**) and pick
+      the older one: its answer, sources, and question reappear **instantly**
+      (no status phases), the game chip switches to that ask's game, and
+      Enter re-asks it (vault/2026-08-03_answer-history.md). **Clear
+      history** empties the menu and the chip disappears — the answer on the
+      panel stays.
 
 ### 7. Answers: the mode rows and the key lines
 
@@ -186,6 +192,9 @@ Copy the boxes into the release notes/log and tick them as you go.
       mode works in the installed app.
 - [ ] Source links still open in the browser (the opener URL scope is present
       at runtime — this fails as `ForbiddenUrl`, not at compile time).
+- [ ] Ask a question, quit via the tray, relaunch: the History chip is there
+      and the ask restores — `history.json` persists in app-data across
+      restarts (vault/2026-08-03_answer-history.md).
 
 ## Live test suite cadence
 

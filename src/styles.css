@@ -638,6 +638,26 @@ body {
   font-size: var(--text-label);
 }
 
+/* ---- History-menu pieces ---- */
+
+/* History rows stack the question over a muted meta line — list rows in the
+   shared row voice, not chat bubbles (PRODUCT.md anti-reference). The column
+   axis overrides .row-main's centered row layout; existing tokens only. */
+.history-row .row-main {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+/* "Game · when" under the question: label-size, muted ink, one line. */
+.row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: var(--text-label);
+}
+
 /* ---- Settings: the Answers mode rows ---- */
 
 /* One row per answer MODE — the built-in model, or your own provider. The row
