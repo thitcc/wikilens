@@ -72,4 +72,17 @@ test("content growth flows through the observer, throttled and deduped", async (
   fireResizeObservers();
   await new Promise((resolve) => setTimeout(resolve, 180));
   expect(heights(backend).length).toBe(before + 1);
+
+  // The tolerance boundary itself: a 1px move is DPI echo (still no IPC),
+  // a 3px move is real growth (reports).
+  Object.defineProperty(content, "scrollHeight", { value: 401, configurable: true });
+  fireResizeObservers();
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  expect(heights(backend).length).toBe(before + 1);
+
+  Object.defineProperty(content, "scrollHeight", { value: 403, configurable: true });
+  fireResizeObservers();
+  await vi.waitFor(() => {
+    expect(lastHeight(backend)).toBe(403);
+  });
 });

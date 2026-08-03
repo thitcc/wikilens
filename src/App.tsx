@@ -242,6 +242,11 @@ function App() {
   // resurrect its answer or error. Stop's "never reset state here" rule
   // holds — the resolve path checks the epoch instead.
   const askEpochRef = useRef(0);
+  // The epoch the in-flight ask was submitted under. The ask://delta and
+  // ask://status listeners compare it to askEpochRef before applying: a
+  // chunk already in flight when Start over wipes the panel must not
+  // repaint orphan text on it (deltas keep draining until the abort lands).
+  const streamEpochRef = useRef(0);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -438,8 +443,18 @@ function App() {
       setSummoning(false);
       setPreSummon(true);
     }).then(register);
-    void onAskStatus((s) => setStatus(s)).then(register);
-    void onAskDelta((chunk) => setAnswer((prev) => prev + chunk)).then(register);
+    // Both stream listeners are gated on the clear epoch: after Start over,
+    // stragglers from the aborted ask are dropped instead of resurrecting
+    // text or the status row on the cleared panel. A plain Stop keeps
+    // streaming until the abort drains — the kept-partial behavior.
+    void onAskStatus((s) => {
+      if (streamEpochRef.current === askEpochRef.current) setStatus(s);
+    }).then(register);
+    void onAskDelta((chunk) => {
+      if (streamEpochRef.current === askEpochRef.current) {
+        setAnswer((prev) => prev + chunk);
+      }
+    }).then(register);
     void onCaptureAttached((info) => {
       setAttachment(info);
       setError(null);
@@ -484,8 +499,13 @@ function App() {
           );
     const last = lastHeightRef.current;
     if (last !== null && Math.abs(desired - last) <= 1) return;
+    // Optimistic (collapses bursts), but re-armed on failure: a swallowed
+    // report must not convince the dedupe it landed — a lost menu-open
+    // sentinel would leave the menu clipped with no resize to correct it.
     lastHeightRef.current = desired;
-    void setOverlayHeight(desired).catch(() => {});
+    void setOverlayHeight(desired).catch(() => {
+      lastHeightRef.current = null;
+    });
   }
 
   // Mount + every menu open/close. Opening must pin the window at the cap
@@ -680,8 +700,10 @@ function App() {
     setSources([]);
     setAnnouncement(null);
     setStatus("searching");
-    // Start over invalidates this ask's right to publish its result.
+    // Start over invalidates this ask's right to publish its result — and
+    // its stream (the delta/status listeners compare these two refs).
     const epoch = askEpochRef.current;
+    streamEpochRef.current = epoch;
 
     try {
       // Custom mode: the explicit pick when there is one, else the provider
@@ -708,9 +730,10 @@ function App() {
       setAttachment(null);
     } catch (e) {
       // A cancelled ask resets quietly: no error box, and whatever partial
-      // answer already streamed stays on screen. (A delta racing the abort may
-      // still append after this settles — harmless, it lands on the kept text.)
-      // A cleared ask (epoch moved) swallows its error the same way.
+      // answer already streamed stays on screen. (After a plain Stop, a delta
+      // racing the abort may still append — harmless, it lands on the kept
+      // text; after Start over the stream gate drops it.) A cleared ask
+      // (epoch moved) swallows its error the same way.
       if (epoch === askEpochRef.current && String(e) !== ASK_CANCELLED) {
         setError(String(e));
       }

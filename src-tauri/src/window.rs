@@ -41,8 +41,8 @@ impl OverlayHeight {
         }
     }
 
-    fn swap(&self, height: u32) -> u32 {
-        self.0.swap(height, Ordering::SeqCst)
+    fn set(&self, height: u32) {
+        self.0.store(height, Ordering::SeqCst);
     }
 }
 
@@ -50,7 +50,9 @@ impl OverlayHeight {
 /// report yet → the 70% cap). `ceil` on logical→physical so the granted CSS
 /// room is never a fraction short of the request — rounding down would
 /// recreate ~1px of `.content` overflow and ping-pong reports at 125%/150%
-/// DPI scaling.
+/// DPI scaling. (The chrome term also moved round→ceil: identical at every
+/// standard Windows scale, at most +1 physical px of apron at odd custom
+/// fractions — accepted.)
 fn overlay_window_height(monitor_height: u32, scale: f64, desired: Option<u32>) -> u32 {
     let to_phys = |logical: u32| (logical as f64 * scale).ceil() as u32;
     let cap = (monitor_height as f64 * PANEL_HEIGHT_FRAC).round() as u32;
@@ -212,23 +214,32 @@ pub fn position_top_right(win: &WebviewWindow) -> tauri::Result<()> {
 
     let x = origin.x + size.width as i32 - win_w as i32;
     let y = origin.y;
-    win.set_position(PhysicalPosition::new(x, y))?;
+    let target_size = PhysicalSize::new(win_w, win_h);
+    let target_pos = PhysicalPosition::new(x, y);
+    // Skip the OS round trip when the geometry is already right — an answer
+    // streaming past the cap re-reports growing logical values that all
+    // clamp to the same physical size. Deduping HERE (against the real
+    // window) instead of at the store means a report after a failed resize
+    // still retries.
+    if win.outer_size()? == target_size && win.outer_position()? == target_pos {
+        return Ok(());
+    }
+    win.set_size(target_size)?;
+    win.set_position(target_pos)?;
 
     Ok(())
 }
 
 /// Store the frontend's height report and resize the window in place through
 /// `position_top_right` (the one sizer — top-anchored, so height never moves
-/// the panel). Fine while hidden: the next show re-derives anyway. A NaN
-/// degrades safely (`as u32` saturates to 0 → "no report" → the cap).
+/// the panel; it no-ops against the window's real geometry, so repeated
+/// reports are cheap). Fine while hidden: the next show re-derives anyway.
+/// A NaN degrades safely (`as u32` saturates to 0 → "no report" → the cap).
 pub fn set_overlay_height(app: &AppHandle, height: f64) {
     let Some(state) = app.try_state::<OverlayHeight>() else {
         return;
     };
-    let desired = height.clamp(MIN_PANEL_HEIGHT as f64, 100_000.0).round() as u32;
-    if state.swap(desired) == desired {
-        return; // Unchanged — skip the OS round trip.
-    }
+    state.set(height.clamp(MIN_PANEL_HEIGHT as f64, 100_000.0).round() as u32);
     let Some(win) = overlay_window(app) else {
         return;
     };

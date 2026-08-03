@@ -1,9 +1,11 @@
 // The header's Start over button: one gesture back to the default panel —
 // draft, answer, sources, announcement, error, and screenshot all go, and a
 // running ask is stopped. Unlike Stop (which deliberately resets nothing),
-// clearing owns the panel: an ask that settles AFTER a clear must not
-// resurrect its result — the epoch guard in handleSubmit is what these tests
-// pin hardest. The button renders only when there is something to clear.
+// clearing owns the panel: an ask that settles OR STREAMS after a clear must
+// not resurrect anything — the epoch guard in handleSubmit (both the resolve
+// and the error branch) and the stream gate on the delta/status listeners
+// are what these tests pin hardest. The button renders only when there is
+// something to clear.
 
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -86,6 +88,14 @@ test("mid-stream, Start over stops the ask and the cancelled settle resurrects n
   // The wipe already landed, without waiting for the settle.
   expect(screen.queryByText(/Cast the/)).toBeNull();
 
+  // A delta already in flight when the clear landed keeps draining until
+  // the Rust abort takes — the stream gate must drop it, not repaint the
+  // cleared panel with an orphan fragment.
+  await fireBackendEvent("ask://delta", "fishing rod");
+  expect(screen.queryByText(/fishing rod/)).toBeNull();
+  await fireBackendEvent("ask://status", "answering");
+  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+
   await act(async () => {
     gate.reject(ASK_CANCELLED);
   });
@@ -115,6 +125,28 @@ test("an ask that completes after Start over does not resurrect its answer", asy
   expect(screen.queryByText(/raise spawn rates/)).toBeNull();
   expect(screen.queryByRole("link")).toBeNull();
   expect(screen.getByRole("status").textContent).toBe("");
+  expect(screen.getByText(/anytime to open this panel/)).toBeTruthy();
+});
+
+test("an ask that fails after Start over does not resurrect its error box", async () => {
+  const backend = installBackend();
+  const gate = deferred<AskResult>();
+  backend.onCommand("ask", () => gate.promise);
+  const user = userEvent.setup();
+  await renderApp();
+
+  await user.type(questionBox(), "how do I fish{Enter}");
+  await user.click(startOver());
+
+  // A real failure (not the cancel sentinel) settling after the clear: the
+  // catch branch's epoch check must swallow it — the panel was cleared, and
+  // a stale error box on it would be the resolve-race bug in error clothes.
+  await act(async () => {
+    gate.reject("The wiki is down");
+  });
+
+  expect(screen.queryByText(/The wiki is down/)).toBeNull();
+  expect(document.querySelector(".error")).toBeNull();
   expect(screen.getByText(/anytime to open this panel/)).toBeTruthy();
 });
 
