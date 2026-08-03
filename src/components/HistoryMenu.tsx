@@ -18,8 +18,8 @@ interface HistoryMenuProps {
 }
 
 /**
- * Owned answer-history menu: past questions newest-first, filterable, with
- * "Clear history" pinned at the bottom. Picking a row restores that answer
+ * Owned answer-history menu: past questions newest-first, filterable by
+ * question text or game name, with "Clear history" pinned at the bottom. Picking a row restores that answer
  * without re-asking (App owns the restore). Rows stack the question over a
  * muted "game · when" meta line — list rows, not chat bubbles, per
  * PRODUCT.md's anti-reference.
@@ -81,9 +81,16 @@ export function HistoryMenu({
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [onClose, chipRef]);
 
+  // One box filters both axes: the question text and the game's name — so
+  // "abiotic" surfaces every Abiotic Factor ask alongside any question that
+  // happens to mention it.
   const query = filter.trim().toLowerCase();
   const rows = query
-    ? entries.filter((e) => e.question.toLowerCase().includes(query))
+    ? entries.filter(
+        (e) =>
+          e.question.toLowerCase().includes(query) ||
+          e.gameName.toLowerCase().includes(query),
+      )
     : entries;
 
   // Derived, never stored: a stale index can't point at the wrong row when
@@ -116,8 +123,8 @@ export function HistoryMenu({
         <input
           type="text"
           value={filter}
-          placeholder="Filter questions…"
-          aria-label="Filter questions"
+          placeholder="Filter by question or game…"
+          aria-label="Filter by question or game"
           autoFocus
           onChange={(e) => {
             setFilter(e.currentTarget.value);

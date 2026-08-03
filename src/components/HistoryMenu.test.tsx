@@ -30,7 +30,7 @@ function highlighted(): Element[] {
 }
 
 function filterBox(): HTMLElement {
-  return screen.getByRole("textbox", { name: "Filter questions" });
+  return screen.getByRole("textbox", { name: "Filter by question or game" });
 }
 
 test("rows render newest first: question over a game meta line", () => {
@@ -73,6 +73,18 @@ test("the filter narrows by question text", async () => {
   const rows = [...document.querySelectorAll(".model-row")];
   expect(rows).toHaveLength(1);
   expect(rows[0].textContent).toContain("best winter crops");
+});
+
+test("the same box also matches the game name", async () => {
+  renderMenu();
+  const user = userEvent.setup();
+  // "stardew" appears in no question — only in the newer entry's game name.
+  await user.type(filterBox(), "stardew");
+  const rows = [...document.querySelectorAll(".model-row")];
+  expect(rows).toHaveLength(1);
+  expect(rows[0].textContent).toContain("best winter crops");
+  // The auto-highlight re-anchors on the game-name match too.
+  expect(highlighted()[0].textContent).toContain("best winter crops");
 });
 
 test("a no-match filter shows the note and Enter is a no-op", async () => {
