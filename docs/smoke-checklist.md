@@ -155,6 +155,10 @@ Copy the boxes into the release notes/log and tick them as you go.
 ### 10. Packaged build
 
 - [ ] The `npm run tauri build` installer runs and the installed app launches.
+- [ ] First launch populates the game chip and the footer with **no error
+      box** — the packaged-boot state race regression ("state not managed",
+      vault/2026-08-02_packaged-boot-state-race.md): the bundled frontend
+      boots fast enough to race setup, which dev never reproduces.
 - [ ] With no `.env` present, a Custom-mode ask succeeds from the
       DPAPI-stored key alone (keys never ride env; the store lives in
       app-data).

@@ -157,6 +157,30 @@ fn debug_capability_grants_only_events_and_drag() {
     );
 }
 
+/// Boot-race guardrail: every configured window defers creation to `.setup()`
+/// (`"create": false`). Tauri builds `create: true` config windows BEFORE the
+/// setup hook runs, so such a webview's boot invokes race setup's `.manage()`
+/// calls — a packaged build loads its bundled assets fast enough to win,
+/// failing commands with "state not managed" (dev's slower Vite loads masked
+/// it; vault/2026-08-02_packaged-boot-state-race.md). lib.rs builds these
+/// windows in setup after the stores are managed; a new `create: true` window
+/// would silently reopen the race.
+#[test]
+fn config_windows_defer_creation_to_setup() {
+    let conf = read_json(&manifest_dir().join("tauri.conf.json"));
+    let windows = conf["app"]["windows"].as_array().expect("app.windows array");
+    assert!(!windows.is_empty(), "vacuous run — no windows in tauri.conf.json");
+    for win in windows {
+        let label = win["label"].as_str().expect("window has a label");
+        assert_eq!(
+            win["create"],
+            Value::Bool(false),
+            "window '{label}' must set \"create\": false and be built in lib.rs setup \
+             after the stores are managed — config windows are created before setup runs"
+        );
+    }
+}
+
 /// `default-src` is the fallback for every unlisted directive (media, frames,
 /// workers, …) — it must stay exactly `'self'`.
 #[test]

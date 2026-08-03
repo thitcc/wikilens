@@ -25,7 +25,7 @@ mod tray;
 mod window;
 mod wiki;
 
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Manager, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 use state::AppState;
@@ -94,24 +94,6 @@ pub fn run() {
                 }
             }
             app.manage(settings);
-            tray::create(handle)?;
-            hotkey::register(handle);
-            // The config windows are created hidden; without this their first
-            // show gets DWM's one-time open transition (fade + rise) layered
-            // over the app's own entrance — the first summon after launch
-            // animated differently from every later one. The debug window
-            // does the same in its create().
-            for label in [window::OVERLAY_LABEL, capture::CAPTURE_LABEL] {
-                if let Some(win) = app.get_webview_window(label) {
-                    window::disable_os_open_transition(&win);
-                }
-            }
-            // Visual debug window — exists only when WIKILENS_DEBUG is truthy
-            // at startup (env can't change mid-process, so existence always
-            // agrees with the per-ask flag read in debug.rs).
-            if debug::debug_enabled() {
-                debug_window::create(handle)?;
-            }
             // User-added wikis, persisted in the app-data dir.
             app.manage(UserWikiStore::load(data_dir.join("wikis.json")));
             // Panel-entered API keys, DPAPI-encrypted per Windows user
@@ -119,6 +101,32 @@ pub fn run() {
             // time. Store-only: the vendor env keys are gone
             // (vault/2026-07-26_default-mode-and-byo-api-keys.md, phase 2).
             app.manage(keys::DpapiKeyStore::load(data_dir.join("keys.json")));
+            // Only now do the overlay/capture webviews get built: both are
+            // `"create": false` in tauri.conf.json because Tauri creates
+            // `create: true` config windows BEFORE this hook runs, and the
+            // frontend's boot invokes race setup's manage() calls — a
+            // packaged build loads its bundled assets fast enough to win
+            // ("state not managed for field `keys`"), while dev's slower
+            // Vite loads always lost, hiding the race. Stores first, webviews
+            // after — pinned in config_guardrails.rs; story in
+            // vault/2026-08-02_packaged-boot-state-race.md.
+            for config in app.config().app.windows.iter().filter(|w| !w.create) {
+                let win = WebviewWindowBuilder::from_config(handle, config)?.build()?;
+                // Created hidden; without this the first show gets DWM's
+                // one-time open transition (fade + rise) layered over the
+                // app's own entrance — the first summon after launch animated
+                // differently from every later one. The debug window does the
+                // same in its create().
+                window::disable_os_open_transition(&win);
+            }
+            tray::create(handle)?;
+            hotkey::register(handle);
+            // Visual debug window — exists only when WIKILENS_DEBUG is truthy
+            // at startup (env can't change mid-process, so existence always
+            // agrees with the per-ask flag read in debug.rs).
+            if debug::debug_enabled() {
+                debug_window::create(handle)?;
+            }
             Ok(())
         })
         .on_window_event(|win, event| {
