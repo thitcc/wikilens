@@ -4,6 +4,7 @@ import { listModels } from "../api";
 import { isNavKey, nextHighlight } from "../menuNav";
 import {
   MENU_FIXED_HEIGHT,
+  menuViewportHeight,
   modelMenuPlacement,
   type MenuPlacement,
 } from "../menuPlacement";
@@ -35,8 +36,10 @@ const INITIALLY_COLLAPSED = new Set(["openrouter"]);
  * Opens as a fixed-height dropdown below the panel's bottom edge (into the
  * free window space under the content-hugging panel), flipping to the upward
  * `--menu-clearance` anchoring when a tall panel leaves more room above —
- * measured once per open via `modelMenuPlacement`. The fixed frame is a
- * feature: filtering, group collapse, and list loading never resize the card.
+ * measured on open and on window `resize` while open via
+ * `modelMenuPlacement` (opening pins the window at the 70% cap; the resize
+ * lands async). The fixed frame is a feature: filtering, group collapse,
+ * and list loading never resize the card.
  *
  * Rendered as a direct child of `.panel` — never inside `.content`, whose
  * `overflow-y: auto` would clip the absolutely-positioned menu.
@@ -78,29 +81,39 @@ export function ModelMenu({
     height: MENU_FIXED_HEIGHT,
   });
 
-  // Measure once per open (the menu remounts every open, and overlay://shown
-  // closes menus, so geometry is never stale across shows). useLayoutEffect:
-  // a corrected placement lands before first paint. The panel growing under
-  // an open menu while an answer streams is accepted — the next open
-  // corrects. In jsdom the rect is zeros and innerHeight is 768, which
-  // resolves to exactly the initial state.
+  // Measure on mount and again on window `resize` while open: App pins the
+  // window at the 70% cap when a menu opens (set_overlay_height sentinel),
+  // but that OS resize lands async — AFTER this first run.
+  // menuViewportHeight() pre-empts it with the estimated cap; the resize
+  // listener is the authoritative correction (the bail-out makes repeats
+  // free). useLayoutEffect: a corrected placement lands before first paint.
+  // In jsdom the rect is zeros, innerHeight is 768 and screen.height is 0,
+  // which resolves to exactly the initial state.
   useLayoutEffect(() => {
-    const panel = menuRef.current?.parentElement; // .panel — the positioning context
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    const next = modelMenuPlacement({
-      panelTop: rect.top,
-      panelHeight: rect.height,
-      viewportHeight: window.innerHeight,
-    });
-    // Keep the previous object when nothing changed: the common open
-    // resolves to exactly the initial down/460, and React's Object.is
-    // bail-out then skips the second render-commit.
-    setPlacement((prev) =>
-      prev.direction === next.direction && prev.height === next.height
-        ? prev
-        : next,
-    );
+    const measure = () => {
+      const panel = menuRef.current?.parentElement; // .panel — the positioning context
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      const next = modelMenuPlacement({
+        panelTop: rect.top,
+        panelHeight: rect.height,
+        viewportHeight: menuViewportHeight(
+          window.innerHeight,
+          window.screen?.height ?? 0,
+        ),
+      });
+      // Keep the previous object when nothing changed: the common open
+      // resolves to exactly the initial down/460, and React's Object.is
+      // bail-out then skips the second render-commit.
+      setPlacement((prev) =>
+        prev.direction === next.direction && prev.height === next.height
+          ? prev
+          : next,
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
   }, []);
 
   function ensureList(providerId: string) {

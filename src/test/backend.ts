@@ -167,6 +167,7 @@ export function installBackend(
       cancel_ask: () => undefined,
       hide_overlay: () => undefined,
       show_overlay: () => undefined,
+      set_overlay_height: () => undefined,
       // Default false keeps the footer Debug chip out of unrelated tests;
       // the Debug-chip suite overrides it to true.
       debug_available: () => false,

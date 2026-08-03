@@ -2,8 +2,29 @@ import { describe, expect, test } from "vitest";
 import {
   MENU_FIXED_HEIGHT,
   MENU_MIN_HEIGHT,
+  menuViewportHeight,
   modelMenuPlacement,
 } from "./menuPlacement";
+
+// The cap estimate ModelMenu measures against: opening a menu pins the
+// window at the 70% cap, but the OS resize lands async — the estimate keeps
+// the first paint correct, and innerHeight wins once the resize has landed.
+describe("menuViewportHeight", () => {
+  test("a hugged window gets the estimated cap", () => {
+    // 1080p: round(1080 × 0.70) + 12 + 44 = 812 — the window.rs twin.
+    expect(menuViewportHeight(276, 1080)).toBe(812);
+  });
+
+  test("an already-expanded window keeps its real innerHeight", () => {
+    expect(menuViewportHeight(812, 1080)).toBe(812);
+  });
+
+  test("jsdom's screen.height of 0 degrades to innerHeight", () => {
+    // Pins the zero-rect test equilibrium: the DOM suites keep measuring
+    // 768 and never see a placement change.
+    expect(menuViewportHeight(768, 0)).toBe(768);
+  });
+});
 
 // Scenario geometry: a 1080p monitor at scale 1 gives the overlay window
 // 0.70 × 1080 + 56 = 812px (window.rs), with the panel top at the 12px

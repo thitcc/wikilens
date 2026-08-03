@@ -1,8 +1,11 @@
 // Model-menu placement — pure math shared by ModelMenu and the test suite.
-// Measured once per open (menus remount every open and `overlay://shown`
-// closes them, so geometry is never stale across shows); the panel growing
-// under an open menu while an answer streams is accepted — the next open
-// corrects.
+// Measured on open and again on window `resize` while open: opening a menu
+// pins the window at the 70% cap (set_overlay_height's sentinel), but that
+// OS resize lands async — menuViewportHeight() estimates the cap for a
+// correct first paint, and the resize re-measure is the authoritative
+// correction. The panel growing under an open menu while an answer streams
+// still doesn't re-measure (the window is pinned at the cap while open, so
+// no resize fires) — the next open corrects.
 //
 // The constants are paired with their CSS/window.rs twins by comment, the
 // same convention window.rs uses for the float geometry. They can't be read
@@ -26,6 +29,19 @@ export interface MenuPlacement {
   height: number;
 }
 
+/** The viewport a menu will actually get: App pins the window at the 70% cap
+ * whenever a menu is open, but the resize lands async — estimate the cap so
+ * the first paint doesn't measure the still-hugged window. PAIRED CONSTANTS:
+ * 0.70 = window.rs PANEL_HEIGHT_FRAC, 12 = PANEL_GAP. `screen.height` is
+ * logical CSS px on Windows; 0 (jsdom) degrades to `innerHeight`, preserving
+ * the zero-rect test equilibrium. */
+export function menuViewportHeight(
+  innerHeight: number,
+  screenHeight: number,
+): number {
+  return Math.max(innerHeight, Math.round(screenHeight * 0.7) + 12 + SHADOW_APRON);
+}
+
 /** Where the model menu opens and how tall it is. Prefers dropping below the
  * panel's bottom edge into the free window space (the window always holds
  * the 70% cap while the panel hugs its content); when a tall panel — a long
@@ -42,7 +58,8 @@ export function modelMenuPlacement(input: {
   panelTop: number;
   /** `.panel` rect height (content-hugging). */
   panelHeight: number;
-  /** `window.innerHeight` — the window always holds the 70% cap. */
+  /** The cap-expanded viewport — pass `menuViewportHeight(...)`, not a bare
+   * `window.innerHeight` (the window may still be hugging the panel). */
   viewportHeight: number;
 }): MenuPlacement {
   const panelBottom = input.panelTop + input.panelHeight;

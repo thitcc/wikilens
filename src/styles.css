@@ -53,10 +53,10 @@ body {
   --radius-panel: 12px;
 
   /* Float geometry — the panel is detached top-right, hugging its content up
-     to 70% of the monitor (design exploration 1a). The 70% and the window
-     sizing live in window.rs; these margins must match its PANEL_GAP /
-     SHADOW_ROOM_* constants or the shadow clips and the panel drifts off its
-     gap. */
+     to 70% of the monitor (design exploration 1a). window.rs sizes the
+     window around the panel's reported height (set_overlay_height), capped
+     at the 70%; these margins must match its PANEL_GAP / SHADOW_ROOM_*
+     constants or the shadow clips and the panel drifts off its gap. */
   --panel-gap: var(--space-12);
   --shadow-panel: 0 12px 32px rgba(0, 0, 0, 0.32);
   --shadow-room-left: 32px;
@@ -162,8 +162,9 @@ body {
 }
 
 /* Floating glass panel: full width minus the gap (top/right) and the shadow
-   apron (left/bottom) — the window itself is sized around it by window.rs.
-   Height hugs the content and caps at the window (= 70% of the monitor);
+   apron (left/bottom) — the window itself is sized around it by window.rs,
+   following the reported panel height (a menu open holds the 70% cap).
+   Height hugs the content and caps at the window (≤ 70% of the monitor);
    past the cap, the answer scrolls inside .content. */
 .panel {
   /* Explicit anchor for the absolutely-positioned .menu (deliberately not
@@ -212,14 +213,16 @@ body {
   gap: var(--space-4);
 }
 
-/* The gear chip deviates from the quiet-chip's 2px/4px padding on purpose:
-   a circular icon in a landscape veil reads off-center every time it lights.
-   Equal padding makes a 20×20 seat (12px gear + 4px all around) — the same
-   square the monogram tiles sit on (DESIGN.md `icon-chip`). */
-.settings-chip {
+/* Icon-only quiet chips (DESIGN.md `icon-chip`: the header gear and the
+   Start over whirl) deviate from the quiet-chip's 2px/4px padding on
+   purpose: a circular icon in a landscape veil reads off-center every time
+   it lights. Equal padding makes a 20×20 seat (12px glyph + 4px all around)
+   — the same square the monogram tiles sit on. */
+.icon-chip {
   padding: var(--space-4);
 }
 
+.icon-chip > svg,
 .settings-chip .settings-gear {
   display: block;
 }
@@ -325,8 +328,9 @@ body {
 
 /* Top-anchored variant (game menu, add-game menu): drops from under the
    header. Sized against the WINDOW (100vh), not the content-hugging panel —
-   the panel doesn't clip absolute children and the window always holds the
-   70% cap, so on an idle (short) panel the menu extends into the free
+   the panel doesn't clip absolute children and the window expands to the
+   70% cap while a menu is open (100vh recomputes when that resize lands),
+   so on an idle (short) panel the menu extends into the free
    window space below instead of being strangled to a row. The cap stops at
    the bottom shadow apron so nothing overflows the viewport (which would
    paint a page scrollbar). Three anchor modes total: this CSS cap
@@ -344,10 +348,11 @@ body {
 /* Measured drop variant (model menu): hangs below the panel's bottom edge
    into the free window space, edges on the base 14px insets so the card
    reads as attached to the footer chip. Vertical geometry is JS-owned:
-   ModelMenu measures the panel + viewport per open (menuPlacement.ts,
-   paired constants) and sets an inline fixed height ≈460px capped by the
-   room on the larger side — max-height must not fight it; the base
-   panel-relative cap would strangle the card under an idle (short) panel.
+   ModelMenu measures the panel + the cap-estimated viewport on open and on
+   window resize while open (menuPlacement.ts, paired constants) and sets an
+   inline fixed height ≈460px capped by the room on the larger side —
+   max-height must not fight it; the base panel-relative cap would strangle
+   the card under an idle (short) panel.
    The drop gap is --space-6, mirrored by DROP_GAP in menuPlacement.ts. */
 .menu--down {
   top: calc(100% + var(--space-6));
@@ -1077,6 +1082,17 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+/* Natural-height sizer inside .content — the ResizeObserver target that
+   keeps the window-height reports flowing once growth moves into .content's
+   scrollback (.panel's border box stops at max-height, so observing the
+   outer boxes alone goes silent at the cap). Carries the same column layout
+   .content used to apply directly, so child spacing is identical. */
+.content-sizer {
   display: flex;
   flex-direction: column;
   gap: var(--space-12);
