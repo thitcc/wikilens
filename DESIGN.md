@@ -70,6 +70,10 @@ components:
     textColor: "{colors.ink-muted}"
     rounded: "{rounded.chip}"
     padding: "2px 4px"
+  icon-chip:
+    textColor: "{colors.ink-muted}"
+    rounded: "{rounded.chip}"
+    padding: "4px"
   static-chip:
     textColor: "{colors.ink-muted}"
     rounded: "{rounded.chip}"
@@ -343,6 +347,9 @@ anchor for a growing game list. Raised-veil fill, muted ink promoting to full
 ink on hover/selection. The system's only *pictorial* mark that is typography —
 the two vector glyphs beside it, the header gear and the key line's trash, are
 12px Bootstrap Icons, admitted where no typographic mark reads as the action.
+The gear sits in a square 20×20 seat (`icon-chip`, equal 4px padding): a
+circular glyph in the quiet-chip's landscape padding read off-center whenever
+the veil lit, and the square echoes the monogram tile's footprint.
 
 ## 6. Motion
 

@@ -118,7 +118,7 @@
       "name": "Quiet Chip",
       "kind": "button",
       "refersTo": "quiet-chip",
-      "description": "The system's button: bare muted ink at rest, veil fill + ink promotion on hover/open; keyboard focus rings with the accent outline.",
+      "description": "The system's button: bare muted ink at rest, veil fill + ink promotion on hover/open; keyboard focus rings with the accent outline. Icon-only variant (icon-chip, the header gear): equal 4px padding for a square 20×20 seat — a circular glyph in the landscape padding read off-center when the veil lit.",
       "html": "<div class=\"ds-bed\"><button class=\"ds-chip\">anthropic · claude-haiku-4-5 <span class=\"ds-chip-caret\">▾</span></button><button class=\"ds-chip ds-chip--open\">open state</button><button class=\"ds-chip\" disabled>disabled</button></div>",
       "css": ".ds-bed { display: inline-flex; gap: 8px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; background: transparent; border: none; border-radius: 5px; color: #9a9aa8; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; } .ds-chip:hover:not(:disabled), .ds-chip--open { background: rgba(255,255,255,0.06); color: #e8e8ee; } .ds-chip:focus-visible { outline: 1px solid #8ab4ff; outline-offset: 2px; } .ds-chip:disabled { opacity: 0.6; cursor: default; } .ds-chip-caret { font-size: 9px; opacity: 0.7; }"
     },

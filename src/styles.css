@@ -212,6 +212,14 @@ body {
   gap: var(--space-4);
 }
 
+/* The gear chip deviates from the quiet-chip's 2px/4px padding on purpose:
+   a circular icon in a landscape veil reads off-center every time it lights.
+   Equal padding makes a 20×20 seat (12px gear + 4px all around) — the same
+   square the monogram tiles sit on (DESIGN.md `icon-chip`). */
+.settings-chip {
+  padding: var(--space-4);
+}
+
 .settings-chip .settings-gear {
   display: block;
 }
