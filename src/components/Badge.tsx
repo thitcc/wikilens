@@ -10,8 +10,10 @@ interface BadgeProps {
   title?: string;
 }
 
-/** Small reusable capability pill. First consumer: an "Image" badge on
- * vision-capable model rows (see vault/2026-07-06_model-vision-badges.md).
+/** Small reusable pill. Consumers: the capability badges on model rows
+ * ("Image" etc., see vault/2026-07-06_model-vision-badges.md) and the "Set"
+ * mark on keyed Settings provider lines
+ * (vault/2026-08-02_keyed-lines-are-static.md).
  * Takes children (not a label prop) so future badges can pair an icon + text. */
 export function Badge({ children, variant = "neutral", title }: BadgeProps) {
   return (

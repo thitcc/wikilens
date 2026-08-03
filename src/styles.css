@@ -752,10 +752,22 @@ body {
   padding: var(--space-8);
 }
 
-/* Whether a key is stored is said by ink strength alone — no mark, no wording
-   (the row's aria-label carries it for assistive tech). A provider you've
-   keyed reads at full ink; one you haven't sits back at muted, the same
-   muted → ink hierarchy the rest of the panel uses. */
+/* A keyed line is static — a div wearing the shared .model-row anatomy for
+   alignment only. --static strips the affordances the class implies: no
+   pointer cursor, and no hover veil (the shared :hover:not(:disabled) rule
+   matches divs — :not(:disabled) is always true there — so this override
+   must tie its (0,3,0) specificity and win by source order). */
+.key-line > .model-row--static {
+  cursor: default;
+}
+
+.key-line > .model-row--static:hover {
+  background: none;
+}
+
+/* The Set pill (Badge) is the mark that a key is stored; ink strength backs
+   it up — keyed at full ink, unkeyed receding to muted, the same muted → ink
+   hierarchy the rest of the panel uses. */
 .key-line .row-name {
   color: var(--fg-muted);
 }

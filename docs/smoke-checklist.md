@@ -90,14 +90,16 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 ### 7. Answers: the mode rows and the key lines
 
-- [ ] Settings → **Answers**: clicking a provider line opens its key field in
-      place (only one field open at a time; clicking another line collapses it
-      and drops what you typed). **Save** collapses the field and moves
-      **nothing** — the check stays exactly where it was.
-- [ ] The keyed line then reads at full ink against the unkeyed ones, carries a
+- [ ] Settings → **Answers**: clicking an **unkeyed** provider line opens its
+      key field in place (only one field open at a time; clicking another line
+      collapses it and drops what you typed). **Save** collapses the field and
+      moves **nothing** — the check stays exactly where it was.
+- [ ] The keyed line then wears a neutral **Set** pill at full ink, no longer
+      opens anything when clicked (no hover veil, arrow cursor), carries a
       trash icon that turns rose on hover, and still answers after an app
       restart (the DPAPI store survives; no re-paste) — the key itself never
-      shows anywhere again.
+      shows anywhere again. Trash it: the line returns to click-to-add (no
+      field auto-opens) and keyboard focus lands on that line, not the panel.
 - [ ] The disclosure caret follows the mode in both directions: picking **Your
       own provider** opens the key lines, picking **Built into WikiLens** puts
       them away. The caret alone changes no mode.

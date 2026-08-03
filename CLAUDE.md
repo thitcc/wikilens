@@ -42,7 +42,7 @@ wikilens/
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows (built-in vs your own provider) + provider key lines behind a caret (a line opens its key field in place; a key never changes the mode), key-recorder rows (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows + provider key lines behind a caret (unkeyed opens its key field; keyed wears a "Set" pill, only the trash; a key never changes the mode), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -111,8 +111,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `http::read_body_capped` / `read_error_body`, never bare `.text()` — new
   fetch paths inherit the byte caps only through the helpers. The webview has
   no network/http/fs permissions (see `capabilities/default.json`).
-- **API keys:** pasted in **Settings → Answers** (a provider line opens its key
-  field in place; a key is storage only — it never changes which model answers,
+- **API keys:** pasted in **Settings → Answers** (an unkeyed provider line opens
+  its key field; a key is storage only — it never changes which model answers,
   ADR: `vault/2026-07-29_keys-are-not-a-mode-choice.md`), stored per provider as
   per-user DPAPI ciphertexts in `keys.json` (app-data; `keys.rs`, ADR:
   `vault/2026-07-26_api-key-storage-dpapi.md`) and read from the store at
@@ -121,8 +121,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `set_api_key` request, webview → Rust — and never back (no response, event,
   error string, or debug payload may contain it; pinned in
   `config_guardrails.rs`). Key *presence* booleans may cross
-  (`KeyStatus.hasKey`). Never logged, never displayed back — the only action
-  on a stored key is Remove key. A startup stderr notice (`target::warn_legacy_env`)
+  (`KeyStatus.hasKey`). Never logged, never displayed back — a stored key's
+  only action is the trash. A startup stderr notice (`target::warn_legacy_env`)
   names any legacy env var still set.
 - **Model precedence** (Custom mode): an explicit UI pick (footer chip menu, stored
   per provider in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the

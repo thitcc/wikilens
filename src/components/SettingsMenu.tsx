@@ -27,6 +27,7 @@ import {
   validateCombo,
 } from "../hotkeys";
 import { keyHelp } from "../providerHelp";
+import { Badge } from "./Badge";
 
 interface SettingsMenuProps {
   settings: SettingsInfo;
@@ -90,11 +91,12 @@ function comboKeys(parts: string[]) {
  * model (when this install has one) or your own provider — and exactly one of
  * them wears the check. The provider lines below it are not choices: they only
  * set and clear keys, because which provider answers is picked from the footer
- * chip on the main panel. A line opens in place into a single key field (one
- * at a time); a stored key's only action is the trash. Whether a key is there
- * is said by ink strength — keyed lines read at full ink, unkeyed ones recede
- * — with no wording or mark; each line's aria-label carries the same fact for
- * assistive tech. A pasted key crosses IPC once and is never displayed back.
+ * chip on the main panel. An unkeyed line opens in place into a single key
+ * field (one at a time). A stored key's only action is the trash: the keyed
+ * line is static — a neutral "Set" pill marks it, and re-keying means trash,
+ * then the now-unkeyed line. Ink strength reinforces the pill (keyed at full
+ * ink, unkeyed receding). A pasted key crosses IPC once and is never
+ * displayed back.
  *
  * Two rules follow from the split, and both are load-bearing. A key never moves
  * the check: saving one stores it and nothing else
@@ -154,6 +156,10 @@ export function SettingsMenu({
   // Whether THIS menu suspended the registrations — resume exactly once per
   // suspend, whatever exit path runs (save, cancel, hide, unmount).
   const suspendedRef = useRef(false);
+  /** Removal unmounts the focused trash; this row's now-unkeyed button
+   * focuses itself on mount instead of letting focus fall to the dialog
+   * (the busyAll recovery effect then sees focus is placed and stays out). */
+  const refocusRowRef = useRef<string | null>(null);
 
   /** One in-flight action panel-wide — every section's controls wait. */
   const busyAll = saving || action !== "idle";
@@ -234,6 +240,9 @@ export function SettingsMenu({
     setSourceError(null);
     try {
       setStatuses(await removeApiKey(providerId));
+      // The trash that had focus unmounts with this commit; hand focus to
+      // the row's fresh "Add a key" button (removal never opens a field).
+      refocusRowRef.current = providerId;
       // Never touches the mode or the pick — App's own fallback moves the
       // check if the removed provider was the source.
       onKeysChanged?.();
@@ -595,29 +604,45 @@ export function SettingsMenu({
     );
   };
 
-  /* A key line: the name opens the field, the trash clears a stored key.
-     Nothing here is a choice — only the two mode rows above are. */
+  /* A key line: an unkeyed name opens the field; a keyed line is static —
+     the Set pill marks it and the trash is its only control. Nothing here is
+     a choice — only the two mode rows above are. */
   const keyLine = (status: KeyStatus) => (
     <Fragment key={status.id}>
       <div className={"key-line" + (status.hasKey ? " is-keyed" : "")}>
-        <button
-          type="button"
-          className={"model-row" + (openKey === status.id ? " is-open" : "")}
-          disabled={busyAll}
-          aria-expanded={openKey === status.id}
-          aria-label={
-            status.hasKey
-              ? `Replace the ${status.name} API key`
-              : `Add a key for ${status.name}`
-          }
-          onClick={() => toggleKeyForm(status.id)}
-        >
-          {/* No note and no mark: ink strength says whether the key is there,
-              and the aria-label above says it for assistive tech. */}
-          <span className="row-main">
-            <span className="row-name">{status.name}</span>
-          </span>
-        </button>
+        {status.hasKey ? (
+          // Not a button on purpose: a stored key can't be replaced in
+          // place, so a click target would promise an action that doesn't
+          // exist (and its aria-expanded could never flip). AT reads the
+          // name + the pill text; the trash carries the actionable label.
+          <div className="model-row model-row--static">
+            <span className="row-main">
+              <span className="row-name">{status.name}</span>
+              <Badge title="Key stored on this PC">Set</Badge>
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className={"model-row" + (openKey === status.id ? " is-open" : "")}
+            disabled={busyAll}
+            aria-expanded={openKey === status.id}
+            aria-label={`Add a key for ${status.name}`}
+            ref={(el) => {
+              // After a removal, this button is the line's fresh identity —
+              // catch focus here (see refocusRowRef).
+              if (el && refocusRowRef.current === status.id) {
+                refocusRowRef.current = null;
+                el.focus();
+              }
+            }}
+            onClick={() => toggleKeyForm(status.id)}
+          >
+            <span className="row-main">
+              <span className="row-name">{status.name}</span>
+            </span>
+          </button>
+        )}
         {status.hasKey && (
           <button
             type="button"

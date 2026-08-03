@@ -312,12 +312,14 @@ field with a border needs no second voice.
   while the row's key form is open (the third voice of the same state: a row
   that opened something stays lit until it closes); selection is a Moonlight
   Blue check (and monogram tiles promote to ink on hover/selected).
-- **Rows, the one exception:** the Settings provider key lines rest at *muted*
-  ink and promote to full ink to say a key is stored — ink strength carrying
-  **state**, not only hierarchy. It is the quietest signal the system can make
-  (no mark, no wording, no new hue, and the accent check stays on the mode rows
-  where it belongs), and it is legible by comparison, so it only works in a
-  list. Each line's `aria-label` carries the same fact for assistive tech.
+- **Rows, the one exception:** a Settings provider key line rests at *muted*
+  ink until a key is stored; then it promotes to full ink and wears a neutral
+  **Set** badge beside the name. The badge is the mark — ink strength alone
+  proved illegible without a neighbor to compare against — and it stays
+  neutral because storage is not selection: the accent check belongs to the
+  mode rows (the One Signal Rule). A keyed line is not a control at all; its
+  only action is the trash, and the unkeyed line's `aria-label` plus the
+  badge text carry the state for assistive tech.
 - **Keyboard:** focus stays on the filter input; Up/Down move the highlight
   through the pickable rows only (no wrap — Home/End jump), Enter picks the
   highlighted row, and typing keeps filtering. Group headers and pinned
