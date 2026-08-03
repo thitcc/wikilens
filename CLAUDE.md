@@ -279,6 +279,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `window::disable_os_open_transition` (`DWMWA_TRANSITIONS_FORCEDISABLED`)
   runs for all three windows before any show; give any **new** window the
   same call or its first show animates differently from the rest.
+- **Config windows are created before `.setup()` runs**, so a webview's boot
+  invokes race setup's `.manage()` calls — a packaged build's instant asset
+  loads win that race ("state not managed for field `keys`"); dev's slower
+  Vite loads hid it. Both windows are `"create": false` and built in setup
+  **after** the stores are managed (pinned in `config_guardrails.rs`) — keep
+  that order for any new window or managed state.
 - MediaWiki etiquette: keep the custom `User-Agent` (`wiki::USER_AGENT`); page
   fetches are **sequential** (one `action=parse` request per page, 12s timeout) —
   don't parallelize them. Failures fall back to a single batched `prop=revisions`

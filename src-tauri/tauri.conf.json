@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "overlay",
+        "create": false,
         "title": "WikiLens",
         "transparent": true,
         "decorations": false,
@@ -26,6 +27,7 @@
       },
       {
         "label": "capture",
+        "create": false,
         "title": "WikiLens Capture",
         "url": "capture.html",
         "transparent": true,
