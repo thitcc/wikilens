@@ -33,6 +33,7 @@ wikilens/
 │   ├── menuPlacement.ts          # model-menu drop/flip measurement (paired constants — see §5)
 │   ├── menuNav.ts                # nextHighlight(): arrow-key highlight movement for the menus (pure, unit-tested)
 │   ├── menuScroll.ts             # centerRowInList() + keepRowInView(): center the picked row on open, reveal the highlighted row on arrows
+│   ├── historyTime.ts            # relativeTime(): history-row "when" labels (pure, unit-tested)
 │   ├── styles.css                # Transparent body + glass dark panel
 │   ├── test/                     # Vitest harness: setup, fake IPC backend (mockIPC), mount helpers
 │   ├── capture/main.ts           # region-select page (vanilla TS, own bundle): drag → finish/cancel_capture
@@ -40,6 +41,7 @@ wikilens/
 │   └── components/
 │       ├── GameChip.tsx          # header chip: current game, opens the game menu
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
+│       ├── HistoryMenu.tsx       # answer-history menu: past questions newest-first, filter, pinned "Clear history"; picking restores without re-asking
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
 │       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows + provider key lines behind a caret (unkeyed opens its key field; keyed wears a "Set" pill, only the trash; a key never changes the mode), key-recorder rows (suspend → record → save)
@@ -57,11 +59,12 @@ wikilens/
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
         ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys + the persisted mode choice; loaded in setup before registration
         ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); read by the key commands and at ask/model-list time
+        ├── history.rs            # HistoryStore: history.json (app-data), answered asks newest-first (cap 50) — recorded best-effort at the ask success tail; the webview can only list/clear
         ├── window.rs             # toggle/show/hide, top-right float, height-follows-panel (DPI-aware)
         ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode / list_history / clear_history
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
@@ -385,7 +388,6 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 
 - Foreground-window game auto-detection.
 - SQLite cache of fetched wiki pages.
-- Answer history.
 - Menu combobox semantics (`aria-activedescendant`): expose the arrow-key
   highlight to assistive tech conformantly — needs ModelMenu's interactive
   group headers restructured out of the list first (a valid listbox can't
