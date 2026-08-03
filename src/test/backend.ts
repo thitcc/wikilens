@@ -12,6 +12,7 @@ import type {
   AskResult,
   AttachmentInfo,
   GameInfo,
+  HistoryEntry,
   KeyStatus,
   ModelList,
   ProviderInfo,
@@ -67,6 +68,37 @@ export const ATTACHMENT: AttachmentInfo = {
   width: 320,
   height: 200,
 };
+
+/** Two answered asks, newest first (`list_history` order). The newer entry
+ * names a different game than the default selection (terraria) so restore
+ * tests can observe the game switch; the older one's game is deliberately
+ * absent from GAMES for the removed-game path. */
+export const HISTORY: HistoryEntry[] = [
+  {
+    id: "1722700000000-1",
+    createdMs: 1_722_700_000_000,
+    gameId: "stardew-valley",
+    gameName: "Stardew Valley",
+    question: "best winter crops",
+    answer: "Plant **Winter Seeds**.",
+    sources: [{ title: "Winter", url: "https://stardewvalleywiki.com/Winter" }],
+    providerName: "Anthropic",
+    model: "claude-sonnet-5",
+    hadImage: false,
+  },
+  {
+    id: "1722600000000-0",
+    createdMs: 1_722_600_000_000,
+    gameId: "gone-game",
+    gameName: "Gone Game",
+    question: "question about a removed game",
+    answer: "An **old** answer.",
+    sources: [],
+    providerName: "Anthropic",
+    model: null,
+    hadImage: false,
+  },
+];
 
 export const CANDIDATES: WikiCandidate[] = [
   {
@@ -172,6 +204,10 @@ export function installBackend(
       // the Debug-chip suite overrides it to true.
       debug_available: () => false,
       toggle_debug_window: () => undefined,
+      // Default empty keeps the header History chip out of unrelated tests;
+      // the history suite overrides it with the HISTORY fixture.
+      list_history: () => [],
+      clear_history: () => undefined,
       begin_capture: () => undefined,
       clear_capture: () => undefined,
       get_settings: () => SETTINGS,

@@ -345,6 +345,62 @@ fn settings_info_serializes_exactly_the_known_fields() {
     assert_eq!(nested, BTreeSet::from(["configured", "vision"]));
 }
 
+/// `HistoryEntry` is persisted to disk and crosses IPC (`list_history`). Pin
+/// its exact serialized field sets (top level + the nested sources) — answer
+/// text is LLM output and belongs; wiki page text and key material do not.
+/// Extend the lists only after the same review as the other IPC pins.
+#[test]
+fn history_entry_serializes_exactly_the_known_fields() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = crate::history::HistoryStore::load(dir.path().join("history.json"));
+    store
+        .append(crate::history::NewEntry {
+            game_id: "stardew-valley".to_string(),
+            game_name: "Stardew Valley".to_string(),
+            question: "best crops for winter".to_string(),
+            answer: "Winter crops are limited — see **Winter Seeds**.".to_string(),
+            sources: vec![crate::commands::Source {
+                title: "Winter".to_string(),
+                url: "https://stardewvalleywiki.com/Winter".to_string(),
+            }],
+            provider_name: "Anthropic".to_string(),
+            model: Some("claude-sonnet-5".to_string()),
+            had_image: false,
+        })
+        .expect("append");
+    let entries = store.list();
+    let value = serde_json::to_value(&entries[0]).expect("HistoryEntry serializes");
+    let top: BTreeSet<&str> = value
+        .as_object()
+        .expect("HistoryEntry serializes to an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        top,
+        BTreeSet::from([
+            "id",
+            "createdMs",
+            "gameId",
+            "gameName",
+            "question",
+            "answer",
+            "sources",
+            "providerName",
+            "model",
+            "hadImage",
+        ]),
+        "new HistoryEntry field — review it (no wiki page text, no key material), then update this pin"
+    );
+    let source: BTreeSet<&str> = value["sources"][0]
+        .as_object()
+        .expect("Source serializes to an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(source, BTreeSet::from(["title", "url"]));
+}
+
 /// CLAUDE.md §4: keys are "never logged, never sent to the frontend". The
 /// missing-key message points at the Settings panel and names the fix (add a
 /// key) rather than a section heading — headings move, the fix doesn't — and

@@ -81,6 +81,26 @@ export interface AskResult {
   sources: Source[];
 }
 
+/** One answered ask, from the `list_history` command (newest first). Recorded
+ * Rust-side on success only — no entry can be forged from the frontend. In
+ * Default mode `model` is `null`: the vendor id stays dev-only, matching the
+ * footer's bare "Default". */
+export interface HistoryEntry {
+  id: string;
+  /** Unix millis when the answer landed; render via `relativeTime`. */
+  createdMs: number;
+  gameId: string;
+  /** Denormalized so a row still names its game after the game is removed. */
+  gameName: string;
+  question: string;
+  /** The full streamed answer, as markdown. */
+  answer: string;
+  sources: Source[];
+  providerName: string;
+  model: string | null;
+  hadImage: boolean;
+}
+
 /** Which configurable shortcut a `set_hotkey` call targets. */
 export type HotkeyRole = "summon" | "capture";
 

@@ -74,6 +74,9 @@ pub enum AppError {
     #[error("Couldn't save your API keys: {0}")]
     Keys(String),
 
+    #[error("Couldn't save your answer history: {0}")]
+    History(String),
+
     /// A hotkey change that can't be applied (unparseable combo, conflict with
     /// the other shortcut, another app owns the combo). The message is already
     /// complete user-facing text shown in the settings popover.
