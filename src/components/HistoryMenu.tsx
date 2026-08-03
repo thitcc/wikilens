@@ -177,7 +177,7 @@ export function HistoryMenu({
       </div>
       <div className="menu-footer">
         {clearError && (
-          <div className="menu-note" role="alert">
+          <div className="menu-error" role="alert">
             {clearError}
           </div>
         )}
