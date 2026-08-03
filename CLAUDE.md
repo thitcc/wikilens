@@ -279,7 +279,7 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `window::disable_os_open_transition` (`DWMWA_TRANSITIONS_FORCEDISABLED`)
   runs for all three windows before any show; give any **new** window the
   same call or its first show animates differently from the rest.
-- **Config windows are created before `.setup()` runs**, so a webview's boot
+- **`create: true` config windows are created before `.setup()` runs**, so a webview's boot
   invokes race setup's `.manage()` calls — a packaged build's instant asset
   loads win that race ("state not managed for field `keys`"); dev's slower
   Vite loads hid it. Both windows are `"create": false` and built in setup
