@@ -314,7 +314,8 @@ field with a border needs no second voice.
   Blue check (and monogram tiles promote to ink on hover/selected).
 - **Rows, the one exception:** a Settings provider key line rests at *muted*
   ink until a key is stored; then it promotes to full ink and wears a neutral
-  **Set** badge beside the name. The badge is the mark — ink strength alone
+  **Set** badge on its right rail, before the trash (the badge position every
+  other row uses). The badge is the mark — ink strength alone
   proved illegible without a neighbor to compare against — and it stays
   neutral because storage is not selection: the accent check belongs to the
   mode rows (the One Signal Rule). A keyed line is not a control at all; its

@@ -615,9 +615,14 @@ export function SettingsMenu({
           // place, so a click target would promise an action that doesn't
           // exist (and its aria-expanded could never flip). AT reads the
           // name + the pill text; the trash carries the actionable label.
+          // The pill rides the right rail (the model menu's badge position):
+          // inline after the name it box-centers against Segoe's line box
+          // and reads ~2px high next to the letters.
           <div className="model-row model-row--static">
             <span className="row-main">
               <span className="row-name">{status.name}</span>
+            </span>
+            <span className="row-side">
               <Badge title="Key stored on this PC">Set</Badge>
             </span>
           </div>
