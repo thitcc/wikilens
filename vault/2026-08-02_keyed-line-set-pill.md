@@ -6,7 +6,7 @@ created: 2026-08-02
 updated: 2026-08-02
 tags: [frontend, overlay]
 related: ["[[2026-08-02_keyed-lines-are-static]]", "[[2026-07-29_settings-modes-and-keys]]", "[[2026-07-30_design-mirror-true-up]]"]
-commit: [c1e9d37, 496773f]
+commit: [c1e9d37, 496773f, e480ebe]
 ---
 
 # Make keyed provider lines static and mark them with a Set pill
@@ -49,3 +49,7 @@ auto-open after trash (owner's call). Ink promotion kept as reinforcement.
 - 2026-08-02 — owner review: the inline pill read ~2px high (box-centering
   vs Segoe's line box, measured off the screenshot); moved to the row's
   right rail, the model menu's badge position (496773f).
+- 2026-08-02 — same-PR follow-up: the header gear's quiet-chip padding made
+  a landscape veil around a circular glyph (the gear itself measured seated);
+  squared to a 20×20 `icon-chip` seat, token added to DESIGN.md + mirror
+  (e480ebe).
