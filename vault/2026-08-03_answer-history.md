@@ -10,7 +10,7 @@ related:
   - "[[2026-07-18_visual-debug-window]]"
   - "[[2026-07-19_menu-keyboard-nav]]"
   - "[[2026-08-03_overlay-hug-and-clear]]"
-commit: [dfbcdd5, 20f2459, 5a61b60, 2430650]
+commit: [dfbcdd5, 20f2459, 5a61b60, 2430650, 02a55ce]
 ---
 
 # Answer history — recall past answers from a header menu
@@ -116,3 +116,6 @@ One PR (`feat/answer-history`), steps in order, `/check` before push.
   Capability note: app commands aren't per-webview gated in this Tauri
   setup (pre-existing, applies to all commands alike); the forge guard is
   the absence of any record command. Done.
+- 2026-08-03 — owner follow-up on the open PR: the filter box now matches
+  the game name too, not just question text (02a55ce) — "abiotic" surfaces
+  every Abiotic Factor ask.
