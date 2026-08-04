@@ -723,7 +723,10 @@ export function SettingsMenu({
       aria-label="Settings"
     >
       <div className="menu-list menu-list--settings">
-        <div className="menu-heading">Answers</div>
+        <div className="menu-heading menu-heading--versioned">
+          Answers
+          {version !== null && <span className="menu-version">v{version}</span>}
+        </div>
         {/* Panel-scope, so it sits above the rows rather than on one: a failed
             key-status read would otherwise be tagged to a row that may not
             exist, or be hidden behind the caret. */}
@@ -767,9 +770,6 @@ export function SettingsMenu({
         {row("capture", settings.hotkeys.capture)}
         {hint && recording !== null && <div className="hotkey-hint">{hint}</div>}
         {error && <div className="menu-error">{error}</div>}
-        {version !== null && (
-          <div className="menu-version">v{version}</div>
-        )}
       </div>
 
     </div>

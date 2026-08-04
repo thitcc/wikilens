@@ -468,17 +468,6 @@ body {
   cursor: help;
 }
 
-/* Quiet version metadata at the bottom of Settings — label-size, muted ink
-   dimmed a step further (cf. .group-note): pure metadata, quieter than the
-   notes. No tracking: that pairing is reserved for the uppercase headings. */
-.menu-version {
-  padding: var(--space-2) var(--space-6) var(--space-4);
-  color: var(--fg-muted);
-  font-size: var(--text-label);
-  text-align: right;
-  opacity: 0.7;
-}
-
 .model-row {
   display: flex;
   align-items: center;
@@ -604,6 +593,21 @@ body {
 
 .menu-list .menu-heading:first-child {
   padding-top: var(--space-4);
+}
+
+/* The Answers heading carries the version stamp on its right — the
+   .group-note pattern: lowercase muted metadata against the uppercase
+   header, dimmed a step further (pure metadata, quieter than the heading). */
+.menu-heading--versioned {
+  display: flex;
+  align-items: baseline;
+}
+
+.menu-version {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0.7;
 }
 
 /* Left cluster of a row: monogram tile + truncating name. */
