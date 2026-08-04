@@ -9,7 +9,7 @@ related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_versioning-adoption]]"
   - "[[2026-07-19_hotkey-config]]"
-commit: 76ce2a4
+commit: [76ce2a4, ac89908]
 ---
 
 # Show the running version in Settings
@@ -48,3 +48,6 @@ anyway.
   `core:default` already grants `allow-version`). A failed lookup renders
   no row. The two-lens review caught letter-spacing on mixed-case text
   (tracking is the uppercase-heading treatment here) — dropped.
+- 2026-08-04 — follow-up in the same PR: the "Shortcuts work in-game"
+  note is removed (the version row closes the panel alone) and the row
+  dims a step below the notes (`opacity: 0.7`, cf. `.group-note`).
