@@ -9,7 +9,7 @@ related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_versioning-adoption]]"
   - "[[2026-07-19_hotkey-config]]"
-commit: [76ce2a4, ac89908]
+commit: [76ce2a4, ac89908, d833e79]
 ---
 
 # Show the running version in Settings
@@ -51,3 +51,6 @@ anyway.
 - 2026-08-04 — follow-up in the same PR: the "Shortcuts work in-game"
   note is removed (the version row closes the panel alone) and the row
   dims a step below the notes (`opacity: 0.7`, cf. `.group-note`).
+- 2026-08-04 — copy tuned per owner: bare `v0.1.0`, right-aligned — the
+  app name is redundant inside its own Settings; the number reads as a
+  build stamp in the corner.
