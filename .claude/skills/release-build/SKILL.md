@@ -61,3 +61,16 @@ hotkey, tray, DPI, keys) has no automated coverage. Item 10 specifically
 runs on the packaged **installer**; a quick exe sanity check (tray icon
 appears, Ctrl+` summons over a borderless window) covers a non-release
 build.
+
+## Cutting a versioned release
+
+The build alone isn't a release. Versions are release-scoped SemVer (ADR:
+`vault/2026-08-04_release-scoped-semver.md`): the version comes from
+`tauri.conf.json` and bumps **only in a release PR** (`chore/release-X-Y-Z`
+— bump `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`,
+refresh locks via `npm install --package-lock-only` + `cargo check`, run
+`/check`), never per-merge. Then: human merges → human tags the merge commit
+(`git tag -a vX.Y.Z` + push — tagging mutates `main`, so it stays
+owner-side) → this build → smoke checklist + `--ignored` live suites →
+`gh release create` with the NSIS/MSI installers and notes. Release notes
+live in GitHub Releases only — no CHANGELOG.md.

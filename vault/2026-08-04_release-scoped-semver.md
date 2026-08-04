@@ -1,7 +1,7 @@
 ---
 title: Versions are release-scoped SemVer, bumped in release PRs
 type: decision
-status: active
+status: done
 created: 2026-08-04
 updated: 2026-08-04
 tags: [build]
@@ -10,7 +10,7 @@ related:
   - "[[2026-07-13_pr-delivery-workflow]]"
   - "[[2026-08-02_release-build-skill]]"
   - "[[2026-07-13_ci-pipeline-github-actions]]"
-commit:
+commit: 4a085cb
 ---
 
 # Versions are release-scoped SemVer, bumped in release PRs

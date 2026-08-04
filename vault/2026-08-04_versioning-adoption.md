@@ -1,7 +1,7 @@
 ---
 title: Adopt v0.1.0 and institutionalize the release ritual
 type: plan
-status: todo
+status: done
 created: 2026-08-04
 updated: 2026-08-04
 tags: [build]
@@ -10,7 +10,7 @@ related:
   - "[[2026-08-02_release-build-skill]]"
   - "[[2026-07-13_pr-delivery-workflow]]"
   - "[[2026-07-13_manual-smoke-checklist-live-cadence]]"
-commit:
+commit: 4a085cb
 ---
 
 # Adopt v0.1.0 and institutionalize the release ritual
@@ -54,3 +54,7 @@ produced a tag. All real forks live in the ADR.
 
 - 2026-08-04 — created from the versioning explainer session; tag + docs
   pending.
+- 2026-08-04 — done: `v0.1.0` tag commands handed to the owner (annotated
+  tag on `main`, tag-only — no Release object), docs PR adds the CLAUDE.md
+  §3 versioning line and the `release-build` skill's "Cutting a versioned
+  release" section, Codex adapters regenerated. Closes the ADR with it.
