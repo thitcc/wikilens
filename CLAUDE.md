@@ -20,7 +20,7 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 ```
 wikilens/
 ├── index.html, capture.html, debug.html, vite.config.ts, tsconfig*.json   # Vite/TS config; three rollup inputs (overlay + region-select + debug pages)
-├── vault/                        # planning vault: plans, decisions, notes (see §7)
+├── vault/                        # planning vault: plans, decisions, notes (see §6)
 ├── docs/                         # dev guides: manual smoke checklist, AI-workflow explainer
 ├── src/                          # Frontend (React + TS; *.test.* files are colocated Vitest suites)
 │   ├── main.tsx                  # React entry
@@ -384,23 +384,7 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   capability and `maximizable(false)` — a maximized glass sheet would cover
   the game.
 
-## 6. Roadmap (do not implement unless asked)
-
-- Foreground-window game auto-detection.
-- SQLite cache of fetched wiki pages.
-- Menu combobox semantics (`aria-activedescendant`): expose the arrow-key
-  highlight to assistive tech conformantly — needs ModelMenu's interactive
-  group headers restructured out of the list first (a valid listbox can't
-  contain them).
-- Compose the next question while an answer is still streaming.
-- Overlay design follow-ups: accent-direction exploration and a high-contrast
-  bright-scene variant (dropped from the 2026-07-05 design-sync plan).
-- Panel corner-pick: let the player choose which corner the overlay docks to
-  (top-right collides with common game HUDs — 2026-07-18 critique).
-- Footer vocabulary collapse: player-language model status in the footer, with
-  the provider/model machinery one level down (2026-07-18 critique).
-
-## 7. Planning vault
+## 6. Planning vault
 
 Plans, decisions, research, and retros live in **`vault/`** as
 `YYYY-MM-DD_<kebab-slug>.md` with YAML frontmatter (`title, type, status, created,
@@ -426,8 +410,9 @@ vault (not the repo root — that would index `node_modules`).
 - Filenames are permanent IDs — don't rename. Wikilinks in frontmatter must be
   quoted (`"[[...]]"`); dates are bare ISO. No secrets in notes.
 - `README.md` and this file are user/dev guides and are **not** part of the vault.
-- The roadmap above (§6) is the single source of truth for future ideas; promote an
-  item to a full `plan` doc only when work on it starts.
+- Future ideas live in the vault too: a `plan` doc with `status: idea` (the
+  `vault/index.md` dashboards surface them); flip it to `active` when work on
+  it starts. Don't implement an idea doc unless asked.
 
 ## Design Context
 
