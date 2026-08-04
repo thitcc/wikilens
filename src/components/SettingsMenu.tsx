@@ -767,9 +767,6 @@ export function SettingsMenu({
         {row("capture", settings.hotkeys.capture)}
         {hint && recording !== null && <div className="hotkey-hint">{hint}</div>}
         {error && <div className="menu-error">{error}</div>}
-        <div className="menu-note">
-          Shortcuts work in-game, even while this panel is hidden.
-        </div>
         {version !== null && (
           <div className="menu-version">WikiLens {version}</div>
         )}
