@@ -9,7 +9,7 @@ related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_versioning-adoption]]"
   - "[[2026-07-19_hotkey-config]]"
-commit: [76ce2a4, ac89908, d833e79]
+commit: [76ce2a4, ac89908, d833e79, b00d994]
 ---
 
 # Show the running version in Settings
@@ -54,3 +54,6 @@ anyway.
 - 2026-08-04 — copy tuned per owner: bare `v0.1.0`, right-aligned — the
   app name is redundant inside its own Settings; the number reads as a
   build stamp in the corner.
+- 2026-08-04 — moved top-right per owner: the stamp rides the Answers
+  heading's right edge (the `.group-note` pattern — lowercase muted
+  metadata against the uppercase header).
