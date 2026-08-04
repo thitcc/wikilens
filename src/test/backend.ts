@@ -154,6 +154,11 @@ export const SETTINGS_DEFAULT_VISION: SettingsInfo = {
   defaultMode: { configured: true, vision: true },
 };
 
+/** The running app version (the `plugin:app|version` wire command).
+ * Deliberately not the real manifest number: a hardcoded "0.1.0" in JSX
+ * could never pass a test that expects this. */
+export const APP_VERSION = "7.7.7";
+
 // ---- Backend ----------------------------------------------------------------
 
 type CommandHandler = (args: unknown) => unknown;
@@ -224,6 +229,7 @@ export function installBackend(
       },
       remove_game: () => undefined,
       "plugin:opener|open_url": () => undefined,
+      "plugin:app|version": () => APP_VERSION,
       ...overrides,
     }),
   );

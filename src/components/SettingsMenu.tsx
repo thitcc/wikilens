@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import {
+  getAppVersion,
   listKeyStatus,
   onOverlayHidden,
   openExternal,
@@ -183,6 +184,21 @@ export function SettingsMenu({
         // would hide it in exactly the case where it matters most.
         if (active) setSourceError({ rowId: KEYS_ROW, message: String(e) });
       });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // A failed lookup renders no row rather than an error — a missing version
+  // number is not player-actionable.
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    getAppVersion()
+      .then((v) => {
+        if (active) setVersion(v);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -754,6 +770,9 @@ export function SettingsMenu({
         <div className="menu-note">
           Shortcuts work in-game, even while this panel is hidden.
         </div>
+        {version !== null && (
+          <div className="menu-version">WikiLens {version}</div>
+        )}
       </div>
 
     </div>

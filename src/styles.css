@@ -468,6 +468,14 @@ body {
   cursor: help;
 }
 
+/* Quiet version metadata at the bottom of Settings — label-size, muted ink.
+   No tracking: that pairing is reserved for the uppercase headings. */
+.menu-version {
+  padding: var(--space-2) var(--space-6) var(--space-4);
+  color: var(--fg-muted);
+  font-size: var(--text-label);
+}
+
 .model-row {
   display: flex;
   align-items: center;

@@ -19,7 +19,13 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { SettingsMenu } from "./SettingsMenu";
-import { KEY_STATUS, SETTINGS, deferred, installBackend } from "../test/backend";
+import {
+  APP_VERSION,
+  KEY_STATUS,
+  SETTINGS,
+  deferred,
+  installBackend,
+} from "../test/backend";
 import { fireBackendEvent } from "../test/harness";
 import type { KeyStatus, SettingsInfo } from "../types";
 
@@ -30,13 +36,16 @@ import type { KeyStatus, SettingsInfo } from "../types";
  * normalizes to Custom, which mounts the key lines disclosed. A Default-mode
  * fixture mounts them collapsed and needs `settle: settleNoKeys`. That coupling
  * is silent, so it is spelled out here: it is what broke three tests when the
- * caret landed. */
+ * caret landed. The version fetch is a second open-time promise, settled by
+ * awaiting its row so it can't land as a stray act() warning mid-test;
+ * `noVersion` opts out for the failed-lookup test, whose row never appears. */
 async function renderMenu(over?: {
   settings?: SettingsInfo;
   onSaved?: (next: SettingsInfo) => void;
   onKeysChanged?: () => void;
   onClose?: () => void;
   settle?: () => Promise<unknown>;
+  noVersion?: true;
 }) {
   const triggerRef = { current: null };
   const onSaved = over?.onSaved ?? (() => {});
@@ -52,6 +61,7 @@ async function renderMenu(over?: {
   );
   await (over?.settle?.() ??
     screen.findByRole("button", { name: "Add a key for Anthropic" }));
+  if (!over?.noVersion) await screen.findByText(`WikiLens ${APP_VERSION}`);
   return result;
 }
 
@@ -704,6 +714,29 @@ test("the dialog takes focus on mount", async () => {
   expect(document.activeElement).toBe(
     screen.getByRole("dialog", { name: "Settings" }),
   );
+});
+
+// ---- The version row -------------------------------------------------------
+
+test("shows the running version at the bottom", async () => {
+  const backend = installBackend();
+  await renderMenu();
+
+  // The fixture is deliberately not the manifest number, so a hardcoded
+  // "WikiLens 0.1.0" in the JSX could never pass this.
+  expect(screen.getByText(`WikiLens ${APP_VERSION}`)).toBeTruthy();
+  expect(backend.callsTo("plugin:app|version")).toHaveLength(1);
+});
+
+test("a failed version lookup renders no row", async () => {
+  installBackend({
+    "plugin:app|version": () => {
+      throw new Error("no version for you");
+    },
+  });
+  await renderMenu({ noVersion: true });
+
+  expect(screen.queryByText(`WikiLens ${APP_VERSION}`)).toBeNull();
 });
 
 // ---- Shortcuts (the recorder) ---------------------------------------------
