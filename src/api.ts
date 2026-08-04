@@ -2,6 +2,7 @@
 // here only — never from `@tauri-apps/*` directly. This keeps all IPC calls,
 // event names, and payload types in one typed place.
 
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -210,6 +211,11 @@ export function clearHistory(): Promise<void> {
 /** Open a URL in the user's default browser (source links). */
 export function openExternal(url: string): Promise<void> {
   return openUrl(url);
+}
+
+/** The running app version (tauri.conf.json's), for the Settings version row. */
+export function getAppVersion(): Promise<string> {
+  return getVersion();
 }
 
 // ---- Events ---------------------------------------------------------------

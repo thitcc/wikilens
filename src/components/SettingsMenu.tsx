@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import {
+  getAppVersion,
   listKeyStatus,
   onOverlayHidden,
   openExternal,
@@ -183,6 +184,21 @@ export function SettingsMenu({
         // would hide it in exactly the case where it matters most.
         if (active) setSourceError({ rowId: KEYS_ROW, message: String(e) });
       });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // A failed lookup renders no row rather than an error — a missing version
+  // number is not player-actionable.
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    getAppVersion()
+      .then((v) => {
+        if (active) setVersion(v);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -707,7 +723,10 @@ export function SettingsMenu({
       aria-label="Settings"
     >
       <div className="menu-list menu-list--settings">
-        <div className="menu-heading">Answers</div>
+        <div className="menu-heading menu-heading--versioned">
+          Answers
+          {version !== null && <span className="menu-version">v{version}</span>}
+        </div>
         {/* Panel-scope, so it sits above the rows rather than on one: a failed
             key-status read would otherwise be tagged to a row that may not
             exist, or be hidden behind the caret. */}
@@ -751,9 +770,6 @@ export function SettingsMenu({
         {row("capture", settings.hotkeys.capture)}
         {hint && recording !== null && <div className="hotkey-hint">{hint}</div>}
         {error && <div className="menu-error">{error}</div>}
-        <div className="menu-note">
-          Shortcuts work in-game, even while this panel is hidden.
-        </div>
       </div>
 
     </div>
