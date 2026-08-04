@@ -1,7 +1,7 @@
 ---
 title: Show the running version in Settings
 type: plan
-status: idea
+status: done
 created: 2026-08-04
 updated: 2026-08-04
 tags: [frontend, tauri]
@@ -9,7 +9,7 @@ related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_versioning-adoption]]"
   - "[[2026-07-19_hotkey-config]]"
-commit:
+commit: 76ce2a4
 ---
 
 # Show the running version in Settings
@@ -43,3 +43,8 @@ anyway.
 ## Status log
 
 - 2026-08-04 — created as an idea from the versioning explainer session.
+- 2026-08-04 — shipped: muted `WikiLens <version>` row after the shortcuts
+  note, via a `getAppVersion()` api.ts wrapper (no capability change —
+  `core:default` already grants `allow-version`). A failed lookup renders
+  no row. The two-lens review caught letter-spacing on mixed-case text
+  (tracking is the uppercase-heading treatment here) — dropped.
