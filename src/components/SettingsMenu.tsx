@@ -768,7 +768,7 @@ export function SettingsMenu({
         {hint && recording !== null && <div className="hotkey-hint">{hint}</div>}
         {error && <div className="menu-error">{error}</div>}
         {version !== null && (
-          <div className="menu-version">WikiLens {version}</div>
+          <div className="menu-version">v{version}</div>
         )}
       </div>
 

@@ -61,7 +61,7 @@ async function renderMenu(over?: {
   );
   await (over?.settle?.() ??
     screen.findByRole("button", { name: "Add a key for Anthropic" }));
-  if (!over?.noVersion) await screen.findByText(`WikiLens ${APP_VERSION}`);
+  if (!over?.noVersion) await screen.findByText(`v${APP_VERSION}`);
   return result;
 }
 
@@ -723,8 +723,8 @@ test("shows the running version at the bottom", async () => {
   await renderMenu();
 
   // The fixture is deliberately not the manifest number, so a hardcoded
-  // "WikiLens 0.1.0" in the JSX could never pass this.
-  expect(screen.getByText(`WikiLens ${APP_VERSION}`)).toBeTruthy();
+  // "v0.1.0" in the JSX could never pass this.
+  expect(screen.getByText(`v${APP_VERSION}`)).toBeTruthy();
   expect(backend.callsTo("plugin:app|version")).toHaveLength(1);
 });
 
@@ -736,7 +736,7 @@ test("a failed version lookup renders no row", async () => {
   });
   await renderMenu({ noVersion: true });
 
-  expect(screen.queryByText(`WikiLens ${APP_VERSION}`)).toBeNull();
+  expect(screen.queryByText(`v${APP_VERSION}`)).toBeNull();
 });
 
 // ---- Shortcuts (the recorder) ---------------------------------------------
