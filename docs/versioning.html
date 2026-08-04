@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WikiLens · Versioning guide</title>
+<style>
+  /* Tokens — mirrored from DESIGN.md frontmatter / src/styles.css */
+  :root {
+    --fg: #e8e8ee;
+    --fg-muted: #9a9aa8;
+    --fg-strong: #ffffff;
+    --accent: #8ab4ff;
+    --surface-panel: rgba(18, 18, 24, 0.92);
+    --surface-control: rgba(255, 255, 255, 0.06);
+    --surface-raised: rgba(255, 255, 255, 0.08);
+    --surface-inset: rgba(0, 0, 0, 0.3);
+    --border: rgba(255, 255, 255, 0.08);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0b0b10; }
+  body {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(ellipse 720px 420px at 50% -80px, rgba(138, 180, 255, 0.05), transparent 70%);
+    padding: 40px 20px 64px;
+  }
+  .column {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel {
+    background: var(--surface-panel);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .panel {
+      opacity: 0;
+      animation: arrive 140ms ease-out forwards;
+    }
+    .panel:nth-child(2) { animation-delay: 30ms; }
+    .panel:nth-child(3) { animation-delay: 60ms; }
+    .panel:nth-child(4) { animation-delay: 90ms; }
+    .panel:nth-child(5) { animation-delay: 120ms; }
+    .panel:nth-child(6) { animation-delay: 150ms; }
+    .panel:nth-child(7) { animation-delay: 180ms; }
+    .panel:nth-child(8) { animation-delay: 210ms; }
+    @keyframes arrive {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+
+  /* Type — 14px ceiling: hierarchy is weight, ink strength, tracking, case */
+  .brand { font-weight: 600; letter-spacing: 0.02em; color: var(--fg); }
+  .label {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+  strong { color: var(--fg-strong); font-weight: 600; }
+  .muted { color: var(--fg-muted); }
+  .small { font-size: 13px; line-height: 1.4; }
+  .accent { color: var(--accent); }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    padding: 1px 5px;
+    background: var(--surface-raised);
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  pre {
+    background: var(--surface-inset);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; white-space: pre; color: var(--fg); }
+  pre .c { color: var(--fg-muted); }
+
+  .header-row { display: flex; align-items: baseline; gap: 8px; }
+  .verdict { line-height: 1.55; }
+
+  /* Version anatomy */
+  .ver-visual {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 2px 0 4px;
+  }
+  .ver-visual .dot { color: var(--fg-muted); font-weight: 400; }
+  .seg-rows { display: flex; flex-direction: column; }
+  .seg-row {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 12px;
+    padding: 8px 8px;
+    border-radius: 8px;
+    align-items: baseline;
+  }
+  .seg-row:hover { background: var(--surface-control); }
+  .seg-row + .seg-row { border-top: 1px solid var(--border); }
+  .seg-name { font-family: var(--font-mono); font-size: 12.5px; color: var(--accent); }
+  .seg-meaning { font-size: 13px; line-height: 1.5; }
+
+  /* Tables */
+  .table-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 400;
+    color: var(--fg-muted);
+    text-align: left;
+    padding: 4px 8px 6px;
+  }
+  td {
+    padding: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    line-height: 1.5;
+    vertical-align: top;
+  }
+  td.scheme { white-space: nowrap; font-weight: 600; }
+
+  /* Ritual steps */
+  .steps { display: flex; flex-direction: column; }
+  .step {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 10px;
+    padding: 8px;
+    border-radius: 8px;
+    align-items: start;
+  }
+  .step:hover { background: var(--surface-control); }
+  .step + .step { border-top: 1px solid var(--border); }
+  .step-num {
+    width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface-raised);
+    border-radius: 5px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  .step-body { font-size: 13px; line-height: 1.55; }
+  .who-chip {
+    align-self: center;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface-raised);
+    color: var(--fg-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .who-chip.you { color: var(--accent); }
+
+  /* Rule rows */
+  .rule-row {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .rule-row .check { color: var(--accent); }
+
+  /* Pointer list */
+  .pointer-row {
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    gap: 12px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .pointer-row:hover { background: var(--surface-control); }
+  .pointer-row + .pointer-row { border-top: 1px solid var(--border); }
+  .pointer-where { font-family: var(--font-mono); font-size: 12px; color: var(--fg-muted); word-break: break-all; }
+
+  .footnote {
+    text-align: center;
+    font-size: 12px;
+    color: var(--fg-muted);
+    letter-spacing: 0.02em;
+  }
+  @media (max-width: 560px) {
+    .step { grid-template-columns: 20px 1fr; }
+    .who-chip { grid-column: 2; justify-self: start; align-self: start; }
+    .pointer-row { grid-template-columns: 1fr; gap: 2px; }
+  }
+</style>
+</head>
+<body>
+<div class="column">
+
+  <!-- 1 · Header + the one rule -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="brand">WikiLens</span>
+      <span class="label">Versioning guide</span>
+    </div>
+    <p class="verdict">
+      A version names a <strong>validated installer</strong>, never a merge.
+      It bumps only in <strong>release PRs</strong>; daily PR flow never touches it.
+      The baseline is <code>v0.1.0</code>, tagged 2026-08-04.
+    </p>
+    <p class="small muted">The full rationale, with the rejected alternatives, lives in the ADR: <code>vault/2026-08-04_release-scoped-semver.md</code>.</p>
+  </section>
+
+  <!-- 2 · What a version means -->
+  <section class="panel">
+    <span class="label">What a version means</span>
+    <p class="small">WikiLens is an app, not a library; nobody depends on its API. The segments still mean something, just app-flavored:</p>
+    <div class="ver-visual">
+      <span class="accent">0</span><span class="dot">.</span><span>1</span><span class="dot">.</span><span class="muted">0</span>
+    </div>
+    <div class="seg-rows">
+      <div class="seg-row">
+        <span class="seg-name">major</span>
+        <span class="seg-meaning"><strong>Breaks your installed world.</strong> The upgrade can't read the previous release's app-data (<code>settings.json</code>, <code>keys.json</code>, <code>history.json</code>, <code>wikis.json</code>) without migration. Stays <code>0</code> while pre-stable.</span>
+      </div>
+      <div class="seg-row">
+        <span class="seg-name">minor</span>
+        <span class="seg-meaning"><strong>A feature release.</strong> New capability worth installing, the 0.x workhorse: <code>0.2.0</code>, <code>0.3.0</code>…</span>
+      </div>
+      <div class="seg-row">
+        <span class="seg-name">patch</span>
+        <span class="seg-meaning"><strong>Fixes only.</strong> <code>0.1.1</code> is “0.1.0 but the bug is gone.” Nothing new.</span>
+      </div>
+    </div>
+    <p class="small muted"><strong class="accent" style="font-weight:600">1.0.0</strong>&nbsp; when app-data survives every upgrade as a kept promise and you'd hand the installer to a stranger. No hurry: 0.x is honest.</p>
+  </section>
+
+  <!-- 3 · Where the version lives -->
+  <section class="panel">
+    <span class="label">Where the version lives</span>
+    <p class="small">Five files carry the number, and only a release PR may touch them:</p>
+    <pre><code>package.json           <span class="c">the npm manifest</span>
+package-lock.json      <span class="c">two spots, refreshed by npm install --package-lock-only</span>
+src-tauri/Cargo.toml   <span class="c">the crate version</span>
+src-tauri/Cargo.lock   <span class="c">refreshed by cargo check</span>
+src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;version&gt;_x64-setup.exe</span></code></pre>
+    <p class="small muted">Between releases they all read the <em>last</em> released version. That's by design; a number that moved on every merge would be a merge counter, and git already counts merges.</p>
+  </section>
+
+  <!-- 4 · A tag is the snapshot -->
+  <section class="panel">
+    <span class="label">A tag is the snapshot</span>
+    <p class="small">A git tag is a permanent named pointer to one commit. It copies nothing; the commit is the snapshot, and the tag makes it addressable forever:</p>
+    <div class="rule-row"><span class="check">✓</span><span><code>git checkout v0.1.0</code> reproduces that exact code, years from now.</span></div>
+    <div class="rule-row"><span class="check">✓</span><span>GitHub serves source zip/tar.gz assets for every tag, and <code>git log --first-parent v0.1.0..v0.2.0</code> lists exactly the PRs merged between two of them.</span></div>
+    <div class="rule-row"><span class="check">✓</span><span>Unlike a branch it never moves, and the annotated form (<code>git tag -a</code>) carries its own message, author, and date.</span></div>
+    <p class="small muted">The tag must land on the <strong>merge commit</strong> of the release PR, so create it from an up-to-date <code>main</code> checkout.</p>
+  </section>
+
+  <!-- 5 · When to cut a version -->
+  <section class="panel">
+    <span class="label">When to cut a version</span>
+    <p class="small">A release is an <strong>event, not a schedule</strong>: version when an installer is about to land in someone's hands, including your own. Merges pile up on <code>main</code> unversioned in between, and zero releases for a month is a valid state.</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Situation</th><th>Cut</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>A batch of features since the last version is worth installing</td>
+            <td class="scheme">0.2.0 <span class="muted" style="font-weight:400">(minor)</span></td>
+          </tr>
+          <tr>
+            <td>A version you shipped has a bug that needs fixing now, nothing else rides along</td>
+            <td class="scheme">0.1.1 <span class="muted" style="font-weight:400">(patch)</span></td>
+          </tr>
+          <tr>
+            <td>Upgrading would break existing app-data without migration</td>
+            <td><strong>major</strong>; <span class="muted">stays 0.x pre-stable, so in practice: migrate instead</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 6 · The release ritual -->
+  <section class="panel">
+    <span class="label">The release ritual</span>
+    <p class="small muted">“I want a new version” means walking these six steps. The agent preps; you gate.</p>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-body"><strong>Pick the number.</strong> Features landed → minor. Fixes only → patch.</span>
+        <span class="who-chip you">you</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-body"><strong>Release PR.</strong> Ask the agent to “prep the release PR for 0.2.0”: branch <code>chore/release-0-2-0</code>, one commit bumping <code>package.json</code> + <code>Cargo.toml</code> + <code>tauri.conf.json</code>, locks refreshed (<code>npm install --package-lock-only</code>, <code>cargo check</code>), <code>/check</code> green. The PR summary doubles as draft release notes.</span>
+        <span class="who-chip">agent</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-body"><strong>Merge.</strong> Merge commit, as always.</span>
+        <span class="who-chip you">you</span>
+      </div>
+      <div class="step">
+        <span class="step-num">4</span>
+        <span class="step-body"><strong>Tag the merge commit.</strong> On <code>main</code>, after pulling the merge: <code>git tag -a v0.2.0 -m "WikiLens 0.2.0"</code> then <code>git push origin v0.2.0</code>. Tagging mutates main, so it lives on your side of the line, with merging.</span>
+        <span class="who-chip you">you</span>
+      </div>
+      <div class="step">
+        <span class="step-num">5</span>
+        <span class="step-body"><strong>Build and validate.</strong> <code>npm run tauri build</code>, walk <code>docs/smoke-checklist.md</code> on the packaged installer, run the live suites (<code>cargo test -- --ignored</code>, from <code>src-tauri/</code>). This is the real gate; the version is a promise that it ran.</span>
+        <span class="who-chip you">you</span>
+      </div>
+      <div class="step">
+        <span class="step-num">6</span>
+        <span class="step-body"><strong>GitHub Release.</strong> <code>gh release create v0.2.0</code> with the NSIS + MSI installers from <code>src-tauri/target/release/bundle/</code>. Notes = behavior bullets from <code>git log --first-parent vPREV..vNEXT</code> + the ticked checklist boxes.</span>
+        <span class="who-chip you">you</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 · House rules -->
+  <section class="panel">
+    <span class="label">House rules</span>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong>GitHub Releases are the changelog.</strong> No <code>CHANGELOG.md</code>: it would be a third hand-maintained copy of the PR titles and a merge-conflict magnet in every release PR.</span>
+    </div>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong>A tag without the ritual stays a tag.</strong> Never press GitHub's “Create release from tag” shortcut; a Release object claims installers were built and smoked at that commit. <code>v0.1.0</code> is tag-only for exactly this reason.</span>
+    </div>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong>Don't bump outside a release PR.</strong> Feature and fix PRs never touch the five version files; two open branches that both bump are a guaranteed conflict.</span>
+    </div>
+  </section>
+
+  <!-- 8 · Pointers -->
+  <section class="panel">
+    <span class="label">Pointers</span>
+    <div class="pointer-row">
+      <span class="pointer-where">vault/2026-08-04_release-scoped-semver.md</span>
+      <span>The decision record: full rationale, rejected alternatives (per-PR bumps, release bots, CalVer, CHANGELOG.md).</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">CLAUDE.md §3 · Versioning</span>
+      <span>The one-bullet summary agents read every session.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">.claude/skills/release-build/SKILL.md</span>
+      <span>Build mechanics + “Cutting a versioned release”: what surrounds <code>npm run tauri build</code>.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">docs/smoke-checklist.md</span>
+      <span>The manual validation walk; its results get pasted into the Release notes.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">vault · 2026-08-04_* idea docs</span>
+      <span>Deferred follow-ups, in order: version row in Settings, <code>npm run bump</code>, tag-triggered release CI, auto-updater.</span>
+    </div>
+  </section>
+
+  <p class="footnote">docs/versioning.html · tokens from DESIGN.md · baseline v0.1.0, 2026-08-04</p>
+
+</div>
+</body>
+</html>
