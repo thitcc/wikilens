@@ -105,6 +105,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Release: `npm run tauri build`, then walk the manual smoke checklist
   (`docs/smoke-checklist.md`) — the runtime-only surface (overlay, hotkey,
   tray, DPI, packaged keys) has no automated coverage
+- Versioning: release-scoped SemVer — the version bumps **only in release
+  PRs**, never per-merge (ADR: `vault/2026-08-04_release-scoped-semver.md`).
+  Ritual: agent opens the bump PR (three manifests + lock refresh +
+  `/check`) → human merges → human tags the merge commit
+  (`git tag -a vX.Y.Z`) → build + smoke checklist + live suites →
+  `gh release create` with the installers. Release notes live in GitHub
+  Releases only — no CHANGELOG.md
 
 ## 4. Conventions
 
