@@ -8,6 +8,7 @@ tags: [build, security, tauri]
 related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_tag-triggered-release-ci]]"
+  - "[[2026-08-05_windows-code-signing]]"
 commit:
 ---
 
@@ -67,7 +68,10 @@ exists once real external users do — the same milestone the ADR sets for
     public key is compiled into the binary, so it must be wired into the
     **first** build anyone installs — an install shipped without the plugin
     can never self-update, whatever is published afterwards.
-  - What actually gates a stranger installing this is code signing, not
-    updating: the installers are unsigned, SmartScreen warns on every
-    install, and a storefront doesn't sign your binaries for you. Not
-    planned anywhere yet.
+  - The adjacent concern is code signing, not updating — the installers are
+    unsigned. Under the storefront plan that costs less than it first
+    appears: SmartScreen's warning keys on the internet Mark-of-the-Web, and
+    a storefront client doesn't set it on the files it delivers. What
+    remains is antivirus heuristics against an unsigned app that registers
+    global hotkeys and captures the screen. Tracked in
+    [[2026-08-05_windows-code-signing]].

@@ -3,7 +3,7 @@ title: WikiLens planning vault — index
 type: note
 status: active
 created: 2026-07-02
-updated: 2026-07-19
+updated: 2026-08-05
 tags: []
 related: []
 ---
@@ -43,6 +43,17 @@ TABLE WITHOUT ID file.link AS Doc, type, status, updated
 FROM !"templates" AND !"archive"
 WHERE (status = "active" OR status = "blocked" OR status = "todo") AND file.name != "index"
 SORT updated DESC
+```
+
+## Idea backlog
+
+Not started, not scheduled — flip one to `active` when work on it begins.
+
+```dataview
+TABLE WITHOUT ID file.link AS Doc, type, created
+FROM !"templates" AND !"archive"
+WHERE status = "idea" AND file.name != "index"
+SORT created DESC
 ```
 
 ## Decision log
