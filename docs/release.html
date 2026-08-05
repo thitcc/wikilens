@@ -195,12 +195,13 @@
     <p class="verdict">
       Six steps take <code>main</code> from merged code to a
       <strong>versioned installer</strong> in someone's hands. The agent preps
-      the release PR; every other step is you gating. The step numbers match
-      the ritual in <code>docs/versioning.html</code>, where the strategy
-      (what the segments mean, when a release is worth cutting) lives.
+      the release PR and CI builds the installers; every other step is you
+      gating. The step numbers match the ritual in
+      <code>docs/versioning.html</code>, where the strategy (what the
+      segments mean, when a release is worth cutting) lives.
     </p>
     <div class="flow">
-      <span class="flow-step">pick</span><span class="flow-arrow">→</span><span class="flow-step">bump PR</span><span class="flow-arrow">→</span><span class="flow-step">merge</span><span class="flow-arrow">→</span><span class="flow-step">tag</span><span class="flow-arrow">→</span><span class="flow-step">build</span><span class="flow-arrow">→</span><span class="flow-step">smoke</span><span class="flow-arrow">→</span><span class="flow-step">release</span>
+      <span class="flow-step">pick</span><span class="flow-arrow">→</span><span class="flow-step">bump PR</span><span class="flow-arrow">→</span><span class="flow-step">merge</span><span class="flow-arrow">→</span><span class="flow-step">tag</span><span class="flow-arrow">→</span><span class="flow-step">CI build</span><span class="flow-arrow">→</span><span class="flow-step">smoke</span><span class="flow-arrow">→</span><span class="flow-step">release</span>
     </div>
   </section>
 
@@ -244,33 +245,32 @@ git push origin v0.2.0</code></pre>
     <p class="small muted">Tagging mutates <code>main</code>, so it lives on your side of the line, with merging.</p>
   </section>
 
-  <!-- 5 · Step 5: build and validate -->
+  <!-- 5 · Step 5: CI builds, you validate -->
   <section class="panel">
     <div class="header-row">
       <span class="step-num">5</span>
-      <span class="label">Build and validate</span>
+      <span class="label">CI builds, you validate</span>
       <span class="who-chip you">you</span>
     </div>
-    <pre><code>npm run tauri build</code></pre>
-    <p class="small">Artifacts land gitignored under <code>src-tauri/target/</code>:</p>
-    <pre><code>release/wikilens.exe                            <span class="c">standalone; assumes WebView2</span>
-release/bundle/nsis/WikiLens_0.2.0_x64-setup.exe    <span class="c">NSIS; bootstraps WebView2</span>
-release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi     <span class="c">WiX/MSI</span></code></pre>
-    <p class="small muted">Hand people an <strong>installer</strong>; the raw exe is for local use. The first-ever bundle downloads the WiX + NSIS toolchains (network, once). Packaged-runtime caveats (no console, <code>.env</code> stops working, keys unaffected) live in <code>.claude/skills/release-build/SKILL.md</code>.</p>
+    <p class="small">The tag push triggers <code>.github/workflows/release.yml</code>: a Windows runner builds the installers with <code>tauri-apps/tauri-action</code> and attaches them to a <strong>draft</strong> GitHub Release, invisible until you publish it. A tag that doesn't match the manifests fails in seconds; a cold build runs 15–25 min.</p>
+    <p class="small">When the run goes green, download both installers from the draft:</p>
+    <pre><code>WikiLens_0.2.0_x64-setup.exe    <span class="c">NSIS; bootstraps WebView2</span>
+WikiLens_0.2.0_x64_en-US.msi    <span class="c">WiX/MSI</span></code></pre>
+    <p class="small muted">The smoked bytes are the shipped bytes: validate the downloads, not a local build. <code>npm run tauri build</code> stays the dev/fallback path; artifact paths and packaged-runtime caveats live in <code>.claude/skills/release-build/SKILL.md</code>.</p>
     <p class="small">Then the real gate; the version is a promise that it ran:</p>
-    <div class="rule-row"><span class="check">✓</span><span>Walk <code>docs/smoke-checklist.md</code>: item 10 runs on the packaged <strong>installer</strong>, not the dev build. Tick the boxes as you go; they get pasted into the release notes.</span></div>
+    <div class="rule-row"><span class="check">✓</span><span>Walk <code>docs/smoke-checklist.md</code>: item 10 runs on the <strong>downloaded installer</strong>, not the dev build. Tick the boxes as you go; they get pasted into the release notes.</span></div>
     <div class="rule-row"><span class="check">✓</span><span>Run the live wiki/API suites: <code>cargo test -- --ignored</code> from <code>src-tauri/</code>.</span></div>
   </section>
 
-  <!-- 6 · Step 6: publish -->
+  <!-- 6 · Step 6: publish the draft -->
   <section class="panel">
     <div class="header-row">
       <span class="step-num">6</span>
-      <span class="label">GitHub Release</span>
+      <span class="label">Publish the draft</span>
       <span class="who-chip you">you</span>
     </div>
-    <pre><code>gh release create v0.2.0 src-tauri/target/release/bundle/nsis/WikiLens_0.2.0_x64-setup.exe src-tauri/target/release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi</code></pre>
-    <p class="small">Notes = behavior bullets from <code>git log --first-parent v0.1.0..v0.2.0</code> (the PRs merged since the last release; their titles are already behavior-level) plus the ticked smoke-checklist boxes.</p>
+    <pre><code>gh release edit v0.2.0 --draft=false</code></pre>
+    <p class="small">First paste the notes over CI's placeholder body: behavior bullets from <code>git log --first-parent v0.1.0..v0.2.0</code> (the PRs merged since the last release; their titles are already behavior-level) plus the ticked smoke-checklist boxes. The installers are already attached; nothing to upload.</p>
     <p class="small muted">GitHub Releases are the <strong>only</strong> changelog. There is no <code>CHANGELOG.md</code>.</p>
   </section>
 
@@ -283,11 +283,15 @@ release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi     <span class="c">WiX/MSI</spa
     </div>
     <div class="rule-row">
       <span class="check">✓</span>
-      <span><strong>Smoke fails after tagging.</strong> The tag stays a tag: fix on <code>main</code> through normal PR flow, then cut the <em>next</em> number. Never move, reuse, or delete a pushed tag.</span>
+      <span><strong>The release workflow fails.</strong> Re-run it from the Actions tab (delete any stray duplicate draft a re-run leaves). If CI itself is broken, the old manual path is the fallback: local <code>npm run tauri build</code>, smoke, <code>gh release upload</code> onto the draft.</span>
     </div>
     <div class="rule-row">
       <span class="check">✓</span>
-      <span><strong>Skip “Create release from tag”.</strong> A Release object claims installers were built and smoked at that commit; <code>v0.1.0</code> is tag-only for exactly this reason.</span>
+      <span><strong>Smoke fails after tagging.</strong> Delete the unsmoked draft (it was never visible) and the tag stays a tag: fix on <code>main</code> through normal PR flow, then cut the <em>next</em> number. Never move, reuse, or delete a pushed tag.</span>
+    </div>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong>Skip “Create release from tag”.</strong> A <em>published</em> Release claims installers were built and smoked at that commit; <code>v0.1.0</code> is tag-only for exactly this reason. CI's <strong>draft</strong> keeps the rule: it stays invisible until you publish it.</span>
     </div>
   </section>
 
@@ -301,6 +305,10 @@ release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi     <span class="c">WiX/MSI</spa
     <div class="pointer-row">
       <span class="pointer-where">docs/versioning.html</span>
       <span>The strategy: segment semantics, when to cut, house rules, and why it works this way.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">.github/workflows/release.yml</span>
+      <span>The tag-triggered build: installers onto a draft Release on every <code>v*</code> push (vault/2026-08-04_tag-triggered-release-ci.md).</span>
     </div>
     <div class="pointer-row">
       <span class="pointer-where">vault/2026-08-04_release-scoped-semver.md</span>
