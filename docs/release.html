@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WikiLens · Release runbook</title>
+<style>
+  /* Tokens — mirrored from DESIGN.md frontmatter / src/styles.css */
+  :root {
+    --fg: #e8e8ee;
+    --fg-muted: #9a9aa8;
+    --fg-strong: #ffffff;
+    --accent: #8ab4ff;
+    --surface-panel: rgba(18, 18, 24, 0.92);
+    --surface-control: rgba(255, 255, 255, 0.06);
+    --surface-raised: rgba(255, 255, 255, 0.08);
+    --surface-inset: rgba(0, 0, 0, 0.3);
+    --border: rgba(255, 255, 255, 0.08);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0b0b10; }
+  body {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(ellipse 720px 420px at 50% -80px, rgba(138, 180, 255, 0.05), transparent 70%);
+    padding: 40px 20px 64px;
+  }
+  .column {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel {
+    background: var(--surface-panel);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .panel {
+      opacity: 0;
+      animation: arrive 140ms ease-out forwards;
+    }
+    .panel:nth-child(2) { animation-delay: 30ms; }
+    .panel:nth-child(3) { animation-delay: 60ms; }
+    .panel:nth-child(4) { animation-delay: 90ms; }
+    .panel:nth-child(5) { animation-delay: 120ms; }
+    .panel:nth-child(6) { animation-delay: 150ms; }
+    .panel:nth-child(7) { animation-delay: 180ms; }
+    .panel:nth-child(8) { animation-delay: 210ms; }
+    @keyframes arrive {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+
+  /* Type — 14px ceiling: hierarchy is weight, ink strength, tracking, case */
+  .brand { font-weight: 600; letter-spacing: 0.02em; color: var(--fg); }
+  .label {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+  }
+  strong { color: var(--fg-strong); font-weight: 600; }
+  .muted { color: var(--fg-muted); }
+  .small { font-size: 13px; line-height: 1.4; }
+  .accent { color: var(--accent); }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    padding: 1px 5px;
+    background: var(--surface-raised);
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  pre {
+    background: var(--surface-inset);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; white-space: pre; color: var(--fg); }
+  pre .c { color: var(--fg-muted); }
+
+  .header-row { display: flex; align-items: baseline; gap: 8px; }
+  .header-row .who-chip { margin-left: auto; }
+  .verdict { line-height: 1.55; }
+
+  /* Pipeline strip */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 2px 0;
+  }
+  .flow-step {
+    padding: 1px 5px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+  .flow-arrow { color: var(--fg-muted); }
+
+  /* Step-number chip (shared metrics with versioning.html's ritual list) */
+  .step-num {
+    width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface-raised);
+    border-radius: 5px;
+    color: var(--fg-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    align-self: center;
+  }
+  .who-chip {
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface-raised);
+    color: var(--fg-muted);
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .who-chip.you { color: var(--accent); }
+
+  /* Rule rows */
+  .rule-row {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .rule-row .check { color: var(--accent); }
+
+  /* Pointer list */
+  .pointer-row {
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    gap: 12px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    align-items: baseline;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .pointer-row:hover { background: var(--surface-control); }
+  .pointer-row + .pointer-row { border-top: 1px solid var(--border); }
+  .pointer-where { font-family: var(--font-mono); font-size: 12px; color: var(--fg-muted); word-break: break-all; }
+
+  .footnote {
+    text-align: center;
+    font-size: 12px;
+    color: var(--fg-muted);
+    letter-spacing: 0.02em;
+  }
+  @media (max-width: 560px) {
+    .pointer-row { grid-template-columns: 1fr; gap: 2px; }
+  }
+</style>
+</head>
+<body>
+<div class="column">
+
+  <!-- 1 · Header + the pipeline -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="brand">WikiLens</span>
+      <span class="label">Release runbook</span>
+    </div>
+    <p class="verdict">
+      Six steps take <code>main</code> from merged code to a
+      <strong>versioned installer</strong> in someone's hands. The agent preps
+      the release PR; every other step is you gating. The step numbers match
+      the ritual in <code>docs/versioning.html</code>, where the strategy
+      (what the segments mean, when a release is worth cutting) lives.
+    </p>
+    <div class="flow">
+      <span class="flow-step">pick</span><span class="flow-arrow">→</span><span class="flow-step">bump PR</span><span class="flow-arrow">→</span><span class="flow-step">merge</span><span class="flow-arrow">→</span><span class="flow-step">tag</span><span class="flow-arrow">→</span><span class="flow-step">build</span><span class="flow-arrow">→</span><span class="flow-step">smoke</span><span class="flow-arrow">→</span><span class="flow-step">release</span>
+    </div>
+  </section>
+
+  <!-- 2 · Step 1: pick the number -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="step-num">1</span>
+      <span class="label">Pick the number</span>
+      <span class="who-chip you">you</span>
+    </div>
+    <p class="small">A feature batch since the last release → <strong>minor</strong> (<code>0.2.0</code>); fixes only → <strong>patch</strong> (<code>0.1.1</code>). Full segment semantics: the versioning guide.</p>
+    <p class="small muted">Before going further: <code>main</code> is green in CI and your working tree is clean; the release PR must contain nothing but the bump.</p>
+  </section>
+
+  <!-- 3 · Step 2: release PR -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="step-num">2</span>
+      <span class="label">Release PR</span>
+      <span class="who-chip">agent</span>
+    </div>
+    <p class="small">Ask the agent to “prep the release PR for 0.2.0”. Concretely it runs:</p>
+    <pre><code>git checkout -b chore/release-0-2-0
+npm run bump 0.2.0    <span class="c">rewrites the 3 manifests, refreshes both locks</span></code></pre>
+    <p class="small"><code>npm run bump</code> prints an old → new line per file and <strong>refuses the classic mistakes</strong>: manifests that disagree on the current version, a malformed version, bumping to the version already there. A refresh command that errors out restores the manifests, so a retry starts clean.</p>
+    <p class="small muted">Then the verification bundle (type-check, frontend + tooling tests, clippy, Rust tests), one commit, PR opened. The PR summary doubles as draft release notes.</p>
+  </section>
+
+  <!-- 4 · Steps 3–4: merge + tag -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="step-num">3·4</span>
+      <span class="label">Merge, then tag the merge commit</span>
+      <span class="who-chip you">you</span>
+    </div>
+    <p class="small">Merge with a <strong>merge commit</strong>, as always — never squash. Then, from an up-to-date <code>main</code> so the annotated tag lands on that merge commit:</p>
+    <pre><code>git checkout main
+git pull
+git tag -a v0.2.0 -m "WikiLens 0.2.0"
+git push origin v0.2.0</code></pre>
+    <p class="small muted">Tagging mutates <code>main</code>, so it lives on your side of the line, with merging.</p>
+  </section>
+
+  <!-- 5 · Step 5: build and validate -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="step-num">5</span>
+      <span class="label">Build and validate</span>
+      <span class="who-chip you">you</span>
+    </div>
+    <pre><code>npm run tauri build</code></pre>
+    <p class="small">Artifacts land gitignored under <code>src-tauri/target/</code>:</p>
+    <pre><code>release/wikilens.exe                            <span class="c">standalone; assumes WebView2</span>
+release/bundle/nsis/WikiLens_0.2.0_x64-setup.exe    <span class="c">NSIS; bootstraps WebView2</span>
+release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi     <span class="c">WiX/MSI</span></code></pre>
+    <p class="small muted">Hand people an <strong>installer</strong>; the raw exe is for local use. The first-ever bundle downloads the WiX + NSIS toolchains (network, once). Packaged-runtime caveats (no console, <code>.env</code> stops working, keys unaffected) live in <code>.claude/skills/release-build/SKILL.md</code>.</p>
+    <p class="small">Then the real gate; the version is a promise that it ran:</p>
+    <div class="rule-row"><span class="check">✓</span><span>Walk <code>docs/smoke-checklist.md</code>: item 10 runs on the packaged <strong>installer</strong>, not the dev build. Tick the boxes as you go; they get pasted into the release notes.</span></div>
+    <div class="rule-row"><span class="check">✓</span><span>Run the live wiki/API suites: <code>cargo test -- --ignored</code> from <code>src-tauri/</code>.</span></div>
+  </section>
+
+  <!-- 6 · Step 6: publish -->
+  <section class="panel">
+    <div class="header-row">
+      <span class="step-num">6</span>
+      <span class="label">GitHub Release</span>
+      <span class="who-chip you">you</span>
+    </div>
+    <pre><code>gh release create v0.2.0 src-tauri/target/release/bundle/nsis/WikiLens_0.2.0_x64-setup.exe src-tauri/target/release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi</code></pre>
+    <p class="small">Notes = behavior bullets from <code>git log --first-parent v0.1.0..v0.2.0</code> (the PRs merged since the last release; their titles are already behavior-level) plus the ticked smoke-checklist boxes.</p>
+    <p class="small muted">GitHub Releases are the <strong>only</strong> changelog. There is no <code>CHANGELOG.md</code>.</p>
+  </section>
+
+  <!-- 7 · When it goes sideways -->
+  <section class="panel">
+    <span class="label">When it goes sideways</span>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong><code>npm run bump</code> refuses or fails.</strong> It names the cause; a refresh command that errors out restores the manifests. Fix the environment, re-run, and check <code>git status</code> for a half-refreshed lock.</span>
+    </div>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong>Smoke fails after tagging.</strong> The tag stays a tag: fix on <code>main</code> through normal PR flow, then cut the <em>next</em> number. Never move, reuse, or delete a pushed tag.</span>
+    </div>
+    <div class="rule-row">
+      <span class="check">✓</span>
+      <span><strong>Skip “Create release from tag”.</strong> A Release object claims installers were built and smoked at that commit; <code>v0.1.0</code> is tag-only for exactly this reason.</span>
+    </div>
+  </section>
+
+  <!-- 8 · Pointers -->
+  <section class="panel">
+    <span class="label">Pointers</span>
+    <div class="pointer-row">
+      <span class="pointer-where">docs/release.md</span>
+      <span>This runbook in plain markdown, for reading in the repo.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">docs/versioning.html</span>
+      <span>The strategy: segment semantics, when to cut, house rules, and why it works this way.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">vault/2026-08-04_release-scoped-semver.md</span>
+      <span>The decision record: full rationale, rejected alternatives.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">.claude/skills/release-build/SKILL.md</span>
+      <span>Build mechanics and packaged-runtime caveats around <code>npm run tauri build</code>.</span>
+    </div>
+    <div class="pointer-row">
+      <span class="pointer-where">docs/smoke-checklist.md</span>
+      <span>The manual validation walk; its results get pasted into the Release notes.</span>
+    </div>
+  </section>
+
+  <p class="footnote">docs/release.html · tokens from DESIGN.md · companion to docs/versioning.html</p>
+
+</div>
+</body>
+</html>

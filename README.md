@@ -129,6 +129,7 @@ Run frontend/Tauri commands from the repo root; run `cargo` commands in `src-tau
 |---|---|
 | Run the app (dev) | `npm install` then `npm run tauri dev` |
 | Build a release installer | `npm run tauri build` |
+| Bump the release version (release PR only) | `npm run bump 0.2.0` |
 | Frontend production build | `npm run build` |
 | Type-check the frontend | `npx tsc --noEmit` |
 | Check the Rust code | `cd src-tauri && cargo check` |
@@ -189,7 +190,8 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 
 > Maintainers: this is the quick first-run walkthrough. The full pre-release
 > checklist (hotkey, tray, DPI, transparency, Esc layering, packaged build) is
-> [`docs/smoke-checklist.md`](docs/smoke-checklist.md).
+> [`docs/smoke-checklist.md`](docs/smoke-checklist.md), and the release walk
+> itself is [`docs/release.md`](docs/release.md).
 
 1. From the repo root: `npm install` then `npm run tauri dev`.
 2. Wait for the tray icon to appear (the window starts hidden), then press

@@ -67,8 +67,8 @@ build.
 The build alone isn't a release. Versions are release-scoped SemVer (ADR:
 `vault/2026-08-04_release-scoped-semver.md`): the version comes from
 `tauri.conf.json` and bumps **only in a release PR** (`chore/release-X-Y-Z`
-— bump `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json`,
-refresh locks via `npm install --package-lock-only` + `cargo check`, run
+— `npm run bump X.Y.Z`, which rewrites the three manifests and refreshes
+both locks via `npm install --package-lock-only` + `cargo check`; then run
 `/check`), never per-merge. Then: human merges → human tags the merge commit
 (`git tag -a vX.Y.Z` + push — tagging mutates `main`, so it stays
 owner-side) → this build → smoke checklist + `--ignored` live suites →

@@ -1,14 +1,14 @@
 ---
 title: npm run bump — one-command release version bump
 type: plan
-status: idea
+status: done
 created: 2026-08-04
 updated: 2026-08-04
 tags: [build]
 related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_versioning-adoption]]"
-commit:
+commit: [2d4f8a5, db3d40c, b1107fc, 7230081, 41c96f9]
 ---
 
 # npm run bump — one-command release version bump
@@ -44,3 +44,17 @@ five-file dance turns out not to annoy, skip it forever.
 ## Status log
 
 - 2026-08-04 — created as an idea from the versioning explainer session.
+- 2026-08-04 — owner's call: built in its own PR, not inside the first
+  release PR — deviating from the trade-off above. No version changes ride
+  along (the manifests stay 0.1.0); the script was still verified against a
+  real bump-and-revert on this machine, and the first release PR
+  live-verifies it again.
+- 2026-08-04 — done: engine + tests at `.claude/skills/bump/` (byte-spliced
+  EOL-preserving rewrites, [package]-scoped Cargo.toml locator, manifest
+  restore on a failed lock refresh), wired as `npm run bump`. CLAUDE.md §3,
+  the release-build skill, the versioning explainer, and README now point
+  at the command.
+- 2026-08-04 — ride-along per owner: `docs/release.md` +
+  `docs/release.html`, the operational release runbook (the six steps with
+  every command spelled out, artifact paths, recovery rules), cross-linked
+  from the versioning explainer's pointers and README's maintainer note.

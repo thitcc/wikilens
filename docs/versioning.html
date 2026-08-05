@@ -325,7 +325,7 @@ src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;ve
       </div>
       <div class="step">
         <span class="step-num">2</span>
-        <span class="step-body"><strong>Release PR.</strong> Ask the agent to “prep the release PR for 0.2.0”: branch <code>chore/release-0-2-0</code>, one commit bumping <code>package.json</code> + <code>Cargo.toml</code> + <code>tauri.conf.json</code>, locks refreshed (<code>npm install --package-lock-only</code>, <code>cargo check</code>), <code>/check</code> green. The PR summary doubles as draft release notes.</span>
+        <span class="step-body"><strong>Release PR.</strong> Ask the agent to “prep the release PR for 0.2.0”: branch <code>chore/release-0-2-0</code>, one commit from <code>npm run bump 0.2.0</code> (rewrites all three manifests, refreshes both locks), <code>/check</code> green. The PR summary doubles as draft release notes.</span>
         <span class="who-chip">agent</span>
       </div>
       <div class="step">
@@ -372,6 +372,10 @@ src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;ve
   <section class="panel">
     <span class="label">Pointers</span>
     <div class="pointer-row">
+      <span class="pointer-where">docs/release.html · docs/release.md</span>
+      <span>The operational runbook: the six steps with every command spelled out.</span>
+    </div>
+    <div class="pointer-row">
       <span class="pointer-where">vault/2026-08-04_release-scoped-semver.md</span>
       <span>The decision record: full rationale, rejected alternatives (per-PR bumps, release bots, CalVer, CHANGELOG.md).</span>
     </div>
@@ -389,7 +393,7 @@ src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;ve
     </div>
     <div class="pointer-row">
       <span class="pointer-where">vault · 2026-08-04_* idea docs</span>
-      <span>Deferred follow-ups, in order: version row in Settings, <code>npm run bump</code>, tag-triggered release CI, auto-updater.</span>
+      <span>Deferred follow-ups, in order: tag-triggered release CI, auto-updater — the Settings version row and <code>npm run bump</code> have shipped since.</span>
     </div>
   </section>
 
