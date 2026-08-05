@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:node": "node --test \".claude/skills/**/*.test.mjs\"",
+    "bump": "node .claude/skills/bump/bump.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
