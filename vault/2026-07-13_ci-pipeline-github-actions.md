@@ -3,7 +3,7 @@ title: CI pipeline on GitHub Actions
 type: plan
 status: done
 created: 2026-07-13
-updated: 2026-07-13
+updated: 2026-08-04
 tags: [testing, build]
 related: ["[[2026-07-13_testing-audit]]", "[[2026-07-13_frontend-test-harness]]", "[[2026-07-13_dependency-audit-lint-gates]]", "[[2026-07-13_pr-delivery-workflow]]"]
 commit: [c68f99a, 4c2a05a]
@@ -29,6 +29,7 @@ side effect of `npm run build`; the Rust suite gates nothing unless run by hand
 - **Non-goal:** coverage gates (coverage stays a local diagnostic).
 - **Non-goal:** release/bundle pipeline — no `npm run tauri build` per push; full
   bundles (tauri-action) only on tags, later.
+  *(2026-08-04: that "later" shipped — see the status log.)*
 - **Non-goal:** running the live `#[ignore]` suites in CI (cadence handled by
   [[2026-07-13_manual-smoke-checklist-live-cadence]]).
 
@@ -61,3 +62,6 @@ side effect of `npm run build`; the Rust suite gates nothing unless run by hand
   `.gitattributes` ships now with only the `*.snap` LF rule; fixture-dir entries
   wait for [[2026-07-13_parser-snapshot-property-tests]]. tsc + clippy + 128
   offline tests green locally; PR checks verified green before handoff.
+- 2026-08-04 — the "full bundles (tauri-action) only on tags, later" non-goal
+  shipped as its own workflow: [[2026-08-04_tag-triggered-release-ci]]
+  (`release.yml`).
