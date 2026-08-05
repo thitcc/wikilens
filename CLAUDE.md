@@ -214,22 +214,20 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
-  exits still report). Accepted carve-out: in Default mode the table/window
-  still print the underlying `default / <model>` pair — the model id can be
-  vendor-shaped, and that's fine for dev tooling that's off by default. The same flag also creates the **visual debug window**
-  (`debug_window.rs` → `src/debug/`): a glass panel like the overlay,
-  draggable by its header, with live per-ask cards fed by the
-  `debug://…` events — progress bars, collapsible details, ~25-ask session
-  history. It starts **hidden**, matching the overlay: open it from the
-  overlay footer's Debug chip (`toggle_debug_window`; the chip renders only
-  when `debug_available` says the window exists) or the tray's "Show debug
-  panel"; closing/hiding never loses history, and the hidden webview keeps
-  recording asks run before the first show. The table stays byte-identical — the window is additive.
-  Independent of
-  `WIKILENS_TRACE_RETRIEVAL`. The three
-  retrieval-tuning env vars (rewrite toggle, title index, trace)
-  are documented in README's "Retrieval tuning (advanced)" table — that table is
-  the single source; don't re-list them here.
+  exits still report). Carve-out: in Default mode the table/window still print
+  the underlying `default / <model>` pair — vendor-shaped ids are fine for dev
+  tooling that's off by default. The flag also creates the **visual debug
+  window** (`debug_window.rs` → `src/debug/`): a glass panel like the overlay,
+  draggable by its header, live per-ask cards fed by the `debug://…` events —
+  progress bars, collapsible details, ~25-ask session history. It starts
+  **hidden**, matching the overlay: open it from the overlay footer's Debug
+  chip (`toggle_debug_window`; the chip renders only when `debug_available`
+  says the window exists) or the tray's "Show debug panel"; closing/hiding
+  never loses history, and the hidden webview keeps recording asks run before
+  the first show. The table stays byte-identical — the window is additive.
+  Independent of `WIKILENS_TRACE_RETRIEVAL`; the three retrieval-tuning env
+  vars (rewrite toggle, title index, trace) live in README's "Retrieval tuning
+  (advanced)" table — single source, don't re-list them here.
 - **Delivery: every change lands via PR** (ADR:
   `vault/2026-07-13_pr-delivery-workflow.md`). Branch `<type>/<slug>` off `main`
   (e.g. `ci/github-actions-pipeline`), conventional commit prefixes (`feat:`,
@@ -246,15 +244,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   not "docs: adopt the human-readable PR description anatomy". Commits keep
   the conventional prefixes; merge-commit-only history means the title never
   doubles as a commit message. Descriptions follow
-  `.github/PULL_REQUEST_TEMPLATE.md` — and since
-  `gh pr create --body` bypasses template auto-fill, write the body to that
-  skeleton yourself: plain-language 2–3-sentence summary linking the vault plan
-  doc; change bullets at behavior level (what works differently — never
-  file/function jargon), technical detail in a `>` quote under the bullet only
-  when it adds something; "⚠️ Behavior changes" (or "None"); a Verification
-  table (check | result). Each paragraph/bullet is **one source line** —
-  GitHub renders newlines in PR bodies as line breaks, so hard-wrapped text
-  comes out ragged. ~20 rendered lines; war stories go in `<details>` folds.
+  `.github/PULL_REQUEST_TEMPLATE.md`, and `gh pr create --body` bypasses its
+  auto-fill — write the body to that skeleton yourself: plain-language
+  2–3-sentence summary linking the vault plan doc; change bullets at behavior
+  level (what works differently — never file/function jargon), technical
+  detail in a `>` quote under the bullet only when it adds something;
+  "⚠️ Behavior changes" (or "None"); a Verification table (check | result).
+  Each paragraph/bullet is **one source line** — GitHub renders newlines in PR
+  bodies as line breaks, so hard-wrapped text comes out ragged. ~20 rendered
+  lines; war stories go in `<details>` folds.
+- **Language:** answer the user in **pt-BR**; everything written outside the
+  conversation (code, comments, commits, PRs, docs, vault, plans) is English.
 - **Codex reads this file too.** `CLAUDE.md` is the canonical guidance for both
   agents: the tracked `.codex/config.toml` sets
   `project_doc_fallback_filenames = ["CLAUDE.md"]`, so Codex loads it directly.
