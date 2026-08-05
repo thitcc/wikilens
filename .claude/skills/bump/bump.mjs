@@ -101,14 +101,16 @@ function locateCargoLockVersion(text, crate, rel) {
 
 // Injectable so unit tests never spawn npm/cargo. stdio inherits so the
 // tools' own progress stays visible; only the exit status comes back.
-// shell:true on Windows because npm is npm.cmd there — safe: both command
-// lines are constants, and the bump version never reaches a subprocess argv
-// (npm reads package.json, cargo reads Cargo.toml).
+// One command string through the shell: npm is npm.cmd on Windows (which
+// spawnSync won't run without a shell), and the args-array + shell:true
+// combination is deprecated (DEP0190). Safe: both command lines are
+// constants, and the bump version never reaches a subprocess argv (npm
+// reads package.json, cargo reads Cargo.toml).
 function execCommand(tool, args, cwd) {
-  const { status, error } = spawnSync(tool, args, {
+  const { status, error } = spawnSync([tool, ...args].join(' '), {
     cwd,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
+    shell: true,
   });
   return { status: error ? 1 : (status ?? 1), error: error?.message };
 }
