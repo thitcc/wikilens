@@ -1,6 +1,6 @@
 [package]
 name = "wikilens"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Windows desktop overlay for wiki-heavy games"
 authors = ["you"]
 edition = "2021"
