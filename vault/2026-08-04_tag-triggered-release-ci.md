@@ -3,7 +3,7 @@ title: Tag-triggered release CI — build installers into a draft Release
 type: plan
 status: done
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-05
 tags: [build, testing]
 related:
   - "[[2026-08-04_release-scoped-semver]]"
@@ -61,5 +61,12 @@ environment.
   `uploadUpdaterJson: false`, upload-only `retryAttempts: 3`); docs retold
   around the draft in 7c1011e + c1a798f (release.md/.html, versioning.html,
   smoke checklist, CLAUDE.md, release-build skill, README). True end-to-end
-  verification lands on the first real tag push (v0.2.0) — same deal as the
-  bump script.
+  verification lands on the first real tag push — same deal as the bump
+  script.
+- 2026-08-05 — correction, caught by the pre-tag audit on the 0.1.1 release
+  PR: `retryAttempts` retries the **build** as well as the uploads (action.yml
+  — "re-try building the app if the initial build fails"; `runner.ts` wraps
+  `execTauriCommand` in `retry()`), so the 2026-08-04 entry's "upload-only" is
+  wrong. At 3 a broken build would compile four times, past the 60-minute
+  timeout, with the error buried; `release.yml` now sets 0 — fail once, fail
+  legibly, re-run from the Actions tab for the upload-flake case.

@@ -79,11 +79,14 @@ jobs:
               `git log --first-parent vPREV..${{ github.ref_name }}` plus the
               ticked smoke boxes.
             - Publish: `gh release edit ${{ github.ref_name }} --draft=false`.
-          # Retries the asset uploads only — the action never re-runs the
-          # build itself (verified in its source), so this can't blow the
-          # timeout. An upload flake after the 20-minute compile self-heals
-          # instead of needing a human re-run on release day.
-          retryAttempts: 3
+          # 0, and not the tempting 3: this input retries the BUILD, not just
+          # the uploads (action.yml — "re-try building the app if the initial
+          # build fails"; runner.ts wraps execTauriCommand in retry()). At 3 a
+          # broken build compiles four times, past the 60-minute timeout, with
+          # the real error buried tens of minutes up the log. One attempt
+          # fails fast and legibly; an upload flake is a re-run from the
+          # Actions tab, which cache-on-failure above keeps cheap.
+          retryAttempts: 0
           # The default is TRUE. With no updater configured there are no .sig
           # files and the action skips latest.json anyway — this pins the
           # no-updater intent explicitly; flip it when the auto-updater lands
