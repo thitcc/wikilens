@@ -43,8 +43,8 @@ const SKILL_KEYS = new Set(['name', 'description', 'allowed-tools']);
 const STRIPPED_KEYS = ['allowed-tools', 'argument-hint'];
 
 const ARGUMENTS_PROSE = 'the text accompanying the skill mention';
-const PROJECT_DOC_MAX_BYTES = 32 * 1024; // Codex's default project_doc_max_bytes
-const SIZE_WARN_BYTES = Math.floor(PROJECT_DOC_MAX_BYTES * 0.875);
+const DEFAULT_PROJECT_DOC_MAX_BYTES = 32 * 1024; // Codex's default when unset
+const SIZE_WARN_RATIO = 0.875;
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 class SyncError extends Error {}
@@ -54,6 +54,18 @@ const fail = (message) => {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const alternation = (names) =>
   [...names].sort((a, b) => b.length - a.length).map(escapeRe).join('|');
+
+// The size warning must track the cap the repo actually configures — a hardcoded
+// copy of Codex's default stops matching the moment .codex/config.toml raises it,
+// and a warning that never fires is worse than none. Zero-dep on purpose: a TOML
+// parser buys nothing for one integer. Commented-out keys can't match (line-start
+// anchored), and anything unparseable falls back to Codex's own default.
+function readProjectDocMaxBytes(configText) {
+  const m = /^[ \t]*project_doc_max_bytes[ \t]*=[ \t]*(\d[\d_]*)/m.exec(configText);
+  if (!m) return DEFAULT_PROJECT_DOC_MAX_BYTES;
+  const value = Number(m[1].replace(/_/g, ''));
+  return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_PROJECT_DOC_MAX_BYTES;
+}
 
 function parseFrontmatter(raw, label) {
   const text = raw.replace(/\r\n/g, '\n');
@@ -236,17 +248,20 @@ export function runSync(root = DEFAULT_ROOT) {
     upToDate: false,
   };
 
+  const codexConfig = join(root, '.codex', 'config.toml');
+  const codexConfigText = existsSync(codexConfig) ? readFileSync(codexConfig, 'utf8') : '';
+  const maxBytes = readProjectDocMaxBytes(codexConfigText);
+
   const claudeMd = join(root, 'CLAUDE.md');
   if (!existsSync(claudeMd)) {
     report.warnings.push('CLAUDE.md not found — Codex has no project instructions to fall back to');
   } else {
     const size = statSync(claudeMd).size;
-    if (size >= SIZE_WARN_BYTES) {
-      report.warnings.push(`CLAUDE.md is ${size} bytes — approaching Codex's default ${PROJECT_DOC_MAX_BYTES}-byte project_doc_max_bytes; the cap applies to the combined instruction chain (global + project docs), so truncation can start even earlier`);
+    if (size >= Math.floor(maxBytes * SIZE_WARN_RATIO)) {
+      report.warnings.push(`CLAUDE.md is ${size} bytes — approaching Codex's ${maxBytes}-byte project_doc_max_bytes; the cap applies to the combined instruction chain (global + project docs), so truncation can start even earlier`);
     }
   }
-  const codexConfig = join(root, '.codex', 'config.toml');
-  if (!existsSync(codexConfig) || !readFileSync(codexConfig, 'utf8').includes('project_doc_fallback_filenames')) {
+  if (!codexConfigText.includes('project_doc_fallback_filenames')) {
     report.warnings.push('.codex/config.toml does not point Codex at CLAUDE.md (project_doc_fallback_filenames) — Codex will load no project instructions');
   }
 

@@ -2,3 +2,9 @@
 # canonical CLAUDE.md directly (see CLAUDE.md §4, "Codex reads this file too").
 # Loaded only for a trusted checkout; changes here need a fresh Codex session.
 project_doc_fallback_filenames = ["CLAUDE.md"]
+
+# Raised from the 32 KiB default: CLAUDE.md is the single canonical doc for both
+# agents and already exceeds it, and truncation is silent — Codex would drop the
+# tail (§5 gotchas onward) without saying so. sync-agents reads this number, so
+# its size warning tracks the real cap instead of a hardcoded copy.
+project_doc_max_bytes = 65536
