@@ -340,12 +340,12 @@ src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;ve
       </div>
       <div class="step">
         <span class="step-num">5</span>
-        <span class="step-body"><strong>Build and validate.</strong> <code>npm run tauri build</code>, walk <code>docs/smoke-checklist.md</code> on the packaged installer, run the live suites (<code>cargo test -- --ignored</code>, from <code>src-tauri/</code>). This is the real gate; the version is a promise that it ran.</span>
+        <span class="step-body"><strong>CI builds, you validate.</strong> The tag push triggers <code>.github/workflows/release.yml</code>: installers land on a <strong>draft</strong> GitHub Release. Download them, walk <code>docs/smoke-checklist.md</code> on the downloaded installer, run the live suites (<code>cargo test -- --ignored</code>, from <code>src-tauri/</code>). This is the real gate; the version is a promise that it ran.</span>
         <span class="who-chip you">you</span>
       </div>
       <div class="step">
         <span class="step-num">6</span>
-        <span class="step-body"><strong>GitHub Release.</strong> <code>gh release create v0.2.0</code> with the NSIS + MSI installers from <code>src-tauri/target/release/bundle/</code>. Notes = behavior bullets from <code>git log --first-parent vPREV..vNEXT</code> + the ticked checklist boxes.</span>
+        <span class="step-body"><strong>Publish the draft.</strong> Paste the notes over CI's placeholder (behavior bullets from <code>git log --first-parent vPREV..vNEXT</code> + the ticked checklist boxes), then <code>gh release edit v0.2.0 --draft=false</code>. The installers are already attached.</span>
         <span class="who-chip you">you</span>
       </div>
     </div>
@@ -360,7 +360,7 @@ src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;ve
     </div>
     <div class="rule-row">
       <span class="check">✓</span>
-      <span><strong>A tag without the ritual stays a tag.</strong> Never press GitHub's “Create release from tag” shortcut; a Release object claims installers were built and smoked at that commit. <code>v0.1.0</code> is tag-only for exactly this reason.</span>
+      <span><strong>A tag without the ritual stays a tag.</strong> Never press GitHub's “Create release from tag” shortcut, and never <em>publish</em> a Release whose walk didn't run. CI's <strong>draft</strong> keeps the rule: a draft is invisible until you promote it. <code>v0.1.0</code> is tag-only for exactly this reason.</span>
     </div>
     <div class="rule-row">
       <span class="check">✓</span>
@@ -393,7 +393,7 @@ src-tauri/tauri.conf.json  <span class="c">names the installers: WikiLens_&lt;ve
     </div>
     <div class="pointer-row">
       <span class="pointer-where">vault · 2026-08-04_* idea docs</span>
-      <span>Deferred follow-ups, in order: tag-triggered release CI, auto-updater — the Settings version row and <code>npm run bump</code> have shipped since.</span>
+      <span>Deferred follow-up: the auto-updater — the Settings version row, <code>npm run bump</code>, and the tag-triggered release CI have shipped since.</span>
     </div>
   </section>
 

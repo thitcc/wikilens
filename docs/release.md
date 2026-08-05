@@ -3,9 +3,9 @@
 How a WikiLens release actually ships, command by command. The strategy
 (what the version segments mean, when a release is worth cutting) lives in
 `docs/versioning.html`; this doc is the walk itself, with the same six
-step numbers as the guide's ritual. The agent preps step 2; every other
-step is the owner gating. (A visual version of this page lives at
-`docs/release.html`.)
+step numbers as the guide's ritual. The agent preps step 2 and CI builds
+step 5's installers; every other step is the owner gating. (A visual
+version of this page lives at `docs/release.html`.)
 
 ## 1. Pick the number — owner
 
@@ -53,46 +53,56 @@ git tag -a v0.2.0 -m "WikiLens 0.2.0"
 git push origin v0.2.0
 ```
 
-Tagging mutates `main`, so it stays owner-side, same line as merging.
+Tagging mutates `main`, so it stays owner-side, same line as merging. The
+push is also the trigger: step 5's build starts the moment the tag lands.
 
-## 5. Build and validate — owner
+## 5. CI builds, you validate — CI + owner
 
-```
-npm run tauri build
-```
+The tag push triggers `.github/workflows/release.yml`
+(vault/2026-08-04_tag-triggered-release-ci.md): a `windows-latest` runner
+builds the installers with `tauri-apps/tauri-action` and attaches them to
+a **draft** GitHub Release named after the tag. A draft is invisible to
+everyone but collaborators — nothing is published yet. The workflow first
+checks the tag against `package.json`'s version and fails in seconds on a
+mismatch (the tagged-the-wrong-commit case); a cold build then takes
+15–25 minutes.
 
-Artifacts land gitignored under `src-tauri/target/`:
+When the run goes green, download both installers from the draft
+(GitHub → Releases → WikiLens v0.2.0):
 
-| Artifact | Path |
+| Artifact | Asset name |
 |---|---|
-| Standalone exe (assumes WebView2) | `src-tauri/target/release/wikilens.exe` |
-| NSIS installer (bootstraps WebView2) | `src-tauri/target/release/bundle/nsis/WikiLens_0.2.0_x64-setup.exe` |
-| MSI installer | `src-tauri/target/release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi` |
+| NSIS installer (bootstraps WebView2) | `WikiLens_0.2.0_x64-setup.exe` |
+| MSI installer | `WikiLens_0.2.0_x64_en-US.msi` |
 
-The first-ever bundle downloads the WiX + NSIS toolchains (needs network
-once); a cold Rust build is the slow part. Hand people an **installer**;
-the raw exe is for local use. Packaged-runtime caveats (no console, `.env`
-stops working, keys unaffected) are in
+The smoked bytes are now the shipped bytes — validate the downloads, not
+a local build. A local `npm run tauri build` still works and is the
+fallback when CI is down; artifact paths and packaged-runtime caveats
+(no console, `.env` stops working, keys unaffected) are in
 `.claude/skills/release-build/SKILL.md`.
 
 Then the real gate; the version is a promise that it ran:
 
-- Walk `docs/smoke-checklist.md`: item 10 runs on the packaged
-  **installer**, not the dev build. Tick the boxes as you go; they get
+- Walk `docs/smoke-checklist.md`: item 10 runs on the **downloaded**
+  installer, not the dev build. Tick the boxes as you go; they get
   pasted into the release notes.
 - Run the live wiki/API suites: `cargo test -- --ignored` from
   `src-tauri/`.
 
-## 6. GitHub Release — owner
+## 6. Publish the draft — owner
+
+Paste the notes over CI's placeholder body (the web UI's edit view is
+easiest), then publish:
 
 ```
-gh release create v0.2.0 src-tauri/target/release/bundle/nsis/WikiLens_0.2.0_x64-setup.exe src-tauri/target/release/bundle/msi/WikiLens_0.2.0_x64_en-US.msi
+gh release edit v0.2.0 --draft=false
 ```
 
 Notes = behavior bullets from `git log --first-parent v0.1.0..v0.2.0`
 (the PRs merged since the last release; their titles are already
-behavior-level) + the ticked smoke-checklist boxes. GitHub Releases are
-the **only** changelog; there is no `CHANGELOG.md`.
+behavior-level) + the ticked smoke-checklist boxes. The installers are
+already attached — nothing to upload. GitHub Releases are the **only**
+changelog; there is no `CHANGELOG.md`.
 
 ## When it goes sideways
 
@@ -100,18 +110,32 @@ the **only** changelog; there is no `CHANGELOG.md`.
   manifests, malformed version, failed lock refresh). A refresh that
   errors out restores the manifests; fix the environment and re-run. Check
   `git status` for a half-refreshed lock.
-- **Smoke fails after tagging** — the tag stays a tag: fix on `main`
-  through normal PR flow, then cut the *next* number. Never move, reuse,
-  or delete a pushed tag, and never create a Release object for a version
-  that didn't pass the walk.
-- **Skip the "Create release from tag" shortcut** — a Release object
-  claims installers were built and smoked at that commit; `v0.1.0` is
-  tag-only for exactly this reason.
+- **The release workflow fails** — re-run it from the Actions tab (the
+  tag never re-pushes; re-running the failed run is the retry). If a
+  re-run leaves a stray duplicate draft, delete the stale one. If CI
+  itself is the problem, the old manual path is the fallback: local
+  `npm run tauri build`, smoke the local installers, then
+  `gh release upload v0.2.0 <nsis> <msi>` onto the draft (or
+  `gh release create` if no draft exists).
+- **Smoke fails after tagging** — the tag stays a tag: delete the
+  unsmoked draft (`gh release delete v0.2.0` — a draft was never
+  visible, so nothing observable disappears; the tag itself stays), fix
+  on `main` through normal PR flow, then cut the *next* number. Never
+  move, reuse, or delete a pushed tag, and never *publish* a Release for
+  a version that didn't pass the walk.
+- **Skip the "Create release from tag" shortcut** — a *published*
+  Release object claims installers were built and smoked at that commit;
+  `v0.1.0` is tag-only for exactly this reason. CI's **draft** keeps the
+  rule's spirit: it stays invisible until you publish it, so the claim
+  is still made by a human, at publish time, after the walk.
 
 ## Pointers
 
 - `docs/versioning.html` — the strategy: segment semantics, when to cut,
   house rules.
+- `.github/workflows/release.yml` — the tag-triggered build: installers
+  onto a draft Release on every `v*` push
+  (vault/2026-08-04_tag-triggered-release-ci.md).
 - `vault/2026-08-04_release-scoped-semver.md` — the decision record with
   the rejected alternatives.
 - `.claude/skills/release-build/SKILL.md` — build mechanics and

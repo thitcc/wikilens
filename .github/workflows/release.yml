@@ -1,0 +1,91 @@
+# Release — see vault/2026-08-04_tag-triggered-release-ci.md
+#
+# Fires only on `v*` tag pushes: builds the Windows NSIS + MSI installers with
+# tauri-action and attaches them to a DRAFT GitHub Release. The draft stays
+# invisible until the owner smokes the downloaded installers and publishes it
+# (docs/release.md §5–6) — CI never makes a release visible.
+# No concurrency block (unlike ci.yml): every tag is a unique ref that never
+# re-pushes, and cancel-in-progress could only ever kill a 20-minute release
+# build for nothing.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  installers:
+    name: Windows installers → draft Release
+    runs-on: windows-latest
+    # A cold Tauri release build runs 15–25 min on windows-latest, and this
+    # workflow's rust-cache is usually cold (see below); 60 leaves headroom
+    # without letting a hang burn an hour of runner time.
+    timeout-minutes: 60
+    permissions:
+      # tauri-action creates the draft Release and uploads the installers.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Fail in seconds, not after the 20-minute build: the tag must name the
+      # version the manifests already carry (v0.2.0 ↔ 0.2.0) — catches tagging
+      # the wrong commit, the same hazard class `npm run bump` exists for.
+      # package.json alone suffices: bump keeps the three manifests in
+      # lockstep. $GITHUB_REF_NAME is read as an env var, never `${{ }}`-
+      # interpolated into the script, so an odd tag name can't shell-inject.
+      - shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag v${tag} != package.json version ${pkg} — tag the release PR's merge commit."
+            exit 1
+          fi
+      # tauri-action installs no JS dependencies, and beforeBuildCommand
+      # (`npm run build` = tsc && vite build) needs the devDependencies.
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Releases are usually weeks apart, so release-to-release runs are
+          # cold anyway (7-day cache eviction); what the cache must survive is
+          # a failed run — an upload flake after the full compile — so the
+          # re-run starts warm.
+          cache-on-failure: true
+      # v1 line (v0 is the old one). The action runs `npm run tauri build`
+      # itself via package-manager detection; bundle targets "all" also
+      # produces the raw exe, but uploadPlainBinary stays default-false — the
+      # runbook hands people installers.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # The action doesn't read github.ref; without an explicit tagName +
+          # releaseName it won't attach to the already-pushed tag.
+          tagName: ${{ github.ref_name }}
+          releaseName: WikiLens ${{ github.ref_name }}
+          releaseDraft: true
+          releaseBody: |
+            **Draft — publishing is the human gate** (`docs/release.md` §5–6). Before promoting:
+
+            - Download both installers below; walk `docs/smoke-checklist.md`
+              (item 10 on the downloaded installer) and run the live suites
+              (`cargo test -- --ignored` from `src-tauri/`).
+            - Replace this body with behavior bullets from
+              `git log --first-parent vPREV..${{ github.ref_name }}` plus the
+              ticked smoke boxes.
+            - Publish: `gh release edit ${{ github.ref_name }} --draft=false`.
+          # Retries the asset uploads only — the action never re-runs the
+          # build itself (verified in its source), so this can't blow the
+          # timeout. An upload flake after the 20-minute compile self-heals
+          # instead of needing a human re-run on release day.
+          retryAttempts: 3
+          # The default is TRUE. With no updater configured there are no .sig
+          # files and the action skips latest.json anyway — this pins the
+          # no-updater intent explicitly; flip it when the auto-updater lands
+          # (vault/2026-08-04_auto-updater.md).
+          uploadUpdaterJson: false

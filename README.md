@@ -128,7 +128,7 @@ Run frontend/Tauri commands from the repo root; run `cargo` commands in `src-tau
 | Task | Command |
 |---|---|
 | Run the app (dev) | `npm install` then `npm run tauri dev` |
-| Build a release installer | `npm run tauri build` |
+| Build the installers locally (releases build in CI) | `npm run tauri build` |
 | Bump the release version (release PR only) | `npm run bump 0.2.0` |
 | Frontend production build | `npm run build` |
 | Type-check the frontend | `npx tsc --noEmit` |

@@ -1,6 +1,6 @@
 ---
 name: release-build
-description: Build the packaged WikiLens executable and Windows installers with npm run tauri build — where the artifacts land, what changes when the app no longer runs from a terminal (.env, tray-only launch), and the post-build smoke step. Invoke when asked to build or package the app, produce an exe or installer, or prep a release.
+description: Build the packaged WikiLens executable and Windows installers locally with npm run tauri build — where the artifacts land, what changes when the app no longer runs from a terminal (.env, tray-only launch), and the post-build smoke step. Invoke when asked to build or package the app, produce an exe or installer, or prep a release (versioned releases build in CI from the tag push; this is the local/fallback build).
 allowed-tools: Bash(npm:*), Read
 ---
 
@@ -64,13 +64,17 @@ build.
 
 ## Cutting a versioned release
 
-The build alone isn't a release. Versions are release-scoped SemVer (ADR:
+The build alone isn't a release — and for a release, CI runs this build.
+Versions are release-scoped SemVer (ADR:
 `vault/2026-08-04_release-scoped-semver.md`): the version comes from
 `tauri.conf.json` and bumps **only in a release PR** (`chore/release-X-Y-Z`
 — `npm run bump X.Y.Z`, which rewrites the three manifests and refreshes
 both locks via `npm install --package-lock-only` + `cargo check`; then run
 `/check`), never per-merge. Then: human merges → human tags the merge commit
 (`git tag -a vX.Y.Z` + push — tagging mutates `main`, so it stays
-owner-side) → this build → smoke checklist + `--ignored` live suites →
-`gh release create` with the NSIS/MSI installers and notes. Release notes
-live in GitHub Releases only — no CHANGELOG.md.
+owner-side) → the tag push triggers `.github/workflows/release.yml`, which
+runs this same build on CI and attaches the NSIS/MSI installers to a
+**draft** GitHub Release → smoke checklist + `--ignored` live suites against
+the **downloaded** installers → human publishes the draft. This local build
+stays the dev/fallback path; the artifact paths and caveats above still
+apply to it. Release notes live in GitHub Releases only — no CHANGELOG.md.

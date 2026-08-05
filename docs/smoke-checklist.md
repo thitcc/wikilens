@@ -19,7 +19,9 @@ Copy the boxes into the release notes/log and tick them as you go.
 - If available, a second monitor at **>100% DPI scaling** for item 3 — if not,
   note "single monitor" in the run log.
 - Items 1–9 run on `npm run tauri dev` (item 9 needs `WIKILENS_DEBUG=1` set);
-  item 10 runs on the packaged installer from `npm run tauri build`.
+  item 10 runs on the packaged installer — for a release, the one downloaded
+  from the CI draft Release (`docs/release.md` §5); otherwise a local
+  `npm run tauri build`.
 
 ### 1. Hotkey + tray
 
@@ -179,7 +181,8 @@ Copy the boxes into the release notes/log and tick them as you go.
 
 ### 10. Packaged build
 
-- [ ] The `npm run tauri build` installer runs and the installed app launches.
+- [ ] The packaged installer (the CI draft's download for a release; a local
+      `npm run tauri build` otherwise) runs and the installed app launches.
 - [ ] First launch populates the game chip and the footer with **no error
       box** — the packaged-boot state race regression ("state not managed",
       vault/2026-08-02_packaged-boot-state-race.md): the bundled frontend

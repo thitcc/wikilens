@@ -1,7 +1,7 @@
 ---
 title: Tag-triggered release CI — build installers into a draft Release
 type: plan
-status: idea
+status: done
 created: 2026-08-04
 updated: 2026-08-04
 tags: [build, testing]
@@ -10,7 +10,7 @@ related:
   - "[[2026-07-13_ci-pipeline-github-actions]]"
   - "[[2026-08-02_release-build-skill]]"
   - "[[2026-07-13_manual-smoke-checklist-live-cadence]]"
-commit:
+commit: [7e6e506, 7c1011e, c1a798f]
 ---
 
 # Tag-triggered release CI — build installers into a draft Release
@@ -52,3 +52,14 @@ environment.
 ## Status log
 
 - 2026-08-04 — created as an idea from the versioning explainer session.
+- 2026-08-04 — promoted from idea on the owner's call: the doc's own
+  >2-releases/month threshold isn't met, but the versioning plans are being
+  terminated rather than left open, and the correctness upgrade (smoked
+  bytes = shipped bytes) stands on its own.
+- 2026-08-04 — done: `release.yml` in 7e6e506 (`tauri-apps/tauri-action@v1`
+  into a draft Release, tag↔package.json guard before the 20-minute build,
+  `uploadUpdaterJson: false`, upload-only `retryAttempts: 3`); docs retold
+  around the draft in 7c1011e + c1a798f (release.md/.html, versioning.html,
+  smoke checklist, CLAUDE.md, release-build skill, README). True end-to-end
+  verification lands on the first real tag push (v0.2.0) — same deal as the
+  bump script.
