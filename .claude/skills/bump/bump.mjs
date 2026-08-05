@@ -25,7 +25,7 @@ const DEFAULT_ROOT = resolve(__dirname, '..', '..', '..'); // .claude/skills/bum
 // want the bare triple.
 const VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-class BumpError extends Error {}
+export class BumpError extends Error {}
 const fail = (message) => {
   throw new BumpError(message);
 };
@@ -150,7 +150,6 @@ export function runBump(next, { root = DEFAULT_ROOT, exec = execCommand } = {}) 
       tool: 'npm',
       args: ['install', '--package-lock-only'],
       cwdRel: '.',
-      command: 'npm install --package-lock-only',
       locate: (text) => locateJsonVersion(text, 'package-lock.json'),
     },
     {
@@ -158,21 +157,34 @@ export function runBump(next, { root = DEFAULT_ROOT, exec = execCommand } = {}) 
       tool: 'cargo',
       args: ['check'],
       cwdRel: 'src-tauri',
-      command: 'cargo check',
       locate: (text) => locateCargoLockVersion(text, crate, 'src-tauri/Cargo.lock'),
     },
   ].map((lock) => {
     const path = join(root, ...lock.rel.split('/'));
-    return { ...lock, path, from: lock.locate(readText(path, lock.rel)).current };
+    // The display/error command string derives from the argv actually run,
+    // so the two can never drift apart.
+    const command = [lock.tool, ...lock.args].join(' ');
+    return { ...lock, path, command, from: lock.locate(readText(path, lock.rel)).current };
   });
 
-  // Rewrite the manifests (byte splice — see the locator note above).
-  for (const m of manifests) {
-    writeFileSync(m.path, m.text.slice(0, m.start) + next + m.text.slice(m.end));
-  }
+  // Rewrite the manifests (byte splice — see the locator note above). If a
+  // write throws mid-loop (a locked file — plausible on Windows), restore
+  // the ones already rewritten rather than leaving a partial bump behind.
   const restore = () => {
     for (const m of manifests) writeFileSync(m.path, m.text);
   };
+  try {
+    for (const m of manifests) {
+      writeFileSync(m.path, m.text.slice(0, m.start) + next + m.text.slice(m.end));
+    }
+  } catch (err) {
+    try {
+      restore();
+    } catch {
+      // keep the original error — it names the file that wouldn't write
+    }
+    throw err;
+  }
 
   const report = {
     previous,
@@ -239,5 +251,3 @@ if (isMain) {
     throw err;
   }
 }
-
-export { BumpError, locateJsonVersion, locateCargoVersion, locateCargoLockVersion };
