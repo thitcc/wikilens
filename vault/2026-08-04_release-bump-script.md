@@ -8,7 +8,7 @@ tags: [build]
 related:
   - "[[2026-08-04_release-scoped-semver]]"
   - "[[2026-08-04_versioning-adoption]]"
-commit: [2d4f8a5, db3d40c, b1107fc, 7230081]
+commit: [2d4f8a5, db3d40c, b1107fc, 7230081, 41c96f9]
 ---
 
 # npm run bump — one-command release version bump
