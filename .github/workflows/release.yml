@@ -89,6 +89,7 @@ jobs:
           retryAttempts: 0
           # The default is TRUE. With no updater configured there are no .sig
           # files and the action skips latest.json anyway — this pins the
-          # no-updater intent explicitly; flip it when the auto-updater lands
-          # (vault/2026-08-04_auto-updater.md).
+          # no-updater intent explicitly. Expected to stay false: the updater
+          # plan is dropped — distribution is a storefront, which patches its
+          # own installs (vault/2026-08-04_auto-updater.md).
           uploadUpdaterJson: false

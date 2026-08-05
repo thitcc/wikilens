@@ -1,9 +1,9 @@
 ---
 title: Auto-updater via tauri-plugin-updater
 type: plan
-status: idea
+status: dropped
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-05
 tags: [build, security, tauri]
 related:
   - "[[2026-08-04_release-scoped-semver]]"
@@ -49,3 +49,25 @@ exists once real external users do — the same milestone the ADR sets for
 ## Status log
 
 - 2026-08-04 — created as an idea from the versioning explainer session.
+- 2026-08-05 — **dropped.** Two facts settled after
+  [[2026-08-04_tag-triggered-release-ci]] shipped, both from the owner:
+  the repo stays private permanently, and distribution will be a storefront
+  (Steam or similar), never a direct download.
+  - The Approach's mechanism can't work. Release assets on a private repo
+    need an authenticated request, so an installed app can't fetch
+    `latest.json` from GitHub Releases. The only workaround is embedding a
+    token in a shipped binary — extractable, and it would grant read access
+    to the source.
+  - A storefront *is* the updater. Steam patches every install from its own
+    depots and tracks a file manifest, so binaries the app rewrote itself
+    get flagged and reverted by "Verify integrity of game files". Two update
+    systems disagreeing about what's on disk is worse than one.
+  - Revive only if WikiLens is ever distributed as a direct download outside
+    a storefront. If that happens, note the ordering trap: the updater's
+    public key is compiled into the binary, so it must be wired into the
+    **first** build anyone installs — an install shipped without the plugin
+    can never self-update, whatever is published afterwards.
+  - What actually gates a stranger installing this is code signing, not
+    updating: the installers are unsigned, SmartScreen warns on every
+    install, and a storefront doesn't sign your binaries for you. Not
+    planned anywhere yet.
