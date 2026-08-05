@@ -54,3 +54,7 @@ five-file dance turns out not to annoy, skip it forever.
   restore on a failed lock refresh), wired as `npm run bump`. CLAUDE.md §3,
   the release-build skill, the versioning explainer, and README now point
   at the command.
+- 2026-08-04 — ride-along per owner: `docs/release.md` +
+  `docs/release.html`, the operational release runbook (the six steps with
+  every command spelled out, artifact paths, recovery rules), cross-linked
+  from the versioning explainer's pointers and README's maintainer note.
