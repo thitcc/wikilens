@@ -29,7 +29,11 @@ function makeRoot(t, { commands = {}, skills = {}, files = {}, claudeMd = '# CLA
   if (claudeMd !== null) writeFileSync(join(root, 'CLAUDE.md'), claudeMd);
   if (codexConfig) {
     mkdirSync(join(root, '.codex'));
-    writeFileSync(join(root, '.codex', 'config.toml'), 'project_doc_fallback_filenames = ["CLAUDE.md"]\n');
+    // true = the wired-up default; a string is written verbatim, so a test can
+    // set project_doc_max_bytes (or malform it) without another fixture helper.
+    const body =
+      typeof codexConfig === 'string' ? codexConfig : 'project_doc_fallback_filenames = ["CLAUDE.md"]\n';
+    writeFileSync(join(root, '.codex', 'config.toml'), body);
   }
   mkdirSync(join(root, '.claude', 'commands'), { recursive: true });
   for (const [name, content] of Object.entries(commands)) {
@@ -260,6 +264,40 @@ test('warns when CLAUDE.md approaches the Codex instruction-size cap', (t) => {
   const report = runSync(root);
   assert.equal(report.warnings.length, 1);
   assert.match(report.warnings[0], /combined instruction chain/);
+});
+
+const RAISED_CAP = 'project_doc_fallback_filenames = ["CLAUDE.md"]\nproject_doc_max_bytes = 65536\n';
+
+test('the size warning tracks a raised project_doc_max_bytes', (t) => {
+  const root = makeRoot(t, {
+    commands: { foo: command('Foo', 'Body.\n') },
+    // 29 KiB warns against the 32 KiB default; against 64 KiB it is nowhere near.
+    claudeMd: 'x'.repeat(29 * 1024),
+    codexConfig: RAISED_CAP,
+  });
+  assert.deepEqual(runSync(root).warnings, []);
+});
+
+test('a raised cap still warns once CLAUDE.md approaches it', (t) => {
+  const root = makeRoot(t, {
+    commands: { foo: command('Foo', 'Body.\n') },
+    claudeMd: 'x'.repeat(60 * 1024),
+    codexConfig: RAISED_CAP,
+  });
+  const report = runSync(root);
+  assert.equal(report.warnings.length, 1);
+  assert.match(report.warnings[0], /65536-byte project_doc_max_bytes/);
+});
+
+test('a commented-out project_doc_max_bytes falls back to the Codex default', (t) => {
+  const root = makeRoot(t, {
+    commands: { foo: command('Foo', 'Body.\n') },
+    claudeMd: 'x'.repeat(29 * 1024),
+    codexConfig: 'project_doc_fallback_filenames = ["CLAUDE.md"]\n# project_doc_max_bytes = 65536\n',
+  });
+  const report = runSync(root);
+  assert.equal(report.warnings.length, 1);
+  assert.match(report.warnings[0], /32768-byte project_doc_max_bytes/);
 });
 
 test('warns when .codex/config.toml does not wire up the CLAUDE.md fallback', (t) => {
