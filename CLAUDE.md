@@ -21,7 +21,7 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 wikilens/
 ├── index.html, capture.html, debug.html, vite.config.ts, tsconfig*.json   # Vite/TS config; three rollup inputs (overlay + region-select + debug pages)
 ├── vault/                        # planning vault: plans, decisions, notes (see §6)
-├── docs/                         # dev guides: manual smoke checklist, AI-workflow explainer
+├── docs/                         # dev guides: smoke checklist, release runbook, explainers
 ├── src/                          # Frontend (React + TS; *.test.* files are colocated Vitest suites)
 │   ├── main.tsx                  # React entry
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow, capture attachment chip
@@ -102,10 +102,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   and push to main). CI additionally audits dependencies (`cargo audit`,
   `npm audit --audit-level=high`) — CI-only, since they depend on the network
   and advisory databases
-- Release: the version-tag push triggers `release.yml` — CI drafts a GitHub
-  Release with the installers; smoke the downloaded installer
-  (`docs/smoke-checklist.md`) — the runtime surface (overlay, hotkey, tray,
-  DPI, packaged keys) has no automated coverage
+- Release: a `v*` tag push triggers `release.yml` — CI builds the installers
+  into a draft Release; smoke the downloaded installer (full walk:
+  `docs/release.md`) — the runtime surface (overlay, hotkey, tray, DPI,
+  packaged keys) has no automated coverage
 - Versioning: release-scoped SemVer — the version bumps **only in release
   PRs**, never per-merge (ADR: `vault/2026-08-04_release-scoped-semver.md`).
   Ritual: agent opens the bump PR (`npm run bump X.Y.Z` + `/check`) →

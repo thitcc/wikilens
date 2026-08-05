@@ -1,6 +1,6 @@
 ---
 name: release-build
-description: Build the packaged WikiLens executable and Windows installers with npm run tauri build — where the artifacts land, what changes when the app no longer runs from a terminal (.env, tray-only launch), and the post-build smoke step. Invoke when asked to build or package the app, produce an exe or installer, or prep a release.
+description: Build the packaged WikiLens executable and Windows installers locally with npm run tauri build — where the artifacts land, what changes when the app no longer runs from a terminal (.env, tray-only launch), and the post-build smoke step. Invoke when asked to build or package the app, produce an exe or installer, or prep a release (versioned releases build in CI from the tag push; this is the local/fallback build).
 allowed-tools: Bash(npm:*), Read
 ---
 

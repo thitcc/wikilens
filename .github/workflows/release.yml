@@ -59,9 +59,7 @@ jobs:
       # v1 line (v0 is the old one). The action runs `npm run tauri build`
       # itself via package-manager detection; bundle targets "all" also
       # produces the raw exe, but uploadPlainBinary stays default-false — the
-      # runbook hands people installers. No retryAttempts: it re-runs the
-      # whole build, not just uploads, which could blow the timeout — the
-      # documented retry is re-running from the Actions tab.
+      # runbook hands people installers.
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -81,6 +79,13 @@ jobs:
               `git log --first-parent vPREV..${{ github.ref_name }}` plus the
               ticked smoke boxes.
             - Publish: `gh release edit ${{ github.ref_name }} --draft=false`.
-          # Default is TRUE, and with no updater configured in tauri.conf.json
-          # it would upload a bogus latest.json onto the release.
+          # Retries the asset uploads only — the action never re-runs the
+          # build itself (verified in its source), so this can't blow the
+          # timeout. An upload flake after the 20-minute compile self-heals
+          # instead of needing a human re-run on release day.
+          retryAttempts: 3
+          # The default is TRUE. With no updater configured there are no .sig
+          # files and the action skips latest.json anyway — this pins the
+          # no-updater intent explicitly; flip it when the auto-updater lands
+          # (vault/2026-08-04_auto-updater.md).
           uploadUpdaterJson: false

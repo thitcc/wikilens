@@ -252,7 +252,7 @@ git push origin v0.2.0</code></pre>
       <span class="label">CI builds, you validate</span>
       <span class="who-chip you">you</span>
     </div>
-    <p class="small">The tag push triggers <code>.github/workflows/release.yml</code>: a Windows runner builds the installers with <code>tauri-apps/tauri-action</code> and attaches them to a <strong>draft</strong> GitHub Release, invisible until you publish it. A tag that doesn't match the manifests fails in seconds; a cold build runs 15–25 min.</p>
+    <p class="small">The tag push triggers <code>.github/workflows/release.yml</code>: a Windows runner builds the installers with <code>tauri-apps/tauri-action</code> and attaches them to a <strong>draft</strong> GitHub Release, invisible until you publish it. A tag that doesn't match <code>package.json</code>'s version fails in seconds; a cold build runs 15–25 min.</p>
     <p class="small">When the run goes green, download both installers from the draft:</p>
     <pre><code>WikiLens_0.2.0_x64-setup.exe    <span class="c">NSIS; bootstraps WebView2</span>
 WikiLens_0.2.0_x64_en-US.msi    <span class="c">WiX/MSI</span></code></pre>
