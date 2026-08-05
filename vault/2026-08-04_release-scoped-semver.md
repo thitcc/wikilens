@@ -3,7 +3,7 @@ title: Versions are release-scoped SemVer, bumped in release PRs
 type: decision
 status: done
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-05
 tags: [build]
 related:
   - "[[2026-08-04_versioning-adoption]]"
@@ -62,6 +62,8 @@ in release PRs — a version names a validated installer, never a merge.
   the idea docs — [[2026-08-04_version-in-settings]],
   [[2026-08-04_release-bump-script]],
   [[2026-08-04_tag-triggered-release-ci]], [[2026-08-04_auto-updater]].
+  *(2026-08-05: all shipped except the auto-updater, dropped — a storefront
+  patches its own installs; see its doc.)*
 
 ## Alternatives considered
 
