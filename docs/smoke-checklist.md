@@ -11,15 +11,15 @@ Copy the boxes into the release notes/log and tick them as you go.
 ## Prerequisites
 
 - A game running in **borderless/windowed** mode (exclusive fullscreen is only
-  needed for item 8).
+  needed for item 9).
 - At least one provider keyed from **Settings → Answers**; for item 6
   you need both a vision-capable and a text-only model reachable from the model
   menu. Item 7 additionally needs a working `WIKILENS_DEFAULT_*` set (see
   README's "Default mode" section).
 - If available, a second monitor at **>100% DPI scaling** for item 3 — if not,
   note "single monitor" in the run log.
-- Items 1–9 run on `npm run tauri dev` (item 9 needs `WIKILENS_DEBUG=1` set);
-  item 10 runs on the packaged installer — for a release, the one downloaded
+- Items 1–10 run on `npm run tauri dev` (items 8 and 10 need
+  `WIKILENS_DEBUG=1` set); item 11 runs on the packaged installer — for a release, the one downloaded
   from the CI draft Release (`docs/release.md` §5); otherwise a local
   `npm run tauri build`.
 
@@ -147,13 +147,39 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] Paste a garbage key and ask: the vendor's 401 shows verbatim in the
       error box, and the model menu degrades to the "offline list" note.
 
-### 8. Exclusive fullscreen (expected failure)
+### 8. Game detection (the header suggestion chip)
+
+Runtime-only surface — the matcher is unit-tested, but nothing can exercise a
+real game in CI. The important item is #2: a false positive is the only
+failure that costs anything.
+
+- [ ] Summon over a game with a rule (`src-tauri/src/detect/rules.rs`) while
+      the chip shows a *different* game → an accent chip appears left of the
+      game chip naming the running game. Click it → the game chip switches and
+      the suggestion disappears.
+- [ ] Summon over a browser, over the desktop, over the Steam client, and from
+      the tray (menu item and left-click) → **no suggestion appears and the
+      game chip does not move**.
+- [ ] Summon over a known game and *ignore* the chip; hide and re-summon → the
+      suggestion is still offered and the selection is still untouched.
+- [ ] Start an ask, Esc mid-stream, re-summon over a different known game →
+      no suggestion while it streams (the answer and its sources stay
+      coherent); it returns once the ask settles.
+- [ ] Summon during a game's launcher/loading phase (Conan Exiles, Warframe)
+      → no suggestion, no error. Expected: their Steam launch targets are
+      launcher processes that own their own windows.
+- [ ] With `WIKILENS_DEBUG=1`, each summon logs `detected <id>` or
+      `detected nothing` with a running hit/miss tally. Record what a Game
+      Pass / Microsoft Store title resolves to, and whether a BattlEye title
+      (Conan Exiles) comes back denied.
+
+### 9. Exclusive fullscreen (expected failure)
 
 - [ ] An exclusive-fullscreen game covers the overlay. Verify this is still
       documented (README caveats, CLAUDE.md gotchas) — do **not** log it as a
       bug.
 
-### 9. Debug window (`WIKILENS_DEBUG=1`)
+### 10. Debug window (`WIKILENS_DEBUG=1`)
 
 - [ ] With the flag set, **nothing extra shows at launch** (the debug
       window starts hidden, like the overlay). The overlay footer's
@@ -179,7 +205,7 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] Drag it to the >100% scale monitor: text renders sharp and the window
       geometry stays sane.
 
-### 10. Packaged build
+### 11. Packaged build
 
 - [ ] The packaged installer (the CI draft's download for a release; a local
       `npm run tauri build` otherwise) runs and the installed app launches.

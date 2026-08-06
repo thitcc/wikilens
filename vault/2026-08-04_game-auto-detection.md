@@ -556,3 +556,33 @@ untouched.
   Confirms the plumbing end to end: the probe fires on every summon, the PID
   guard keeps WikiLens out of its own reading, and the reduction strips the
   path. 1 of 15 built-in rows is now on-device confirmed.
+- 2026-08-05 — owner ratified **shipping the full table** rather than waiting
+  for more on-device confirmations. Rows that only meet the research half of
+  the gate carry `// researched, distinctive, unconfirmed on-device`
+  (`conanexiles`, `abioticfactor`). The argument that carried it: suggest-only
+  already downgrades a wrong row from "answers from the wrong wiki" to "an
+  ignorable chip", and a distinctive-but-wrong basename fails as a silent miss,
+  which costs nothing.
+- 2026-08-05 — **PR 1 built** on `feat/game-detection-suggestion` (stacked on
+  the spike branch until PR 0 merges). Rust: `DetectRule` +
+  `match_game` (two-pass, order-independent, ambiguity → `None`),
+  `detect/rules.rs` (16 rows over 15 games), `ShownInfo` widening
+  `overlay://shown` from `()`, and the `shown_info_serializes_exactly_the_
+  known_fields` guardrail pin. The spike's raw exe/caption line became
+  `detected <id>` plus a session hit/miss tally — the raw strings no longer
+  leave `detect`. Frontend: `GameSuggestion.tsx`, an accent chip left of the
+  game chip, rendered from derived state (S1–S5) so there is nothing to
+  dismiss, nothing to persist, and nothing to clear on hide. Design: A-05
+  `suggestion-arrive` admitted to DESIGN.md's motion inventory (4px from the
+  right, the direction of the chip it fills).
+  Two things worth remembering. The `applyDetectionRef` the plan specified
+  turned out to be **unnecessary** — storing the detection with a plain
+  `setState` and validating against `games` at *render* time sidesteps the
+  mount-only-closure hazard entirely, so the ref, the `{ manual: true }`
+  option bag and the override slot all stayed deleted. And the planned
+  `detected_game_ids_are_all_offerable_to_the_frontend` pin was dropped as
+  genuinely redundant: `list_games` takes `State<'_, _>` (unconstructible in a
+  unit test), and `every_rule_targets_a_builtin_game` already gives the
+  guarantee, since `list_games` always emits every built-in.
+  `/check` green: tsc, 201 Vitest (8 new), 55 node, clippy `-D warnings`,
+  327 cargo (27 new).
