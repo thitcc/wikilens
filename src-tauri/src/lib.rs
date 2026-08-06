@@ -9,6 +9,7 @@ mod commands;
 mod config_guardrails;
 mod debug;
 mod debug_window;
+mod detect;
 mod error;
 mod history;
 mod hotkey;
