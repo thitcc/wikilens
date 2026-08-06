@@ -157,6 +157,11 @@ All changes land through a pull request — no direct commits to `main`:
   available from the tray).
 - Pick your **LLM provider** and **game** from the dropdowns in the header; both
   choices are remembered between sessions.
+- If WikiLens recognises the game you're playing, it offers it: a chip appears
+  beside the game chip with that game's name, and one click switches to its
+  wiki. It never switches on its own — ignore the chip and nothing changes.
+  Games it doesn't recognise (including any you added yourself) simply don't
+  produce a suggestion.
 - When shown, the panel takes focus so you can type immediately.
 - **Enter** sends your question; **Shift+Enter** adds a newline.
 - **Esc** (or Ctrl+` again) hides the panel; focus returns to the game.
@@ -239,3 +244,10 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
   the selected LLM provider) is made from Rust.
 - Your question and the fetched wiki excerpts are sent to the LLM provider you
   select, to generate the answer.
+- To suggest the game you're playing, WikiLens reads the name of the program
+  owning the window it covers, each time you summon the panel. That stays on
+  your machine: the executable's path and the window's title never leave the
+  Rust process, and the only thing that reaches the panel is the id of a
+  matched game (or nothing). It is never logged, never stored, and never sent
+  to a provider. WikiLens asks Windows only for permission to read a process's
+  name — never to read its memory.

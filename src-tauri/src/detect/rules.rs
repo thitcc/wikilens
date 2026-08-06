@@ -200,6 +200,33 @@ mod tests {
     }
 
     #[test]
+    fn no_rule_constrains_on_a_generic_platform_folder() {
+        // The parent leaf names the *game* only when the binary sits in the
+        // install root — the shape Path of Exile has, and the reason the
+        // poe/poe2 split works. Unreal titles bury theirs under
+        // `Binaries\Win64`, so their leaf is `win64`, shared with every other
+        // UE game; .NET apps launch from a `dotnet` folder. Confirmed
+        // on-device 2026-08-05: Grounded reduces to parent `win64`.
+        //
+        // A parent constraint on one of these either never fires or fires for
+        // the wrong game. Covering such a title needs a path-contains-segment
+        // rule, which this type deliberately does not have.
+        const GENERIC: &[&str] = &[
+            "win64", "win32", "wingdk", "wingrts", "binaries", "bin", "x64", "x86", "dotnet",
+        ];
+        for rule in RULES {
+            if let Some(parent) = rule.parent {
+                assert!(
+                    !GENERIC.contains(&parent),
+                    "rule for {:?} constrains on {parent:?}, a platform folder shared \
+                     across games — it cannot identify one",
+                    rule.exe
+                );
+            }
+        }
+    }
+
+    #[test]
     fn unconstrained_rules_do_not_share_an_exe() {
         // Two bare rules on one executable sit in the same specificity tier, so
         // the matcher would call it ambiguous and BOTH games would become
