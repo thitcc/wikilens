@@ -137,6 +137,34 @@ pub fn toggle_overlay(app: &AppHandle) {
     }
 }
 
+/// Phase-0 detection spike (`WIKILENS_DEBUG` only): report what this summon is
+/// about to cover, so the game→executable table can be written from real
+/// observations instead of guesses (vault/2026-08-04_game-auto-detection.md).
+///
+/// Callers must invoke this **before** the panel is shown: `set_focus()` makes
+/// the overlay the foreground window, and a sample taken after it reads
+/// WikiLens itself. Both legs print, so "summoned over the desktop and matched
+/// nothing" stays distinguishable from "the gate is off".
+///
+/// The raw executable and caption go to stderr and nowhere else — never a
+/// `debug://` payload (whose key sets are pin-tested), never `history.json`,
+/// never IPC. Reshaped into a matched-id line when the rules table lands.
+fn log_foreground_spike() {
+    if !crate::debug::debug_enabled() {
+        return;
+    }
+    match crate::detect::probe() {
+        Some((path, title)) => {
+            let fg = crate::detect::reduce(&path, &title);
+            eprintln!(
+                "[wikilens] foreground: exe={:?} parent={:?} title={:?}",
+                fg.exe, fg.parent, fg.title
+            );
+        }
+        None => eprintln!("[wikilens] foreground: none"),
+    }
+}
+
 /// Dock the overlay to the top-right of its current monitor, show it, take
 /// focus, and notify the frontend (which focuses the prompt). Extracted from
 /// `toggle_overlay` so the capture flow can re-show the panel on teardown; the
@@ -147,6 +175,7 @@ pub fn show_overlay(app: &AppHandle) {
         eprintln!("[wikilens] overlay window '{OVERLAY_LABEL}' not found");
         return;
     };
+    log_foreground_spike();
     if let Err(e) = position_top_right(&win) {
         eprintln!("[wikilens] failed to position overlay: {e}");
     }

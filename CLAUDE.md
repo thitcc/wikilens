@@ -73,6 +73,7 @@ wikilens/
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
         ├── debug_window.rs       # visual debug window (flag-gated): glass, draggable, never activates; create/show/toggle + the emit_to sink
+        ├── detect/{mod,foreground}.rs  # foreground-window detection: Win32 probe (Windows-only) + the pure `reduce` privacy boundary; WIKILENS_DEBUG spike, matching table follows
         ├── config_guardrails.rs  # test-only: parses the shipped config/capability files, pins the security invariants
         ├── test_support.rs       # test-only: shared wiremock fixtures + proptest strategies
         └── wiki/{mod,games,user,probe,search,fetch,html,wikitext,titles}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext; titles = per-game typo-recovery index
