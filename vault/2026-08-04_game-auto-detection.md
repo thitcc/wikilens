@@ -542,3 +542,17 @@ untouched.
   — see Documented gaps.
   **Next: the owner runs the spike protocol and pastes the observed lines
   here. PR 1 stays closed until that entry exists.**
+- 2026-08-05 — first spike readings, on-device from `npm run tauri dev` with
+  `WIKILENS_DEBUG=1` (reduced form only — the raw paths carry the user's home
+  directory):
+  - `exe="maine-win64-shipping.exe" parent="win64" title="Grounded"` —
+    **`grounded` confirmed**, exe and caption both.
+  - `exe="code.exe" parent="microsoft vs code" title="Claude Code - wikilens -
+    Visual Studio Code"` — the negative case, and the one that matters most:
+    a non-game reads cleanly, no rule claims `code.exe`, so the matcher will
+    return `None` and the chip will stay put. False positives are the only
+    failure that costs anything.
+
+  Confirms the plumbing end to end: the probe fires on every summon, the PID
+  guard keeps WikiLens out of its own reading, and the reduction strips the
+  path. 1 of 15 built-in rows is now on-device confirmed.
