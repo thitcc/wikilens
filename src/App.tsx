@@ -455,9 +455,18 @@ function App() {
 
     // Dev-serve only: an HMR reload while the window is visible gets no
     // overlay://shown, and the mount-time hold would keep the panel
-    // invisible until the next hide+show. Arm now instead. (import.meta.hot
-    // is undefined in production builds and under Vitest.)
-    if (import.meta.hot && document.visibilityState === "visible") {
+    // invisible until the next hide+show. Arm now instead. undefined in
+    // production builds — but NOT under Vitest, where import.meta.hot is
+    // defined (measured) even though no reload happened, so every mount
+    // armed and scheduled the fallback timer. With fake timers set to
+    // advance with real time, that timer could fire mid-render under load
+    // and clear the mount-time hold the summon suite asserts, making it
+    // flaky in proportion to how many other suites were running.
+    if (
+      import.meta.hot &&
+      import.meta.env.MODE !== "test" &&
+      document.visibilityState === "visible"
+    ) {
       armSummon();
     }
 

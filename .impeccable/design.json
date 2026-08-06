@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-03",
+  "generatedAt": "2026-08-05",
   "title": "Design System: WikiLens",
   "extensions": {
     "colorMeta": {
@@ -102,6 +102,7 @@
       { "name": "hover-release", "value": "A-02 — background-color/color 120ms ease-out transition on release only (:hover and .is-open cut to none)", "purpose": "Its question: \"the control heard you.\" The on-path (hover and open) is a hard cut; the release fades on pointer-leave and menu-close alike — the inventory's one named deviation from the transform/opacity bound (a chip-sized repaint), accepted as-is in the live test." },
       { "name": "attach-confirm", "value": "A-03 — attach-confirm 150ms ease-out (translateY 4px → 0 + fade) on mount", "purpose": "Its question: \"your grab landed.\" Removal unmounts — instant exit." },
       { "name": "menu-arrive", "value": "A-04 — menu-arrive-up/-down 120ms ease-out (translateY ±4px → 0 + fade) on mount, direction-aware per anchor chip", "purpose": "Its question: \"this came from that chip.\" Closing unmounts — instant exit." },
+      { "name": "suggestion-arrive", "value": "A-05 — suggestion-arrive 120ms ease-out (translateX 4px → 0 + fade) on mount", "purpose": "Its question: \"the panel noticed the game.\" The game-detection offer arrives from the right — the direction of the game chip it would fill. Deliberately the same amplitude as A-04: it is an offer the player did not ask for, so it must be findable and ignorable in one glance, never insistent. Accepting or ignoring unmounts — instant exit." },
       { "name": "debug-shimmer", "value": "debug-shimmer 1.2s ease-in-out infinite (translateX -100% → 250%)", "purpose": "The debug window's admitted motion: an indeterminate progress shimmer, gated behind prefers-reduced-motion with a static accent-strip fallback. Its question: \"is this ask still running?\" Predates the rule (carried over from the instant-states doctrine); the rule's bounds and paperwork apply to motions admitted through it." }
     ]
   },
@@ -121,6 +122,14 @@
       "description": "The system's button: bare muted ink at rest, veil fill + ink promotion on hover/open; keyboard focus rings with the accent outline. Icon-only variant (icon-chip: the header gear and Start over whirl): equal 4px padding for a square 20×20 seat — a circular glyph in the landscape padding read off-center when the veil lit.",
       "html": "<div class=\"ds-bed\"><button class=\"ds-chip\">anthropic · claude-haiku-4-5 <span class=\"ds-chip-caret\">▾</span></button><button class=\"ds-chip ds-chip--open\">open state</button><button class=\"ds-chip\" disabled>disabled</button></div>",
       "css": ".ds-bed { display: inline-flex; gap: 8px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; background: transparent; border: none; border-radius: 5px; color: #9a9aa8; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; } .ds-chip:hover:not(:disabled), .ds-chip--open { background: rgba(255,255,255,0.06); color: #e8e8ee; } .ds-chip:focus-visible { outline: 1px solid #8ab4ff; outline-offset: 2px; } .ds-chip:disabled { opacity: 0.6; cursor: default; } .ds-chip-caret { font-size: 9px; opacity: 0.7; }"
+    },
+    {
+      "name": "Game Suggestion Chip",
+      "kind": "button",
+      "refersTo": "game-suggestion",
+      "description": "Quiet-chip anatomy in accent ink, offering the game detected under the overlay. It only suggests — clicking applies it, ignoring costs a glance, and it unmounts the moment the offer matches the selection (derived state: nothing to dismiss, nothing persisted). Accent marks it as the one interactive thing in the header the player did not ask for. Name only, capped and ellipsized so a long title cannot push the game chip off the edge; the full name lives in aria-label. The arrow points right, at the chip it would fill.",
+      "html": "<div class=\"ds-bed\"><button class=\"ds-sugg\">Grounded <span class=\"ds-sugg-arrow\">→</span></button><button class=\"ds-chip\">Abiotic Factor <span class=\"ds-chip-caret\">▾</span></button></div>",
+      "css": ".ds-bed { display: inline-flex; gap: 4px; align-items: center; padding: 12px; background: #16161d; border-radius: 8px; } .ds-sugg { display: inline-flex; align-items: center; gap: 4px; max-width: 11ch; padding: 2px 4px; background: transparent; border: none; border-radius: 5px; color: #8ab4ff; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; } .ds-sugg:hover { background: rgba(255,255,255,0.06); } .ds-sugg-arrow { flex: none; font-size: 9px; opacity: 0.7; } .ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; background: transparent; border: none; border-radius: 5px; color: #9a9aa8; font: 400 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; } .ds-chip-caret { font-size: 9px; opacity: 0.7; }"
     },
     {
       "name": "Static Chip",
@@ -188,7 +197,7 @@
       "A 14px type ceiling: hierarchy by weight and ink strength, never by size.",
       "Controls are quiet until touched — bare ink at rest, a faint veil on hover.",
       "Two altitudes exactly: the panel above the game, menus above the panel.",
-      "State changes are instant; motion is governed by the Named-Question Rule and speaks the Quiet Directional voice (see Motion) — five admitted motions: four on the overlay and the debug window's shimmer."
+      "State changes are instant; motion is governed by the Named-Question Rule and speaks the Quiet Directional voice (see Motion) — six admitted motions: five on the overlay and the debug window's shimmer."
     ],
     "rules": [
       { "name": "The One Signal Rule", "body": "Moonlight Blue is the interface's only voice of color. If an element is not interactive, selected, or focused, it stays ink. The rose trio speaks only on failure. There is no third hue, and there are no gradients.", "section": "colors" },
