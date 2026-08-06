@@ -18,6 +18,7 @@ import type {
   ModelList,
   ProviderInfo,
   SettingsInfo,
+  ShownInfo,
   WikiCandidate,
 } from "./types";
 
@@ -220,9 +221,19 @@ export function getAppVersion(): Promise<string> {
 
 // ---- Events ---------------------------------------------------------------
 
-/** Fired after the overlay is shown; use it to focus the prompt input. */
-export function onOverlayShown(callback: () => void): Promise<UnlistenFn> {
-  return listen("overlay://shown", () => callback());
+/** What a payload-less `overlay://shown` normalizes to. Keeps every handler
+ * free of `undefined` guards — and keeps the existing tests, which fire the
+ * event bare, working unchanged. */
+const NO_SHOWN_INFO: ShownInfo = { detectedGame: null };
+
+/** Fired after the overlay is shown; use it to focus the prompt input and to
+ * offer the game detected under the panel. */
+export function onOverlayShown(
+  callback: (info: ShownInfo) => void,
+): Promise<UnlistenFn> {
+  return listen<ShownInfo | null>("overlay://shown", (event) =>
+    callback(event.payload ?? NO_SHOWN_INFO),
+  );
 }
 
 /** Fired after the overlay is hidden (Esc, hotkey toggle, tray, Alt+F4, the

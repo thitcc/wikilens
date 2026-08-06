@@ -51,6 +51,7 @@ import {
 } from "./modelPick";
 import { AddGameMenu } from "./components/AddGameMenu";
 import { GameChip } from "./components/GameChip";
+import { GameSuggestion } from "./components/GameSuggestion";
 import { HistoryMenu } from "./components/HistoryMenu";
 import { SettingsMenu } from "./components/SettingsMenu";
 import { GameMenu } from "./components/GameMenu";
@@ -186,6 +187,9 @@ function App() {
     storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
   );
   const [recentGames, setRecentGames] = useState<string[]>(storedRecentGames);
+  // The game Rust identified under the panel on the last summon. A suggestion
+  // only — nothing reads it except the header chip below.
+  const [detectedGame, setDetectedGame] = useState<string | null>(null);
   // At most one popover at a time — their capture-phase Esc handlers would
   // otherwise stack, and one Esc would close both.
   const [openMenu, setOpenMenu] = useState<
@@ -451,14 +455,29 @@ function App() {
 
     // Dev-serve only: an HMR reload while the window is visible gets no
     // overlay://shown, and the mount-time hold would keep the panel
-    // invisible until the next hide+show. Arm now instead. (import.meta.hot
-    // is undefined in production builds and under Vitest.)
-    if (import.meta.hot && document.visibilityState === "visible") {
+    // invisible until the next hide+show. Arm now instead. undefined in
+    // production builds — but NOT under Vitest, where import.meta.hot is
+    // defined (measured) even though no reload happened, so every mount
+    // armed and scheduled the fallback timer. With fake timers set to
+    // advance with real time, that timer could fire mid-render under load
+    // and clear the mount-time hold the summon suite asserts, making it
+    // flaky in proportion to how many other suites were running.
+    if (
+      import.meta.hot &&
+      import.meta.env.MODE !== "test" &&
+      document.visibilityState === "visible"
+    ) {
       armSummon();
     }
 
-    void onOverlayShown(() => {
+    void onOverlayShown((info) => {
       setOpenMenu(null);
+      // Store, never apply: the chip is offered, and only a click switches.
+      // A plain setState is why this listener needs no ref indirection —
+      // the detection is validated against `games` at render time, where the
+      // list is current, instead of inside this mount-time closure where it
+      // would still be empty.
+      setDetectedGame(info.detectedGame);
       armSummon();
       inputRef.current?.focus();
       // Select the old question so the first keystroke starts the new one —
@@ -838,6 +857,18 @@ function App() {
     settings?.hotkeys.summon.accelerator ?? DEFAULT_SUMMON_LABEL,
   );
   const captureLabel = settings?.hotkeys.capture.label ?? DEFAULT_CAPTURE_LABEL;
+  // The game-detection offer, derived rather than stored — which is what keeps
+  // it stateless: there is nothing to dismiss, nothing to clear on hide, and
+  // no memory of what the player already declined. It resolves to nothing when
+  // the detection matches the current pick, when the id isn't a game we can
+  // offer (a removed user wiki, a stale rule), when nothing was detected, and
+  // while an ask is in flight — switching mid-stream would leave the chip
+  // disagreeing with the answer's own sources (the `disabled={busy}` rule the
+  // game chip already follows).
+  const suggestedGame =
+    detectedGame && detectedGame !== selectedGame && !busy
+      ? games.find((g) => g.id === detectedGame)
+      : undefined;
 
   return (
     <div
@@ -927,23 +958,39 @@ function App() {
             </button>
           )}
         </span>
-        <GameChip
-          gameName={
-            games.length === 0
-              ? "Loading games…"
-              : (games.find((g) => g.id === selectedGame)?.name ??
-                "Pick a game")
-          }
-          open={openMenu === "game"}
-          disabled={busy}
-          // Closing must go through closeMenu(): the click focuses the chip,
-          // and without the prompt refocus, typing lands on the chip and
-          // Enter reopens the menu.
-          onToggle={() =>
-            openMenu === "game" ? closeMenu() : setOpenMenu("game")
-          }
-          buttonRef={gameChipRef}
-        />
+        {/* The suggestion sits left of the game chip it would fill; both keep
+            the header's right edge (the header is space-between). */}
+        <span className="game-cluster">
+          {suggestedGame && (
+            <GameSuggestion
+              gameName={suggestedGame.name}
+              onAccept={() => {
+                handleGameChange(suggestedGame.id);
+                // The click focused the chip, which then unmounts (the
+                // suggestion now matches the selection) — focus would drop to
+                // <body> and deaden the keyboard. Same contract as closeMenu().
+                inputRef.current?.focus();
+              }}
+            />
+          )}
+          <GameChip
+            gameName={
+              games.length === 0
+                ? "Loading games…"
+                : (games.find((g) => g.id === selectedGame)?.name ??
+                  "Pick a game")
+            }
+            open={openMenu === "game"}
+            disabled={busy}
+            // Closing must go through closeMenu(): the click focuses the chip,
+            // and without the prompt refocus, typing lands on the chip and
+            // Enter reopens the menu.
+            onToggle={() =>
+              openMenu === "game" ? closeMenu() : setOpenMenu("game")
+            }
+            buttonRef={gameChipRef}
+          />
+        </span>
       </header>
 
       <PromptInput

@@ -345,6 +345,41 @@ fn settings_info_serializes_exactly_the_known_fields() {
     assert_eq!(nested, BTreeSet::from(["configured", "vision"]));
 }
 
+/// `overlay://shown` became a payload-carrying IPC surface when foreground
+/// game detection landed. The probe reads a full executable path — which
+/// embeds the user's install layout and often their username — and a window
+/// caption, which can carry server addresses and save names. Neither may ever
+/// cross: the only thing allowed out is a resolved game id from the shipped
+/// rules table. Pin the field set, and that "nothing detected" crosses as an
+/// explicit null rather than an absent field.
+#[test]
+fn shown_info_serializes_exactly_the_known_fields() {
+    let nothing = serde_json::to_value(crate::window::ShownInfo { detected_game: None })
+        .expect("ShownInfo serializes");
+    let keys: BTreeSet<&str> = nothing
+        .as_object()
+        .expect("ShownInfo serializes to an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        BTreeSet::from(["detectedGame"]),
+        "new ShownInfo IPC field — review it for path and caption material, then update this pin"
+    );
+    assert!(
+        nothing["detectedGame"].is_null(),
+        "no detection must cross as null"
+    );
+
+    // And a detection crosses as the bare registry id, nothing richer.
+    let detected = serde_json::to_value(crate::window::ShownInfo {
+        detected_game: Some("grounded".to_string()),
+    })
+    .expect("ShownInfo serializes");
+    assert_eq!(detected["detectedGame"], serde_json::json!("grounded"));
+}
+
 /// `HistoryEntry` is persisted to disk and crosses IPC (`list_history`). Pin
 /// its exact serialized field sets (top level + the nested sources) — answer
 /// text is LLM output and belongs; wiki page text and key material do not.

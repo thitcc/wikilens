@@ -231,6 +231,38 @@ body {
    brand and the chip, nothing form-shaped. The native <select> is gone: its
    OS-drawn popup was unstylable over the glass. */
 
+/* The detection offer rides immediately left of the game chip it would fill,
+   so the pair keeps the header's right edge as one child of the
+   space-between header (mirroring .brand-cluster on the left). */
+.game-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* "A game is running — want its wiki?" Accent ink because this is the one
+   interactive thing in the header the player didn't ask for; it must be
+   findable at a glance and ignorable in the same glance. Capped so a long
+   name ("The Elder Scrolls V: Skyrim") ellipsizes instead of pushing the
+   game chip off the edge — the full name lives in aria-label and title. */
+.game-suggestion {
+  color: var(--accent);
+  max-width: 11ch;
+}
+
+.game-suggestion:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+/* Sized and dimmed like the chips' caret (DESIGN.md typography.caret) — it is
+   the same class of glyph: a direction hint, not content. */
+.game-suggestion .suggestion-arrow {
+  flex: none;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
 /* Footer: hairline divider + the quiet model chip that opens the menu. */
 .panel-footer {
   display: flex;
@@ -1334,6 +1366,21 @@ body {
   .quiet-chip:hover,
   .quiet-chip.is-open {
     transition: none;
+  }
+
+  /* A-05 — "the panel noticed the game": the detection offer arrives 4px
+     from the right, the direction of the game chip it would fill. Mounts
+     once per summon that finds something new; accepting or ignoring
+     unmounts it — instant. */
+  .game-suggestion {
+    animation: suggestion-arrive 120ms ease-out;
+  }
+
+  @keyframes suggestion-arrive {
+    from {
+      opacity: 0;
+      transform: translateX(4px);
+    }
   }
 
   /* A-03 — "your grab landed": the attachment block rises 4px as it

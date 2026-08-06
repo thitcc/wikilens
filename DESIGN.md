@@ -112,6 +112,10 @@ components:
     padding: "5px 8px"
   hotkey-row-armed:
     borderColor: "{colors.moonlight-blue}"
+  game-suggestion:
+    textColor: "{colors.moonlight-blue}"
+    rounded: "{rounded.chip}"
+    padding: "2px 4px"
 ---
 
 # Design System: WikiLens
@@ -144,8 +148,8 @@ game is the main character; WikiLens borrows the screen and gives it back.
 - Controls are quiet until touched — bare ink at rest, a faint veil on hover.
 - Two altitudes exactly: the panel above the game, menus above the panel.
 - State changes are instant; motion is governed by the Named-Question Rule
-  and speaks the Quiet Directional voice (see Motion) — five admitted
-  motions: four on the overlay and the debug window's shimmer.
+  and speaks the Quiet Directional voice (see Motion) — six admitted
+  motions: five on the overlay and the debug window's shimmer.
 
 ## 2. Colors
 
@@ -386,6 +390,12 @@ updated in the same PR as any admission.
 - **A-04 · menu-arrive** — menus mount with a 4px arrival from their anchor
   chip, direction-aware (120ms ease-out); closing unmounts — instant. Its
   question: "this came from that chip."
+- **A-05 · suggestion-arrive** — the game-detection offer mounts with a 4px
+  arrival from the right, the direction of the game chip it would fill
+  (120ms ease-out); accepting or ignoring unmounts it — instant. Its
+  question: "the panel noticed the game." Deliberately the same amplitude as
+  A-04: this is an offer the player did not ask for, so it must be findable
+  and ignorable in one glance, never insistent.
 - **debug-shimmer** — the debug window's indeterminate progress shimmer (a
   1.2s translateX loop), gated behind `prefers-reduced-motion` with a static
   accent-strip fallback. Its question: "is this ask still running?"

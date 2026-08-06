@@ -40,6 +40,7 @@ wikilens/
 │   ├── debug/                    # debug-window page (React, own bundle): events.ts IPC boundary, askState reducer, DebugApp/AskCard, own styles.css
 │   └── components/
 │       ├── GameChip.tsx          # header chip: current game, opens the game menu
+│       ├── GameSuggestion.tsx    # header chip offering the detected game; applies only on click (accent, left of GameChip)
 │       ├── GameMenu.tsx          # game menu: filter, Recent, monogram tiles, pinned "Add a game…"
 │       ├── HistoryMenu.tsx       # answer-history menu: past questions newest-first, filter, pinned "Clear history"; picking restores without re-asking
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
@@ -73,7 +74,7 @@ wikilens/
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
         ├── debug_window.rs       # visual debug window (flag-gated): glass, draggable, never activates; create/show/toggle + the emit_to sink
-        ├── detect/{mod,foreground}.rs  # foreground-window detection: Win32 probe (Windows-only) + the pure `reduce` privacy boundary; WIKILENS_DEBUG spike, matching table follows
+        ├── detect/{mod,foreground,rules}.rs  # foreground-game detection: Win32 probe (Windows-only) + the pure `reduce` privacy boundary + `match_game` + the exe→game table
         ├── config_guardrails.rs  # test-only: parses the shipped config/capability files, pins the security invariants
         ├── test_support.rs       # test-only: shared wiremock fixtures + proptest strategies
         └── wiki/{mod,games,user,probe,search,fetch,html,wikitext,titles}.rs  # registry (+ user store, probe validation) + search + fetch rendered HTML → plaintext; titles = per-game typo-recovery index
@@ -156,8 +157,14 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Commands return `Result<T, String>`** with user-readable messages; internal
   fallible code uses `AppError` (`error.rs`), converted to `String` at the boundary.
 - **Namespaced events** (payloads):
-  - `overlay://shown` — `()`; frontend focuses the prompt input and selects
-    the old question — unless the panel hid <2s ago (see `overlay://hidden`).
+  - `overlay://shown` — `{ detectedGame: string | null }`; frontend focuses the
+    prompt input and selects the old question — unless the panel hid <2s ago
+    (see `overlay://hidden`). `detectedGame` is the game whose process owned
+    the foreground window when the panel opened (`detect/`, sampled before
+    `set_focus()`); the header renders it as a one-tap `GameSuggestion` chip
+    and **only a click applies it** — Rust never changes the selection. `null`
+    means "unknown, keep the player's pick", never "no game" and never an
+    error. `api.ts` normalizes a payload-less emit to `{detectedGame: null}`.
   - `overlay://hidden` — `()`; fired by every hide path (Esc, hotkey toggle,
     tray, Alt+F4, capture). The frontend timestamps it and skips the next
     show's select-all within 2s, so an accidental hide can't arm a
@@ -194,7 +201,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   returns zero hits). Prefer official/independent wikis over stale Fandom
   copies. Anchor each new game with a golden query (`GOLDEN_CASES` in
   `wiki/mod.rs` — an offline test fails if a built-in lacks one; verify the
-  new case live via `cargo test golden -- --ignored`).
+  new case live via `cargo test golden -- --ignored`). A foreground-detect
+  rule (`detect/rules.rs`) is **optional and separate**: add one only when the
+  executable was observed on a real install, since a rule needs the game
+  installed and CI has none. A game without a rule is fully functional — it
+  just never gets suggested. The offline test runs one direction only (every
+  rule names a registered game), deliberately not its twin.
 - **User-added games** (`add_game`/`suggest_wikis`/`remove_game`): every URL is
   probe-validated in Rust (`wiki/probe.rs` — siteinfo + one test search;
   endpoints derived from the wiki's own `articlepath`/`scriptpath`, never
@@ -284,6 +296,17 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   transparent window area still eats mouse input (not click-through) — an
   idle panel's dead zone stole the game's clicks.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
+- **Sample the foreground window at the top of `show_overlay`, before
+  `show()`/`set_focus()`** — after `set_focus()` the overlay *is* the
+  foreground window, so a later sample reads WikiLens itself and detection
+  silently never fires (no error, no log). Every `show_overlay` call site is
+  pre-guarded to a hidden overlay, so the `pid == GetCurrentProcessId()` check
+  inside `detect::probe` is the only special case needed — the tray path needs
+  none (it samples the shell, matches nothing, and a `null` detection is a
+  no-op by design). Detection is also **suggest-only by contract**: a
+  process-name match is an inference, so `ask` must never see a game the
+  player didn't choose (ADR rationale in
+  `vault/2026-08-04_game-auto-detection.md`).
 - Windows plays its **own one-time open transition** (fade + short rise) the
   first time an HWND is presented — on our hidden-created windows that lands
   on the first summon/show and layers OS motion over the app's entrance.

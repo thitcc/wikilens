@@ -8,6 +8,17 @@ export interface GameInfo {
   custom: boolean;
 }
 
+/** Payload of `overlay://shown`. Carries what Rust learned about the window
+ * the panel just covered. */
+export interface ShownInfo {
+  /** Id of the game whose process owns the foreground window, or `null` when
+   * nothing matched — the player was over a browser, over one of our own
+   * windows, or over a game with no rule. A **suggestion**: the frontend
+   * offers it and only a click applies it. `null` means "unknown, keep the
+   * player's pick", never "no game". */
+  detectedGame: string | null;
+}
+
 /** A probe-verified wiki, from the `suggest_wikis` command. Endpoints are
  * canonical (derived Rust-side from the wiki's own siteinfo). */
 export interface WikiCandidate {

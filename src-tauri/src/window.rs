@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 /// Window label from `tauri.conf.json`.
@@ -62,6 +63,25 @@ fn overlay_window_height(monitor_height: u32, scale: f64, desired: Option<u32>) 
 
 /// Event emitted after the panel is shown so the frontend can focus the input.
 const EVENT_SHOWN: &str = "overlay://shown";
+
+/// Payload of `overlay://shown`.
+///
+/// A struct rather than a bare `Option` so later summon-time facts join it
+/// here instead of minting sibling events — Tauri gives no ordering guarantee
+/// between separate emits, and the frontend's handler is timing-sensitive (it
+/// arms the entrance animation).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShownInfo {
+    /// The game the foreground window was identified as. `None` when nothing
+    /// matched, when the foreground was one of our own windows, or when the
+    /// process could not be read.
+    ///
+    /// A **suggestion**, never an instruction: the frontend offers it and only
+    /// a click applies it. `None` means "unknown, keep the player's pick" —
+    /// never "no game", and never an error.
+    pub detected_game: Option<String>,
+}
 /// Event emitted after the panel is hidden. The frontend timestamps it to
 /// suppress the next show's select-all when the hide was moments ago — the
 /// guard born as the capital-C trap fix (the old Shift+C default meant typing
@@ -137,32 +157,40 @@ pub fn toggle_overlay(app: &AppHandle) {
     }
 }
 
-/// Phase-0 detection spike (`WIKILENS_DEBUG` only): report what this summon is
-/// about to cover, so the game→executable table can be written from real
-/// observations instead of guesses (vault/2026-08-04_game-auto-detection.md).
+/// Session tally behind the debug line. Diagnostic only — never crosses IPC.
+/// The ratio is what says whether the rules table is worth growing; nobody has
+/// estimated it, and between multi-monitor focus loss, launcher phases and
+/// user-added wikis it may well be under half.
+static DETECT_HITS: AtomicU32 = AtomicU32::new(0);
+static DETECT_MISSES: AtomicU32 = AtomicU32::new(0);
+
+/// Identify the game this summon is about to cover.
 ///
-/// Callers must invoke this **before** the panel is shown: `set_focus()` makes
-/// the overlay the foreground window, and a sample taken after it reads
-/// WikiLens itself. Both legs print, so "summoned over the desktop and matched
-/// nothing" stays distinguishable from "the gate is off".
+/// Must run **before** the panel is shown: `set_focus()` below makes the
+/// overlay the foreground window, and a sample taken after it reads WikiLens
+/// itself. Every `show_overlay` call site is pre-guarded to a hidden overlay,
+/// so the PID check inside the probe is the only special case needed.
 ///
-/// The raw executable and caption go to stderr and nowhere else — never a
-/// `debug://` payload (whose key sets are pin-tested), never `history.json`,
-/// never IPC. Reshaped into a matched-id line when the rules table lands.
-fn log_foreground_spike() {
-    if !crate::debug::debug_enabled() {
-        return;
-    }
-    match crate::detect::probe() {
-        Some((path, title)) => {
-            let fg = crate::detect::reduce(&path, &title);
-            eprintln!(
-                "[wikilens] foreground: exe={:?} parent={:?} title={:?}",
-                fg.exe, fg.parent, fg.title
-            );
+/// Only the resolved game id travels onward. The executable path and window
+/// caption stay inside `detect` — never a `debug://` payload (whose key sets
+/// are pin-tested), never `history.json`, never IPC.
+fn detect_game_under_overlay() -> Option<String> {
+    let detected = crate::detect::detect_foreground_game();
+    if crate::debug::debug_enabled() {
+        let hits = DETECT_HITS.load(Ordering::SeqCst);
+        let misses = DETECT_MISSES.load(Ordering::SeqCst);
+        match detected {
+            Some(id) => eprintln!("[wikilens] detected {id} ({} hit / {misses} miss)", hits + 1),
+            None => eprintln!("[wikilens] detected nothing ({hits} hit / {} miss)", misses + 1),
         }
-        None => eprintln!("[wikilens] foreground: none"),
     }
+    let counter = if detected.is_some() {
+        &DETECT_HITS
+    } else {
+        &DETECT_MISSES
+    };
+    counter.fetch_add(1, Ordering::SeqCst);
+    detected.map(str::to_string)
 }
 
 /// Dock the overlay to the top-right of its current monitor, show it, take
@@ -175,13 +203,15 @@ pub fn show_overlay(app: &AppHandle) {
         eprintln!("[wikilens] overlay window '{OVERLAY_LABEL}' not found");
         return;
     };
-    log_foreground_spike();
+    // Sample first: `set_focus()` below makes the overlay the foreground
+    // window, so anything later would read WikiLens itself.
+    let detected_game = detect_game_under_overlay();
     if let Err(e) = position_top_right(&win) {
         eprintln!("[wikilens] failed to position overlay: {e}");
     }
     let _ = win.show();
     let _ = win.set_focus();
-    let _ = win.emit(EVENT_SHOWN, ());
+    let _ = win.emit(EVENT_SHOWN, ShownInfo { detected_game });
 }
 
 /// Show the overlay only when it's hidden. The guard is the point: re-showing
