@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-05",
+  "generatedAt": "2026-08-12",
   "title": "Design System: WikiLens",
   "extensions": {
     "colorMeta": {
@@ -81,6 +81,90 @@
         "displayName": "Rose Line",
         "canonical": "rgba(255, 120, 140, 0.25)",
         "tonalRamp": ["rgba(255,120,140,0.1)", "rgba(255,120,140,0.18)", "rgba(255,120,140,0.25)", "rgba(255,120,140,0.4)", "rgba(255,120,140,0.55)", "rgba(255,120,140,0.7)", "rgba(255,120,140,0.85)", "rgba(255,120,140,1)"]
+      },
+      "micro-cream-ink": {
+        "role": "neutral",
+        "displayName": "Cream Ink (Micrographics)",
+        "canonical": "#eae4d4",
+        "tonalRamp": ["#151411", "#272521", "#3a3833", "#4f4c45", "#67645b", "#847f74", "#b7b2a5", "#eae4d4"]
+      },
+      "micro-ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink (Micrographics)",
+        "canonical": "#a49d8b",
+        "tonalRamp": ["#14130f", "#25231e", "#37342d", "#4a473d", "#5e5a4e", "#736e60", "#a49d8b", "#cfc9b8"]
+      },
+      "micro-ink-strong": {
+        "role": "neutral",
+        "displayName": "Strong Ink (Micrographics)",
+        "canonical": "#f7f2e3",
+        "tonalRamp": ["#18170f", "#2c2b23", "#413f36", "#585549", "#716e5f", "#8d8a7a", "#c6c1b1", "#f7f2e3"]
+      },
+      "micro-parchment": {
+        "role": "primary",
+        "displayName": "Parchment (Micrographics accent)",
+        "canonical": "#d9c69a",
+        "tonalRamp": ["#141006", "#2c2410", "#453a1c", "#5f512b", "#7c6a3f", "#a08a5c", "#d9c69a", "#ecdfc2"]
+      },
+      "micro-carbon-glass": {
+        "role": "neutral",
+        "displayName": "Carbon Glass (Micrographics)",
+        "canonical": "rgba(19, 18, 15, 0.94)",
+        "tonalRamp": ["#090805", "#13120f", "#1c1b16", "#272620", "#35342c", "#4b4a3f", "#6c6a5c", "#9d9a8a"]
+      },
+      "micro-menu-glass": {
+        "role": "neutral",
+        "displayName": "Menu Glass (Micrographics)",
+        "canonical": "rgba(23, 22, 19, 0.98)",
+        "tonalRamp": ["#0b0a08", "#171613", "#22211c", "#2e2d26", "#3d3c32", "#545245", "#757263", "#a5a291"]
+      },
+      "micro-veil": {
+        "role": "neutral",
+        "displayName": "Cream Veil (Micrographics)",
+        "canonical": "rgba(234, 228, 212, 0.07)",
+        "tonalRamp": ["rgba(234,228,212,0.03)", "rgba(234,228,212,0.07)", "rgba(234,228,212,0.1)", "rgba(234,228,212,0.14)", "rgba(234,228,212,0.2)", "rgba(234,228,212,0.3)", "rgba(234,228,212,0.45)", "rgba(234,228,212,0.7)"]
+      },
+      "micro-veil-raised": {
+        "role": "neutral",
+        "displayName": "Raised Cream Veil (Micrographics)",
+        "canonical": "rgba(234, 228, 212, 0.1)",
+        "tonalRamp": ["rgba(234,228,212,0.05)", "rgba(234,228,212,0.1)", "rgba(234,228,212,0.14)", "rgba(234,228,212,0.18)", "rgba(234,228,212,0.26)", "rgba(234,228,212,0.36)", "rgba(234,228,212,0.5)", "rgba(234,228,212,0.75)"]
+      },
+      "micro-ink-well": {
+        "role": "neutral",
+        "displayName": "Ink Well (Micrographics)",
+        "canonical": "rgba(0, 0, 0, 0.32)",
+        "tonalRamp": ["rgba(0,0,0,0.08)", "rgba(0,0,0,0.16)", "rgba(0,0,0,0.32)", "rgba(0,0,0,0.38)", "rgba(0,0,0,0.5)", "rgba(0,0,0,0.68)", "rgba(0,0,0,0.8)", "rgba(0,0,0,0.92)"]
+      },
+      "micro-hairline": {
+        "role": "neutral",
+        "displayName": "Hairline (Micrographics — one step stronger)",
+        "canonical": "rgba(234, 228, 212, 0.16)",
+        "tonalRamp": ["rgba(234,228,212,0.08)", "rgba(234,228,212,0.16)", "rgba(234,228,212,0.22)", "rgba(234,228,212,0.28)", "rgba(234,228,212,0.35)", "rgba(234,228,212,0.45)", "rgba(234,228,212,0.6)", "rgba(234,228,212,0.8)"]
+      },
+      "micro-line": {
+        "role": "neutral",
+        "displayName": "Rule Line (Micrographics instrument layer)",
+        "canonical": "rgba(234, 228, 212, 0.35)",
+        "tonalRamp": ["rgba(234,228,212,0.12)", "rgba(234,228,212,0.2)", "rgba(234,228,212,0.28)", "rgba(234,228,212,0.35)", "rgba(234,228,212,0.45)", "rgba(234,228,212,0.6)", "rgba(234,228,212,0.75)", "rgba(234,228,212,0.9)"]
+      },
+      "micro-salmon-signal": {
+        "role": "error",
+        "displayName": "Salmon Signal (Micrographics)",
+        "canonical": "#ffb4a4",
+        "tonalRamp": ["#2b0f0a", "#4d1c13", "#70291d", "#933a2b", "#b6543f", "#d97f6b", "#ffb4a4", "#ffd9d1"]
+      },
+      "micro-salmon-wash": {
+        "role": "error",
+        "displayName": "Salmon Wash (Micrographics)",
+        "canonical": "rgba(122, 44, 28, 0.35)",
+        "tonalRamp": ["rgba(122,44,28,0.12)", "rgba(122,44,28,0.2)", "rgba(122,44,28,0.35)", "rgba(122,44,28,0.5)", "rgba(122,44,28,0.65)", "rgba(122,44,28,0.8)", "rgba(122,44,28,0.9)", "rgba(122,44,28,1)"]
+      },
+      "micro-salmon-line": {
+        "role": "error",
+        "displayName": "Salmon Line (Micrographics)",
+        "canonical": "rgba(255, 138, 112, 0.25)",
+        "tonalRamp": ["rgba(255,138,112,0.1)", "rgba(255,138,112,0.18)", "rgba(255,138,112,0.25)", "rgba(255,138,112,0.4)", "rgba(255,138,112,0.55)", "rgba(255,138,112,0.7)", "rgba(255,138,112,0.85)", "rgba(255,138,112,1)"]
       }
     },
     "typographyMeta": {
@@ -90,11 +174,18 @@
       "label": { "displayName": "Label", "purpose": "Uppercase tracked section headings inside menus, badges, metadata." },
       "code": { "displayName": "Code", "purpose": "The instrument voice: model ids, timings, monograms, inline code." },
       "caret": { "displayName": "Caret", "purpose": "The 9px menu caret glyph — typography used as iconography, never as copy; sits below the ramp's 12px reading floor." },
-      "monogram": { "displayName": "Monogram", "purpose": "The 10px mono lettering inside the 20×20 monogram tile — the system's only \"icon\", and it's typography, not copy." }
+      "monogram": { "displayName": "Monogram", "purpose": "The 10px mono lettering inside the 20×20 monogram tile — the system's only \"icon\", and it's typography, not copy." },
+      "micro-ui": { "displayName": "UI Face (Micrographics)", "purpose": "Cascadia Code promoted from instrument voice to the UI face under the Micrographics theme; sizes and leadings hold the default scale." },
+      "micro-title": { "displayName": "Title (Micrographics)", "purpose": "The brand under Micrographics: regular weight, spread to 0.14em, CSS-uppercased — weight demoted, tracking promoted." },
+      "micro-label": { "displayName": "Label (Micrographics)", "purpose": "Uppercase chip labels under Micrographics: 12px at 0.1em tracking; JS swaps spaces for underscores, CSS owns the case, accessible names stay sentence case." },
+      "micro-section-head": { "displayName": "Section Head (Micrographics)", "purpose": "The 10px indexed heads (/01 PROMPT…) — decorative micro-copy below the reading floor, never message text, aria-hidden." },
+      "micro-arrow": { "displayName": "Source Arrow (Micrographics)", "purpose": "The 11px ↗ on source links — typography as iconography, like the caret." }
     },
     "shadows": [
       { "name": "panel-float", "value": "0 12px 32px rgba(0, 0, 0, 0.32)", "purpose": "Lifts the glass sheet off the game frame; with the 12px backdrop blur and 1px hairline it forms the glass material." },
-      { "name": "menu-float", "value": "0 16px 40px rgba(0, 0, 0, 0.45)", "purpose": "The second altitude: menus standing on the panel. No third shadow exists." }
+      { "name": "menu-float", "value": "0 16px 40px rgba(0, 0, 0, 0.45)", "purpose": "The second altitude: menus standing on the panel. No third shadow exists." },
+      { "name": "micro-panel-float", "value": "0 10px 28px rgba(0, 0, 0, 0.38)", "purpose": "Micrographics panel float — tighter and flatter, technical rather than atmospheric; same altitude, different voice." },
+      { "name": "micro-menu-float", "value": "0 14px 36px rgba(0, 0, 0, 0.5)", "purpose": "Micrographics second altitude. Still no third shadow in any theme." }
     ],
     "motion": [
       { "name": "instant-state", "value": "none", "purpose": "State changes (hover, focus, open) apply instantly — the player is mid-game; new motion enters only through Named-Question-Rule admission." },
@@ -193,14 +284,14 @@
     "overview": "WikiLens is a field guide flipped open mid-hike: you summon it over the running game, read one terse, sourced entry, and pocket it again in seconds. The whole visual system serves that gesture. The surface is a single sheet of smoked glass (near-opaque so text survives any game backdrop) docked at the screen's right edge, hugging its content; everything on it is ink first and chrome never. The interface's personality — quiet, precise, instant — comes from what it refuses to do: no decoration, no motion without a question to answer, no color that isn't information.\n\nThe system explicitly rejects Overwolf-style gamer overlay bloat (neon RGB, widget clusters, aggressive branding) and generic AI chatbot styling (chat bubbles, bot avatars, sparkle-emoji \"AI\" decoration, typing indicators). The game is the main character; WikiLens borrows the screen and gives it back.",
     "keyCharacteristics": [
       "One smoked-glass sheet over the game; content-hugging, right-docked, gone when dismissed.",
-      "One accent hue (Moonlight Blue) that only ever marks the interactive, the selected, and the focused; a rose trio that only ever marks failure.",
+      "One accent hue per theme (Moonlight Blue in the default, Parchment in Micrographics — see Themes) that only ever marks the interactive, the selected, and the focused; one failure trio that only ever marks failure.",
       "A 14px type ceiling: hierarchy by weight and ink strength, never by size.",
       "Controls are quiet until touched — bare ink at rest, a faint veil on hover.",
       "Two altitudes exactly: the panel above the game, menus above the panel.",
       "State changes are instant; motion is governed by the Named-Question Rule and speaks the Quiet Directional voice (see Motion) — six admitted motions: five on the overlay and the debug window's shimmer."
     ],
     "rules": [
-      { "name": "The One Signal Rule", "body": "Moonlight Blue is the interface's only voice of color. If an element is not interactive, selected, or focused, it stays ink. The rose trio speaks only on failure. There is no third hue, and there are no gradients.", "section": "colors" },
+      { "name": "The One Signal Rule", "body": "Each theme has exactly one accent voice. In the default theme it is Moonlight Blue; in Micrographics it is Parchment (#d9c69a). If an element is not interactive, selected, or focused, it stays ink. The failure trio (rose in the default, salmon in Micrographics) speaks only on failure. There is no third hue in any theme, and there are no gradients.", "section": "colors" },
       { "name": "The Fourteen-Pixel Ceiling", "body": "14px is the largest type in the product. Nothing displays, headlines, or shouts; hierarchy is carried by weight, ink strength (muted → ink → strong), tracking, and case. If a design wants a bigger font, it wants attention the game should keep.", "section": "typography" },
       { "name": "The Two Altitudes Rule", "body": "Exactly two things float: the panel above the game, and menus above the panel. There is no third level — no raised cards, no hovering toasts, no shadowed buttons. If a new element wants a shadow, it is claiming to be a window, and it almost certainly isn't one.", "section": "elevation" },
       { "name": "The Named-Question Rule", "body": "Motion may exist only to answer a question the player already has — \"did my keypress register?\", \"where did this come from?\", \"did that attach?\" — and only when it answers faster than a hard cut would. Every animation names its question, in a stylesheet comment and in its PR; a motion whose question can't be named is decoration, and this register rejects decoration. Motions that pass are still bound: transform/opacity only (the glass floats over a GPU-saturated game — compositor work, never repaint); ≤200ms; ease-out on entry; exits are instant — leaving is the product; input readiness is never delayed (animation is paint, not gate); and everything sits behind prefers-reduced-motion with a static fallback. The answer stream and focus indicators never animate. Candidates enter through a live test over real game backdrops; admission updates this inventory in the same PR.", "section": "motion" }
@@ -212,14 +303,15 @@
       "Do reserve Moonlight Blue for the interactive, the selected, and the focused (the One Signal Rule) — answers and data stay ink.",
       "Do build every picker as an owned menu on Menu Glass, and keep menus direct children of .panel so .content's overflow can't clip them.",
       "Do keep state changes instant unless a motion has passed the Named-Question Rule, and gate every admitted animation behind prefers-reduced-motion with a static fallback (the debug shimmer is the template).",
-      "Do retune paired constants together — styles.css margins ↔ window.rs floats, --menu-clearance* ↔ menuPlacement.ts, and .caret-ghost's padding/type ↔ .source-row .model-row's — whenever geometry tokens change."
+      "Do retune paired constants together — styles.css margins ↔ window.rs floats, --menu-clearance* ↔ menuPlacement.ts, and .caret-ghost's padding/type ↔ .source-row .model-row's — whenever geometry tokens change.",
+      "Do express a new theme as token overrides only: ink, surfaces, borders, shape, shadows, and type voice. Rhythm, pads, text sizes, leadings, blur, and every JS-twinned geometry token (--panel-gap, --shadow-room-*, --menu-clearance*) are theme-invariant — a theme block never redeclares them (pinned by src/styles.guardrails.test.ts)."
     ],
     "donts": [
       "Don't ship Overwolf-style gamer overlay bloat: neon RGB, widget clusters, ads, or aggressive branding competing with the game for attention.",
       "Don't ship generic AI chatbot styling: chat bubbles, bot avatars, sparkle-emoji \"AI\" decoration, or typing indicators.",
       "Don't reintroduce a native <select> (or any OS-drawn popup) for anything shown over the game.",
       "Don't add a third elevation — no shadowed buttons, raised cards, or toasts (the Two Altitudes Rule).",
-      "Don't introduce a new hue or gradient; the palette is Moonlight Blue, the inks, and the rose error trio.",
+      "Don't introduce a new hue or gradient; each theme's palette is its one accent, its inks, and its failure trio — nothing else, in any theme.",
       "Don't scale type past 14px for emphasis — promote weight or ink instead (the Fourteen-Pixel Ceiling).",
       "Don't ship a motion that can't name its question (the Named-Question Rule) — and never animate the answer stream or focus indicators; the player is mid-game and the audit test is: if you notice the panel while not asking it something, it's too loud."
     ]
