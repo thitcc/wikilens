@@ -28,10 +28,15 @@ import {
   validateCombo,
 } from "../hotkeys";
 import { keyHelp } from "../providerHelp";
+import type { ThemeId } from "../theme";
 import { Badge } from "./Badge";
 
 interface SettingsMenuProps {
   settings: SettingsInfo;
+  /** The active appearance (DESIGN.md §8) — App owns the state and the
+   * localStorage write; this panel only renders the pick and reports clicks. */
+  theme: ThemeId;
+  onThemeChange: (next: ThemeId) => void;
   /** A shortcut or the mode was saved (already persisted Rust-side). */
   onSaved: (next: SettingsInfo) => void;
   /** A key was saved or removed — App re-fetches the keyed-provider list.
@@ -115,6 +120,8 @@ function comboKeys(parts: string[]) {
  */
 export function SettingsMenu({
   settings,
+  theme,
+  onThemeChange,
   onSaved,
   onKeysChanged,
   onClose,
@@ -620,6 +627,38 @@ export function SettingsMenu({
     );
   };
 
+  /** One theme row: the appearance pick (DESIGN.md §8). A sibling of modeRow
+   * rather than a parameterization — a mode pick is an IPC round trip with an
+   * error slot, a theme pick is pure frontend state with nothing to fail —
+   * but it clones the same anatomy so the two sections read as one
+   * vocabulary. Deliberately not busyAll-gated: swapping chrome mid-action
+   * is safe, and the live swap is the theme's own preview. */
+  const themeRow = (opts: { id: ThemeId; name: string; label: string }) => {
+    const selected = theme === opts.id;
+    return (
+      // Namespaced key: the mode rows are siblings in the same children list
+      // and already claim "default" (modeRow keys on its Mode).
+      <div className="source-row" key={`theme-${opts.id}`}>
+        <button
+          type="button"
+          className={"model-row" + (selected ? " selected" : "")}
+          aria-current={selected ? "true" : undefined}
+          aria-label={opts.label}
+          onClick={() => onThemeChange(opts.id)}
+        >
+          <span className="row-main">
+            <span className="row-name">{opts.name}</span>
+          </span>
+          <span className="row-side">
+            <span className="check" aria-hidden="true">
+              ✓
+            </span>
+          </span>
+        </button>
+      </div>
+    );
+  };
+
   /* A key line: an unkeyed name opens the field; a keyed line is static —
      the Set pill marks it and the trash is its only control. Nothing here is
      a choice — only the two mode rows above are. */
@@ -764,6 +803,18 @@ export function SettingsMenu({
             {statuses?.map(keyLine)}
           </div>
         )}
+
+        <div className="menu-heading">Theme</div>
+        {themeRow({
+          id: "default",
+          name: "Default",
+          label: "Use the default theme",
+        })}
+        {themeRow({
+          id: "micrographics",
+          name: "Micrographics",
+          label: "Use the Micrographics theme",
+        })}
 
         <div className="menu-heading">Shortcuts</div>
         {row("summon", settings.hotkeys.summon)}

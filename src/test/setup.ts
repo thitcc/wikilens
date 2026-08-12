@@ -21,4 +21,8 @@ afterEach(() => {
   clearMocks();
   localStorage.clear();
   resetResizeObservers();
+  // App writes the theme to the root element (outside React's tree, so
+  // cleanup() never touches it) — without this a micrographics test leaks
+  // its attribute into the next test in the same file.
+  delete document.documentElement.dataset.theme;
 });

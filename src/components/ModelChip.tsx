@@ -1,8 +1,13 @@
 import type { RefObject } from "react";
+import { instrumentLabel } from "../instrument";
+import type { ThemeId } from "../theme";
 
 interface ModelChipProps {
   providerName: string;
   modelLabel: string;
+  /** Drives the Micrographics label transform only — visible text gets
+   * underscores per segment (the · separator stays), aria stays raw. */
+  theme?: ThemeId;
   open: boolean;
   disabled?: boolean;
   onToggle: () => void;
@@ -17,11 +22,15 @@ interface ModelChipProps {
 export function ModelChip({
   providerName,
   modelLabel,
+  theme,
   open,
   disabled,
   onToggle,
   buttonRef,
 }: ModelChipProps) {
+  const micro = theme === "micrographics";
+  const providerText = micro ? instrumentLabel(providerName) : providerName;
+  const modelText = micro ? instrumentLabel(modelLabel) : modelLabel;
   return (
     <button
       ref={buttonRef}
@@ -33,7 +42,7 @@ export function ModelChip({
       aria-label={`Model: ${providerName} ${modelLabel}`}
       onClick={onToggle}
     >
-      {providerName} <span className="dot">·</span> {modelLabel}{" "}
+      {providerText} <span className="dot">·</span> {modelText}{" "}
       <span className="caret">▾</span>
     </button>
   );

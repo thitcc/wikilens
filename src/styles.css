@@ -1423,3 +1423,228 @@ body {
     }
   }
 }
+
+/* ================================ Themes ==================================
+   DESIGN.md §8. The default theme IS the bare :root block at the top of this
+   file — no attribute. A non-default theme is an overrides-only block set on
+   the root element by App (document.documentElement.dataset.theme); removing
+   the attribute restores the default. Themes are chrome: ink, surfaces,
+   borders, shape, shadow values, and the type voice. Rhythm, pads, text
+   sizes, leadings, blur, and the JS-twinned geometry (--panel-gap,
+   --shadow-room-*, --menu-clearance*) are theme-invariant and never
+   redeclared here — pinned by styles.guardrails.test.ts. */
+
+:root[data-theme="micrographics"] {
+  /* Ink — cream on warm carbon (DESIGN.md colors.micro-*). */
+  --fg: #eae4d4;
+  --fg-muted: #a49d8b;
+  --fg-strong: #f7f2e3;
+  --accent: #d9c69a; /* Parchment — this theme's one accent voice */
+
+  /* Glass surfaces — warm near-black, cream-tinted veils; the hairline sits
+     a step stronger because thin lines are this style's structure. */
+  --surface-panel: rgba(19, 18, 15, 0.94);
+  --surface-control: rgba(234, 228, 212, 0.07);
+  --surface-raised: rgba(234, 228, 212, 0.1);
+  --surface-inset: rgba(0, 0, 0, 0.32);
+  --surface-menu: rgba(23, 22, 19, 0.98);
+  --border: rgba(234, 228, 212, 0.16);
+
+  /* Status — rose warmed to salmon; still only ever the failure voice. */
+  --error-fg: #ffb4a4;
+  --error-bg: rgba(122, 44, 28, 0.35);
+  --error-border: rgba(255, 138, 112, 0.25);
+
+  /* Shape — drafting-sharp: the theme's loudest single move. */
+  --radius-chip: 0px;
+  --radius-control: 0px;
+  --radius-input: 0px;
+  --radius-panel: 0px;
+
+  /* Shadow values — tighter and flatter, technical rather than atmospheric.
+     Values only: the shadow-room geometry stays the default's. */
+  --shadow-panel: 0 10px 28px rgba(0, 0, 0, 0.38);
+  --shadow-menu: 0 14px 36px rgba(0, 0, 0, 0.5);
+
+  /* Type voice — the mono stack becomes the UI face (system Cascadia with
+     the Consolas fallback; nothing is bundled or fetched). The brand drops
+     to regular weight and spreads out. Sizes and leadings hold the default
+     scale — the clearance twins depend on it. */
+  --font-ui: "Cascadia Code", ui-monospace, Consolas, monospace;
+  --weight-brand: 400;
+  --tracking-brand: 0.14em;
+  --tracking-label: 0.1em;
+
+  /* The instrument layer's structural line (ruler ticks, section rules). */
+  --line: rgba(234, 228, 212, 0.35);
+}
+
+/* ---- Instrument layer (DESIGN.md §8) — component-voice marks that exist
+   only under Micrographics. The split with instrument.ts: JS owns characters
+   (underscores), CSS owns case, so accessible names stay sentence case and
+   no label is ever transformed twice. Everything here is flat ink inside
+   existing line boxes or measured content flow — rendered header/footer
+   heights never grow, so the clearance twins hold. */
+
+/* The spec-plate brand: caps over the wide tracking set above. */
+:root[data-theme="micrographics"] .brand {
+  text-transform: uppercase;
+}
+
+/* Chip labels drop to label size, caps, tracked — the UPPERCASE_LABEL voice.
+   12px in the same line keeps every chip's box under the default's 13px one,
+   so the header and footer only get shorter, never taller. */
+:root[data-theme="micrographics"] .quiet-chip {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* The game identity chip wears index brackets. Generated content with the
+   alt-text syntax stays out of accessible names; scoped to .game-chip so the
+   suggestion chip sharing .chip-name in the same cluster stays bare. */
+:root[data-theme="micrographics"] .game-chip .chip-name::before {
+  content: "[ " / "";
+}
+
+:root[data-theme="micrographics"] .game-chip .chip-name::after {
+  content: " ]" / "";
+}
+
+/* The capture chip's crosshair — a 12px glyph mark, not an icon asset. */
+:root[data-theme="micrographics"] .capture-chip .chip-name::before {
+  content: "⌖ " / "";
+}
+
+/* Header ruler — the spec plate's tick strip, absolutely positioned into the
+   panel's 12px flex gap below the header so the header's rendered height
+   (the --menu-clearance-top twin) never moves. Fine ticks every 7px under
+   major ticks every 35px. */
+:root[data-theme="micrographics"] .panel-header {
+  position: relative;
+}
+
+:root[data-theme="micrographics"] .panel-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + var(--space-2));
+  height: 7px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--fg-muted) 0 1px,
+      transparent 1px 35px
+    ),
+    repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 7px);
+  pointer-events: none;
+}
+
+/* Indexed section heads (/01 Prompt…, uppercased here) — decorative
+   micro-copy, aria-hidden in the JSX, 10px under the reading floor beside
+   the caret and monogram (DESIGN.md §3). Mounted only under this theme. */
+:root[data-theme="micrographics"] .section-head {
+  display: flex;
+  align-items: center;
+  color: var(--fg-muted);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="micrographics"] .section-head::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  margin-left: var(--space-8);
+  background: var(--line);
+}
+
+/* The sources label is already an uppercase head — under this theme it
+   becomes the third indexed section instead of gaining a duplicate twin. */
+:root[data-theme="micrographics"] .sources-label {
+  display: flex;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+:root[data-theme="micrographics"] .sources-label::before {
+  content: "/03 " / "";
+  white-space: pre;
+}
+
+:root[data-theme="micrographics"] .sources-label::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  margin-left: var(--space-8);
+  background: var(--line);
+}
+
+/* The status row speaks the label voice; the phase text is still the
+   accessible status — case is paint. The slow-wiki hint opts back out: it is
+   a sentence, not a label. */
+:root[data-theme="micrographics"] .status [role="status"] {
+  font-size: var(--text-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="micrographics"] .status .status-hint {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+:root[data-theme="micrographics"] .status-stop {
+  margin-left: auto;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* Dot-matrix progress — aria-hidden glyph row beside the phase label; the
+   filled dots speak accent. 9px: a glyph size, not copy (DESIGN.md §3). */
+:root[data-theme="micrographics"] .status-dots {
+  font-size: 9px;
+  letter-spacing: 2px;
+}
+
+:root[data-theme="micrographics"] .status-dots .on {
+  color: var(--accent);
+}
+
+/* Source links: uppercase with the 11px ↗ — typography as iconography. */
+:root[data-theme="micrographics"] .source-link {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="micrographics"] .source-link::after {
+  content: " ↗" / "";
+  font-size: 11px;
+}
+
+/* The prompt placeholder wears the label voice (ASK_ABOUT_THE_GAME…). */
+:root[data-theme="micrographics"] .prompt-input::placeholder {
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* Footer barcode — pure decoration as a flex item inside the capture
+   cluster's line box (12px tall < the chip line), so the footer's rendered
+   height (the --menu-clearance twin) never moves. */
+:root[data-theme="micrographics"] .capture-cluster::after {
+  content: "";
+  width: 36px;
+  height: 12px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--fg-muted) 0 1px,
+    transparent 1px 3px,
+    var(--fg-muted) 3px 6px,
+    transparent 6px 7px
+  );
+  opacity: 0.7;
+}

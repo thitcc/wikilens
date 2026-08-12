@@ -49,6 +49,12 @@ import {
   sameModelPick,
   storedModel,
 } from "./modelPick";
+import { THEME_STORAGE_KEY, storedTheme, type ThemeId } from "./theme";
+import {
+  DOT_TOTAL,
+  MICRO_PROMPT_PLACEHOLDER,
+  statusDots,
+} from "./instrument";
 import { AddGameMenu } from "./components/AddGameMenu";
 import { GameChip } from "./components/GameChip";
 import { GameSuggestion } from "./components/GameSuggestion";
@@ -187,6 +193,10 @@ function App() {
     storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
   );
   const [recentGames, setRecentGames] = useState<string[]>(storedRecentGames);
+  // The appearance pick (DESIGN.md §8) — a UI pick like the game/model ones,
+  // so it lives in localStorage; the corruption-tolerant reader owns the
+  // default. Reaches CSS via the data-theme effect below.
+  const [theme, setTheme] = useState<ThemeId>(storedTheme);
   // The game Rust identified under the panel on the last summon. A suggestion
   // only — nothing reads it except the header chip below.
   const [detectedGame, setDetectedGame] = useState<string | null>(null);
@@ -275,6 +285,19 @@ function App() {
   // chunk already in flight when Start over wipes the panel must not
   // repaint orphan text on it (deltas keep draining until the abort lands).
   const streamEpochRef = useRef(0);
+
+  // The theme reaches CSS through the root element's data-theme attribute
+  // (styles.css `:root[data-theme=…]`). The default theme is the attribute's
+  // ABSENCE — deleting it keeps the bare :root block the single source of the
+  // default appearance (DESIGN.md §8). The window starts hidden, so the
+  // post-render swap can never flash on screen.
+  useEffect(() => {
+    if (theme === "default") {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = theme;
+    }
+  }, [theme]);
 
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
@@ -668,6 +691,14 @@ function App() {
     closeMenu();
   }
 
+  function handleThemeChange(next: ThemeId) {
+    // Storage first, mirroring handleModelSelect. Pure UI state — no IPC
+    // rides on a theme pick, and the menu stays open so the swap is the
+    // preview (DESIGN.md §8).
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    setTheme(next);
+  }
+
   const provider = providers.find((p) => p.id === selectedProvider);
   // Whether the active model can read images — gates capture and image submit.
   // Default mode: the env-declared flag (opt-in, text-only unless set);
@@ -980,6 +1011,7 @@ function App() {
                 : (games.find((g) => g.id === selectedGame)?.name ??
                   "Pick a game")
             }
+            theme={theme}
             open={openMenu === "game"}
             disabled={busy}
             // Closing must go through closeMenu(): the click focuses the chip,
@@ -993,12 +1025,24 @@ function App() {
         </span>
       </header>
 
+      {/* Micrographics instrument layer (DESIGN.md §8): indexed section
+          heads are decorative micro-copy — aria-hidden, mounted only under
+          the theme. Sentence case here; CSS owns the caps. */}
+      {theme === "micrographics" && (
+        <div className="section-head" aria-hidden="true">
+          /01 Prompt
+        </div>
+      )}
+
       <PromptInput
         value={question}
         onChange={setQuestion}
         onSubmit={handleSubmit}
         busy={busy}
         inputRef={inputRef}
+        placeholder={
+          theme === "micrographics" ? MICRO_PROMPT_PLACEHOLDER : undefined
+        }
       />
 
       {/* Attached screenshot — a direct .panel child, never inside .content
@@ -1067,6 +1111,17 @@ function App() {
               announcement
             )}
           </div>
+          {/* Dot-matrix progress (instrument layer): a glyph twin of the
+              phase label beside it — aria-hidden so the label stays the one
+              accessible status. */}
+          {activeStatus && theme === "micrographics" && (
+            <span className="status-dots" aria-hidden="true">
+              <span className="on">
+                {"●".repeat(statusDots(activeStatus))}
+              </span>
+              {"○".repeat(DOT_TOTAL - statusDots(activeStatus))}
+            </span>
+          )}
           {activeStatus && (
             <button
               type="button"
@@ -1084,6 +1139,11 @@ function App() {
             already streamed (submit cleared `answer`, so it's this ask's own
             text). Sources are cleared on submit and set only on success, so
             the list self-hides under an error. */}
+        {answer && theme === "micrographics" && (
+          <div className="section-head" aria-hidden="true">
+            /02 Answer
+          </div>
+        )}
         {answer && <AnswerView markdown={answer} />}
         <SourceList sources={sources} />
         {showPlaceholder && (
@@ -1111,6 +1171,7 @@ function App() {
           <ModelChip
             providerName={provider.name}
             modelLabel={modelPick?.label ?? provider.defaultModelLabel}
+            theme={theme}
             open={openMenu === "model"}
             disabled={busy}
             // Same closeMenu() rule as the game chip (focus contract).
@@ -1202,6 +1263,8 @@ function App() {
       {openMenu === "settings" && settings && (
         <SettingsMenu
           settings={settings}
+          theme={theme}
+          onThemeChange={handleThemeChange}
           onSaved={setSettings}
           onKeysChanged={() => setKeysVersion((v) => v + 1)}
           onClose={closeMenu}
