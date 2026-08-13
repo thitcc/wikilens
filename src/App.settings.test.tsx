@@ -63,8 +63,8 @@ test("the header gear opens the Settings panel", async () => {
   expect(screen.getByRole("dialog", { name: "Settings" })).toBeTruthy();
   // Settle the open-time key-status fetch on the unkeyed Anthropic key line
   // (the key field only exists once that line is clicked open). Reachable
-  // without a caret click because a never-chosen mode normalizes to Custom,
-  // which mounts the key lines disclosed.
+  // directly because a never-chosen mode normalizes to Custom, which renders
+  // the key lines (they exist exactly while Custom API answers).
   await screen.findByRole("button", { name: "Add a key for Anthropic" });
 
   // Esc layering holds for the settings menu too.
