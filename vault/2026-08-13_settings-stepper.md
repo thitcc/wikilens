@@ -1,7 +1,7 @@
 ---
 title: Game-style stepper rows for the Settings enum choices
 type: plan
-status: active
+status: done
 created: 2026-08-13
 updated: 2026-08-13
 tags: [frontend, overlay]
@@ -9,7 +9,7 @@ related:
   - "[[2026-08-13_stepper-popover-third-altitude]]"
   - "[[2026-07-29_keys-are-not-a-mode-choice]]"
   - "[[2026-08-12_theme-switching-micrographics]]"
-commit:
+commit: [e41086b, 3c2765d]
 ---
 
 # Game-style stepper rows for the Settings enum choices
@@ -75,3 +75,12 @@ Full execution detail lives in the approved plan file (Claude session,
 ## Status log
 
 - 2026-08-13 — created; plan approved in-session (branch `feat/settings-stepper`).
+- 2026-08-13 — proof-sheet picks (interactive sheet, both themes, live steppers):
+  arrows `◁ ▷` at 9px (the direction-hint precedent); value centered (game
+  voice; the note keeps the right rail); borderless, no position ticks (the
+  instrument-trim rule held); popover enters with 120ms fade + 4px drop —
+  admitted as **A-06 · stepper-popover-arrive** (exit instant, reduced-motion
+  guarded, direction-aware travel).
+- 2026-08-13 — shipped: `e41086b` (Stepper + SettingsMenu rewiring + CSS +
+  test sweep, 233 green) and `3c2765d` (DESIGN.md amendments + sidecar,
+  CLAUDE.md/README/smoke-checklist). A-06 reuses A-04's keyframes. Closed.

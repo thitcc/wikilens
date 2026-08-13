@@ -1,7 +1,7 @@
 ---
 title: The settings stepper's option popover is a scoped third altitude
 type: decision
-status: active
+status: done
 created: 2026-08-13
 updated: 2026-08-13
 tags: [frontend, overlay]
@@ -9,7 +9,7 @@ related:
   - "[[2026-08-13_settings-stepper]]"
   - "[[2026-08-12_chrome-only-themes]]"
   - "[[2026-07-29_keys-are-not-a-mode-choice]]"
-commit:
+commit: e41086b
 ---
 
 # The settings stepper's option popover is a scoped third altitude
