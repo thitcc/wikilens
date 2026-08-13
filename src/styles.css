@@ -1475,7 +1475,7 @@ body {
   --tracking-brand: 0.14em;
   --tracking-label: 0.1em;
 
-  /* The instrument layer's structural line (ruler ticks, section rules). */
+  /* The instrument layer's structural line (section rules). */
   --line: rgba(234, 228, 212, 0.35);
 }
 
@@ -1523,31 +1523,6 @@ body {
 /* The capture chip's crosshair — a 12px glyph mark, not an icon asset. */
 :root[data-theme="micrographics"] .capture-chip .chip-name::before {
   content: "⌖ " / "";
-}
-
-/* Header ruler — the spec plate's tick strip, absolutely positioned into the
-   panel's 12px flex gap below the header so the header's rendered height
-   (the --menu-clearance-top twin) never moves. Fine ticks every 7px under
-   major ticks every 35px. */
-:root[data-theme="micrographics"] .panel-header {
-  position: relative;
-}
-
-:root[data-theme="micrographics"] .panel-header::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + var(--space-2));
-  height: 7px;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      var(--fg-muted) 0 1px,
-      transparent 1px 35px
-    ),
-    repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 7px);
-  pointer-events: none;
 }
 
 /* Indexed section heads (/01 Prompt…, uppercased here) — decorative
@@ -1642,21 +1617,4 @@ body {
   font-size: var(--text-label);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-}
-
-/* Footer barcode — pure decoration as a flex item inside the capture
-   cluster's line box (12px tall < the chip line), so the footer's rendered
-   height (the --menu-clearance twin) never moves. */
-:root[data-theme="micrographics"] .capture-cluster::after {
-  content: "";
-  width: 36px;
-  height: 12px;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--fg-muted) 0 1px,
-    transparent 1px 3px,
-    var(--fg-muted) 3px 6px,
-    transparent 6px 7px
-  );
-  opacity: 0.7;
 }

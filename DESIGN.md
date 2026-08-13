@@ -557,13 +557,15 @@ game rather than a field guide page. Two layers:
   the caps brand, uppercase underscore chip labels (`[ Stardew_Valley ]`,
   `ANTHROPIC · CLAUDE_SONNET_5` — JS swaps characters, CSS owns case;
   accessible names stay sentence case), the underscore prompt placeholder
-  (`ASK_ABOUT_THE_GAME…`, same character/case split), the header ruler tick
-  strip (`micro-line`), indexed section heads (`/01 PROMPT`, `/02 ANSWER`,
-  `/03 SOURCES` — `micro-section-head`, aria-hidden), the uppercase status
-  row — phase label (case is paint; the text stays the accessible status),
+  (`ASK_ABOUT_THE_GAME…`, same character/case split), indexed section heads
+  (`/01 PROMPT`, `/02 ANSWER`, `/03 SOURCES` — `micro-section-head` type,
+  hairline rules in `micro-line`, aria-hidden), the uppercase status row —
+  phase label (case is paint; the text stays the accessible status),
   dot-matrix progress (aria-hidden), and the uppercase `STOP` pushed to the
-  row's right edge — uppercase source links with the `micro-arrow` ↗, the
-  crosshair capture glyph, and the footer barcode. Decoration budget ends
-  there — the layer is flat marks inside existing line boxes and measured
-  content flow, so rendered header/footer heights never move and the
-  clearance twins hold.
+  row's right edge — uppercase source links with the `micro-arrow` ↗, and
+  the crosshair capture glyph. Decoration budget ends there — the layer is
+  flat marks inside existing line boxes and measured content flow, so
+  rendered header/footer heights never move and the clearance twins hold.
+  (A header ruler tick strip and a footer barcode shipped in the first pass
+  and were removed on visual review — the spec plate reads better without
+  free-floating decoration.)
