@@ -12,7 +12,7 @@ related:
   - "[[2026-07-30_design-mirror-true-up]]"
   - "[[2026-08-12_chrome-only-themes]]"
   - "[[2026-08-12_theme-persistence-localstorage]]"
-commit: ["33d9d72", "078bd20"]
+commit: ["33d9d72", "078bd20", "0b7d9f8"]
 ---
 
 # Theme switching — settings picker and a micrographics variant
@@ -157,3 +157,10 @@ mirror sheet's 0.12em — the mirror gets corrected at true-up.
   tests). Both forks closed as ADRs (see Decisions). Follow-up that is NOT in
   the repo: the claude.ai/design mirror true-up (token sheet PROPOSAL→shipped,
   0.14em fix, preview cards) — post-merge, per the 07-30 ritual.
+- 2026-08-12 — register gloss corrected. The Context above frames the register
+  as "archival microfilm/microfiche" — that was the plan-time hypothesis, and
+  the design pass rejected it. The shipped register is **micrographic-modern**:
+  a spec plate over the game (DESIGN.md §8 is normative) — monochrome
+  bone-on-warm-black, mono UPPERCASE_labels, technical marks; not microfilm
+  archival. The Context stands as written history; this note is the correction
+  a future design pass should read first.
