@@ -3,7 +3,7 @@ title: Theme switching — settings picker and a micrographics variant
 type: plan
 status: done
 created: 2026-08-12
-updated: 2026-08-12
+updated: 2026-08-13
 tags: [frontend, overlay]
 related:
   - "[[2026-08-04_overlay-design-followups]]"
@@ -12,7 +12,7 @@ related:
   - "[[2026-07-30_design-mirror-true-up]]"
   - "[[2026-08-12_chrome-only-themes]]"
   - "[[2026-08-12_theme-persistence-localstorage]]"
-commit: ["33d9d72", "078bd20", "0b7d9f8"]
+commit: ["33d9d72", "078bd20", "0b7d9f8", "fd10a56"]
 ---
 
 # Theme switching — settings picker and a micrographics variant
@@ -164,3 +164,9 @@ mirror sheet's 0.12em — the mirror gets corrected at true-up.
   bone-on-warm-black, mono UPPERCASE_labels, technical marks; not microfilm
   archival. The Context stands as written history; this note is the correction
   a future design pass should read first.
+- 2026-08-13 — instrument layer trimmed on the user's visual review
+  (`fd10a56`): the header ruler tick strip and the footer barcode are out —
+  free-floating decoration read as noise over the game. Section heads,
+  dot-matrix, chip transforms, arrows, and the crosshair stand; `micro-line`
+  stays for the section-head hairline rules. The post-merge mirror true-up
+  should drop both marks from the preview cards too.
