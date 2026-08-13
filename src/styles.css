@@ -1500,15 +1500,24 @@ body {
   text-transform: uppercase;
 }
 
-/* The game identity chip wears index brackets. Generated content with the
-   alt-text syntax stays out of accessible names; scoped to .game-chip so the
-   suggestion chip sharing .chip-name in the same cluster stays bare. */
-:root[data-theme="micrographics"] .game-chip .chip-name::before {
-  content: "[ " / "";
+/* The game identity chip wears index brackets — as flex items on the chip
+   itself, never on .chip-name: that box ellipsizes, and trailing generated
+   content is the first thing an ellipsis drops, which left the pair
+   unbalanced ("[ OLD_SCHOOL_RUNESCAPE_W…") on long names. Out here the
+   brackets flank the truncating box, so a clipped name still closes its
+   bracket. The caret re-orders after the closing bracket. Alt-text syntax
+   keeps the marks out of accessible names; scoped to .game-chip so the
+   suggestion chip in the same cluster stays bare. */
+:root[data-theme="micrographics"] .game-chip::before {
+  content: "[" / "";
 }
 
-:root[data-theme="micrographics"] .game-chip .chip-name::after {
-  content: " ]" / "";
+:root[data-theme="micrographics"] .game-chip::after {
+  content: "]" / "";
+}
+
+:root[data-theme="micrographics"] .game-chip .caret {
+  order: 1;
 }
 
 /* The capture chip's crosshair — a 12px glyph mark, not an icon asset. */
@@ -1614,13 +1623,16 @@ body {
   color: var(--accent);
 }
 
-/* Source links: uppercase with the 11px ↗ — typography as iconography. */
-:root[data-theme="micrographics"] .source-link {
+/* Source links: uppercase with the 11px ↗ — typography as iconography.
+   Scoped under .sources: .source-link is a shared class (the Settings
+   key-help console link wears it too), and the instrument mark belongs to
+   the answer's /03 SOURCES flow only — the game-chip/.chip-name lesson. */
+:root[data-theme="micrographics"] .sources .source-link {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-:root[data-theme="micrographics"] .source-link::after {
+:root[data-theme="micrographics"] .sources .source-link::after {
   content: " ↗" / "";
   font-size: 11px;
 }

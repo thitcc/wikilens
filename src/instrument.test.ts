@@ -27,13 +27,16 @@ test("the micro placeholder is already in the underscore voice", () => {
 });
 
 test("dot fills stay strictly inside the row and never move backwards", () => {
-  const phases: AskStatus[] = [
-    "searching",
-    "understanding",
-    "retrying",
-    "reading",
-    "answering",
-  ];
+  // `satisfies` makes this exhaustive: a future AskStatus member fails the
+  // compile here, so the range loop can never silently skip a new phase.
+  const ALL_PHASES = {
+    searching: true,
+    understanding: true,
+    retrying: true,
+    reading: true,
+    answering: true,
+  } satisfies Record<AskStatus, true>;
+  const phases = Object.keys(ALL_PHASES) as AskStatus[];
   for (const phase of phases) {
     const dots = statusDots(phase);
     // Never 0 (an ask is running) and never full (the row unmounts on

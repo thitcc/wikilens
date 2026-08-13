@@ -10,9 +10,12 @@
 // jsdom returns "" for custom properties (documented in menuPlacement.ts), so
 // computed styles can't check this, and Vitest's CSS handling intercepts
 // `.css` imports before Vite's `?raw` query, yielding "" (verified — that
-// path is a trap). Rules are split naively on braces; that mis-parses @media
-// wrappers but matches every inner and top-level rule, which is all this
-// needs.
+// path is a trap). Comments are stripped before parsing: declares() must not
+// match a token named inside prose, and a comment containing braces would
+// silently break the brace parser for everything after it. Rules are then
+// split naively on braces — flat CSS only, and the vacuity guard's brace
+// tripwire REJECTS native nesting outright, because a nested rule's
+// declarations would vanish from every parsed body.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,7 +25,8 @@ import { expect, test } from "vitest";
 // frontend analogue of config_guardrails.rs's CARGO_MANIFEST_DIR anchor.
 // (`new URL(..., import.meta.url)` is not usable here: under the jsdom
 // environment import.meta.url is not a file: URL.)
-const css = readFileSync(join(process.cwd(), "src", "styles.css"), "utf8");
+const raw = readFileSync(join(process.cwd(), "src", "styles.css"), "utf8");
+const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
 
 /** Token NAMES a theme block may never redeclare. Values inside a theme
  * block may *use* them (`var(--space-6)` is fine); a declaration is the
@@ -110,7 +114,21 @@ test("the sheet still has the shapes this suite parses (vacuity guard)", () => {
   // block isn't the micrographics token block at all.
   expect(/--radius-panel\s*:\s*0px/.test(micro?.body ?? "")).toBe(true);
 
-  expect(themeRules().length).toBeGreaterThan(0);
+  // The instrument layer is ~20 scoped rules; a floor well below that still
+  // catches the parser going blind to them (the token block alone satisfying
+  // a bare > 0 was the hole).
+  expect(themeRules().length).toBeGreaterThanOrEqual(15);
+
+  // Brace tripwire — rejects native CSS nesting. In flat comment-stripped
+  // CSS, every `{` is either an at-rule wrapper's or opens exactly one
+  // parsed rule; a nested rule puts braces inside its parent's body, the
+  // parent stops matching, and the equality breaks. Without this, a nesting
+  // refactor of the theme block would silently exempt every declaration
+  // inside it from the assertions below (verified bypass).
+  const openBraces = [...css.matchAll(/\{/g)].length;
+  const wrappers = [...css.matchAll(/@(media|supports|keyframes)[^{}]*\{/g)]
+    .length;
+  expect(rules().length + wrappers).toBe(openBraces);
 });
 
 test("every invariant token is still a real :root token", () => {
