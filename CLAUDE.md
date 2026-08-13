@@ -9,9 +9,10 @@ content (hotkey → panel → RAG over the wiki → streamed answer + sources). 
 second hotkey (**Ctrl+Shift+C** by default) — or the footer capture chip — grabs
 a screen region and attaches it to the prompt as an image (vision-capable models
 only). Both shortcuts are configurable from the header gear's **Settings**
-panel (persisted to `settings.json` in the app-data dir), whose **Answers** rows
-pick which model answers — built-in or your own provider — with provider keys
-pasted on the lines below. Works over **borderless/windowed** games only —
+panel (persisted to `settings.json` in the app-data dir), whose **Answers**
+stepper picks which model answers — **Built In** or **Custom API** — with
+provider keys pasted on lines shown while Custom API answers. Works over
+**borderless/windowed** games only —
 exclusive fullscreen covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 
@@ -45,7 +46,7 @@ wikilens/
 │       ├── HistoryMenu.tsx       # answer-history menu: past questions newest-first, filter, pinned "Clear history"; picking restores without re-asking
 │       ├── ModelChip.tsx         # footer chip: current provider · model, opens the menu
 │       ├── ModelMenu.tsx         # combined provider/model menu (filter, collapsible groups)
-│       ├── SettingsMenu.tsx      # Settings panel: two "Answers" mode rows + provider key lines behind a caret (unkeyed opens its key field; keyed wears a "Set" pill, only the trash; a key never changes the mode), key-recorder rows (suspend → record → save)
+│       ├── SettingsMenu.tsx      # Settings panel: Answers + Theme as game-style steppers (arrows cycle with wrap; the value opens the option popover — Stepper.tsx) + provider key lines rendered only while Custom API answers (unkeyed opens its key field; keyed wears a "Set" pill, only the trash; a key never changes the mode), key-recorder rows (suspend → record → save)
 │       ├── PromptInput.tsx       # textarea; Enter submits, Shift+Enter = newline
 │       ├── AnswerView.tsx        # streamed markdown (react-markdown; links open externally)
 │       ├── AddGameMenu.tsx       # add-game popover (via the game menu's pinned action): suggest/probe/add + remove
@@ -142,7 +143,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   the pre-search rewrite. `ask` takes the model id; blank falls back to the
   provider default, and ids are deliberately **not** validated Rust-side — the
   provider is the authoritative validator (a stale id surfaces in the error box).
-  In **Default mode** (the "Built into WikiLens" row in Settings) this chain is
+  In **Default mode** (the Answers stepper's "Built In" option in Settings)
+  this chain is
   bypassed: the `WIKILENS_DEFAULT_*` env family defines one answer/rewrite
   target (`target.rs`), `ask` ignores the request's provider/model args, and the
   footer shows only "Default" — the var contract lives in README's

@@ -113,32 +113,40 @@ Copy the boxes into the release notes/log and tick them as you go.
       history** empties the menu and the chip disappears — the answer on the
       panel stays.
 
-### 7. Answers: the mode rows and the key lines
+### 7. Answers: the stepper and the key lines
 
-- [ ] Settings → **Answers**: clicking an **unkeyed** provider line opens its
-      key field in place (only one field open at a time; clicking another line
-      collapses it and drops what you typed). **Save** collapses the field and
-      moves **nothing** — the check stays exactly where it was.
+- [ ] Settings → **Answers** is a game-style stepper: **◁ Value ▷**. With both
+      options available, each arrow flips between **Built In** and **Custom
+      API** — and keeps going past the end (the cycle wraps; no dead arrow at
+      either edge). Clicking the center value opens a floating popover listing
+      the options with the check on the current one; picking one closes it,
+      and it arrives with a small drop (flip near the card's bottom edge rises
+      instead). Esc closes the popover first, the menu second, the overlay
+      third.
+- [ ] The key lines exist exactly while **Custom API** answers: cycle to
+      **Built In** and they leave, cycle back and they return. In Custom API,
+      clicking an **unkeyed** provider line opens its key field in place (only
+      one field open at a time; clicking another line collapses it and drops
+      what you typed). **Save** collapses the field and moves **nothing** —
+      the stepper's value stays exactly where it was.
 - [ ] The keyed line then wears a neutral **Set** pill at full ink, no longer
       opens anything when clicked (no hover veil, arrow cursor), carries a
       trash icon that turns rose on hover, and still answers after an app
       restart (the DPAPI store survives; no re-paste) — the key itself never
       shows anywhere again. Trash it: the line returns to click-to-add (no
       field auto-opens) and keyboard focus lands on that line, not the panel.
-- [ ] The disclosure caret follows the mode in both directions: picking **Your
-      own provider** opens the key lines, picking **Built into WikiLens** puts
-      them away. The caret alone changes no mode.
 - [ ] Click the trash and watch the button, not the row: it holds its box while
       the "…" shows. (jsdom can't see a collapsed line box; this needs eyes.)
 - [ ] Delete `settings.json` from the app-data dir, set the
       `WIKILENS_DEFAULT_*` block, relaunch: first launch lands in **Default**
-      mode (footer reads just "Default", no provider or model anywhere, and
-      **Built into WikiLens** wears the check). Repeat without the vars: first
-      launch lands on your own provider — no built-in row in the list at all.
+      mode (footer reads just "Default", no provider or model anywhere, and the
+      Answers value reads **Built In**). Repeat without the vars: first launch
+      lands on **Custom API** — a one-option stepper: both arrows disabled,
+      the value still opening its one-row popover, no Built In anywhere.
 - [ ] In Default mode an ask succeeds end-to-end with no vendor name visible
-      anywhere in the UI; picking **Your own provider** in Settings restores the
-      provider/model chip and menu, and picking **Built into WikiLens** again
-      goes back.
+      anywhere in the UI; cycling to **Custom API** restores the
+      provider/model chip and menu, and cycling back to **Built In** goes
+      back.
 - [ ] The capture chip follows `WIKILENS_DEFAULT_VISION`: disabled with the
       "can't read images" copy when unset, armed when truthy.
 - [ ] The trash on the answering provider's key line (one click, no
