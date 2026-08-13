@@ -3,10 +3,11 @@ title: Overlay design follow-ups — accent direction, bright-scene variant
 type: plan
 status: idea
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-12
 tags: [overlay, frontend]
 related:
   - "[[2026-07-05_design-tokens-claude-design-sync]]"
+  - "[[2026-08-12_theme-switching-micrographics]]"
 commit:
 ---
 
@@ -45,3 +46,10 @@ fork for when work starts.
 
 - 2026-08-04 — created; migrated from the CLAUDE.md §6 roadmap when the
   section retired in favor of vault idea docs.
+- 2026-08-12 — the "no theming system / no theme picker" non-goal above is
+  superseded by [[2026-08-12_theme-switching-micrographics]]: a Settings
+  theme picker and a second theme shipped, giving the parked bright-scene
+  variant a natural home as a future theme (chrome-only, per
+  [[2026-08-12_chrome-only-themes]]). The accent-direction exploration and
+  the bright-scene variant itself stay parked here; the automatic-vs-manual
+  fork for the variant remains open.

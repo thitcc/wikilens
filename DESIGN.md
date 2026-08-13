@@ -15,6 +15,20 @@ colors:
   rose-signal: "#ffb3bd"
   rose-wash: "#781e2859"
   rose-line: "#ff788c40"
+  micro-cream-ink: "#eae4d4"
+  micro-ink-muted: "#a49d8b"
+  micro-ink-strong: "#f7f2e3"
+  micro-parchment: "#d9c69a"
+  micro-carbon-glass: "#13120ff0"
+  micro-menu-glass: "#171613fa"
+  micro-veil: "#eae4d412"
+  micro-veil-raised: "#eae4d41a"
+  micro-ink-well: "#00000052"
+  micro-hairline: "#eae4d429"
+  micro-line: "#eae4d459"
+  micro-salmon-signal: "#ffb4a4"
+  micro-salmon-wash: "#7a2c1c59"
+  micro-salmon-line: "#ff8a7040"
 typography:
   title:
     fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
@@ -45,12 +59,32 @@ typography:
   monogram:
     fontFamily: "ui-monospace, 'Cascadia Code', Consolas, monospace"
     fontSize: "10px"
+  micro-ui:
+    fontFamily: "'Cascadia Code', ui-monospace, Consolas, monospace"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: 1.5
+  micro-title:
+    fontFamily: "'Cascadia Code', ui-monospace, Consolas, monospace"
+    fontSize: "14px"
+    fontWeight: 400
+    letterSpacing: "0.14em"
+  micro-label:
+    fontSize: "12px"
+    fontWeight: 400
+    letterSpacing: "0.1em"
+  micro-section-head:
+    fontSize: "10px"
+    letterSpacing: "0.14em"
+  micro-arrow:
+    fontSize: "11px"
 rounded:
   cap: "3px"
   chip: "5px"
   control: "8px"
   input: "10px"
   panel: "12px"
+  micro-sharp: "0px"
 spacing:
   space-2: "2px"
   space-4: "4px"
@@ -142,8 +176,9 @@ game is the main character; WikiLens borrows the screen and gives it back.
 
 - One smoked-glass sheet over the game; content-hugging, right-docked, gone
   when dismissed.
-- One accent hue (Moonlight Blue) that only ever marks the interactive, the
-  selected, and the focused; a rose trio that only ever marks failure.
+- One accent hue per theme (Moonlight Blue in the default, Parchment in
+  Micrographics — see Themes) that only ever marks the interactive, the
+  selected, and the focused; one failure trio that only ever marks failure.
 - A 14px type ceiling: hierarchy by weight and ink strength, never by size.
 - Controls are quiet until touched — bare ink at rest, a faint veil on hover.
 - Two altitudes exactly: the panel above the game, menus above the panel.
@@ -194,9 +229,11 @@ A monochrome glass world where a single cool blue does all the talking.
 
 ### Named Rules
 
-**The One Signal Rule.** Moonlight Blue is the interface's only voice of
-color. If an element is not interactive, selected, or focused, it stays ink.
-The rose trio speaks only on failure. There is no third hue, and there are no
+**The One Signal Rule.** Each theme has exactly one accent voice. In the
+default theme it is Moonlight Blue; in Micrographics it is Parchment
+(#d9c69a). If an element is not interactive, selected, or focused, it stays
+ink. The failure trio (rose in the default, salmon in Micrographics) speaks
+only on failure. There is no third hue in any theme, and there are no
 gradients.
 
 ## 3. Typography
@@ -232,7 +269,10 @@ bigger font, it wants attention the game should keep.
 
 The ceiling has a floor: below the ramp sit two glyph sizes — the 9px caret
 and the 10px monogram lettering — typography used as iconography, never as
-copy. The smallest reading text remains the 12px Label.
+copy. The smallest reading text remains the 12px Label. Under Micrographics
+two more sizes join the below-ramp band: the 10px indexed section heads
+(decorative micro-copy, never message text) and the 11px source arrow
+(typography as iconography, like the caret).
 
 ## 4. Elevation
 
@@ -453,6 +493,11 @@ same PR.
   invisible copy of the label whose width places the settings caret; the text
   can't drift, since both render one constant, but the metrics can) — whenever
   geometry tokens change.
+- **Do** express a new theme as token overrides only: ink, surfaces, borders,
+  shape, shadows, and type voice. Rhythm, pads, text sizes, leadings, blur,
+  and every JS-twinned geometry token (`--panel-gap`, `--shadow-room-*`,
+  `--menu-clearance*`) are theme-invariant — a theme block never redeclares
+  them (pinned by `src/styles.guardrails.test.ts`).
 
 ### Don't:
 
@@ -465,11 +510,62 @@ same PR.
   anything shown over the game.
 - **Don't** add a third elevation — no shadowed buttons, raised cards, or
   toasts (the Two Altitudes Rule).
-- **Don't** introduce a new hue or gradient; the palette is Moonlight Blue,
-  the inks, and the rose error trio.
+- **Don't** introduce a new hue or gradient; each theme's palette is its one
+  accent, its inks, and its failure trio — nothing else, in any theme.
 - **Don't** scale type past 14px for emphasis — promote weight or ink instead
   (the Fourteen-Pixel Ceiling).
 - **Don't** ship a motion that can't name its question (the Named-Question
   Rule) — and never animate the answer stream or focus indicators; the
   player is mid-game and the audit test is: *if you notice the panel while
   not asking it something, it's too loud.*
+
+## 8. Themes
+
+The appearance is a closed set of two themes, picked in **Settings → Theme**
+(the Answers-row anatomy: name-only rows, the accent check on the active one,
+no swatch — the panel itself is the preview). The pick applies live and
+persists locally (`wikilens.theme` in localStorage). Mechanically a theme is
+a wholesale custom-property swap: the default theme **is** the bare `:root`
+block (no attribute), and a non-default theme is an overrides-only
+`:root[data-theme="<id>"]` block set on the root element by the app. The
+debug window and the capture reticle stay on the default appearance by
+design.
+
+**Theme-invariant, in every theme:** rhythm and pads, text sizes and
+leadings, `--blur-panel`, the float/menu geometry twins (`--panel-gap`,
+`--shadow-room-*`, `--menu-clearance*` — paired with `window.rs` /
+`menuPlacement.ts`), `--font-mono`, `--opacity-disabled`, and the admitted
+motion inventory. Themes are chrome: ink, surfaces, borders, shape, shadow
+values, and the type *voice* (face, weight, tracking) — never type metrics.
+
+### Micrographics
+
+The second theme, in the micrographic-modern register: a spec plate over the
+game rather than a field guide page. Two layers:
+
+- **Token swap** — warm carbon glass (`micro-carbon-glass`) under cream ink
+  (`micro-cream-ink` / `micro-ink-muted` / `micro-ink-strong`), the
+  **Parchment** accent (`micro-parchment` — same monochrome family as the
+  ink; chroma alone separates it), cream-tinted veils and a one-step-stronger
+  hairline (`micro-hairline` — thin lines are this style's structure), the
+  failure trio warmed to salmon (`micro-salmon-*`), **every radius 0**
+  (`micro-sharp` — drafting-sharp corners, the theme's loudest single move),
+  tighter flatter shadows, and Cascadia Code promoted from instrument voice
+  to UI face (`micro-ui`; the brand drops to regular weight and spreads to
+  0.14em — `micro-title`).
+- **Instrument layer** — component-voice marks active only under the theme:
+  the caps brand, uppercase underscore chip labels (`[ Stardew_Valley ]`,
+  `ANTHROPIC · CLAUDE_SONNET_5` — JS swaps characters, CSS owns case;
+  accessible names stay sentence case), the underscore prompt placeholder
+  (`ASK_ABOUT_THE_GAME…`, same character/case split), indexed section heads
+  (`/01 PROMPT`, `/02 ANSWER`, `/03 SOURCES` — `micro-section-head` type,
+  hairline rules in `micro-line`, aria-hidden), the uppercase status row —
+  phase label (case is paint; the text stays the accessible status),
+  dot-matrix progress (aria-hidden), and the uppercase `STOP` pushed to the
+  row's right edge — uppercase source links with the `micro-arrow` ↗, and
+  the crosshair capture glyph. Decoration budget ends there — the layer is
+  flat marks inside existing line boxes and measured content flow, so
+  rendered header/footer heights never move and the clearance twins hold.
+  (A header ruler tick strip and a footer barcode shipped in the first pass
+  and were removed on visual review — the spec plate reads better without
+  free-floating decoration.)

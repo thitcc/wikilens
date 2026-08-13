@@ -5,6 +5,9 @@ interface PromptInputProps {
   onChange: (value: string) => void;
   onSubmit: () => void;
   busy?: boolean;
+  /** Theme-specific placeholder override (the Micrographics instrument
+   * layer); the component itself stays theme-unaware. */
+  placeholder?: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
 }
 
@@ -22,6 +25,7 @@ export function PromptInput({
   onChange,
   onSubmit,
   busy,
+  placeholder,
   inputRef,
 }: PromptInputProps) {
   return (
@@ -31,7 +35,10 @@ export function PromptInput({
       value={value}
       readOnly={busy}
       rows={2}
-      placeholder="Ask about the game… (Enter to send, Shift+Enter for a new line)"
+      placeholder={
+        placeholder ??
+        "Ask about the game… (Enter to send, Shift+Enter for a new line)"
+      }
       aria-label="Question"
       onChange={(e) => onChange(e.currentTarget.value)}
       onKeyDown={(e) => {

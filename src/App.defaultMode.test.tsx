@@ -5,7 +5,7 @@
 // mount helper — the shared renderApp awaits a `Model:` chip that
 // deliberately doesn't exist here.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import App from "./App";
@@ -149,7 +149,11 @@ test("keying a provider in Default mode stores the key and stays in Default", as
       .getAttribute("aria-current"),
   ).toBe("true");
   expect(screen.queryByRole("button", { name: /^Model: / })).toBeNull();
-  expect(screen.getByText("Default")).toBeTruthy();
+  // Scoped to the footer: the open Settings dialog now carries a "Default"
+  // theme row, and this assertion is about the static mode chip.
+  expect(
+    within(screen.getByRole("contentinfo")).getByText("Default"),
+  ).toBeTruthy();
 });
 
 test("picking your own provider leaves Default mode and restores the Model chip", async () => {

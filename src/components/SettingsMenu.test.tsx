@@ -27,6 +27,7 @@ import {
   installBackend,
 } from "../test/backend";
 import { fireBackendEvent } from "../test/harness";
+import { THEME_STORAGE_KEY, type ThemeId } from "../theme";
 import type { KeyStatus, SettingsInfo } from "../types";
 
 /** Mounts the menu and settles the open-time list_key_status fetch.
@@ -41,6 +42,8 @@ import type { KeyStatus, SettingsInfo } from "../types";
  * `noVersion` opts out for the failed-lookup test, whose row never appears. */
 async function renderMenu(over?: {
   settings?: SettingsInfo;
+  theme?: ThemeId;
+  onThemeChange?: (next: ThemeId) => void;
   onSaved?: (next: SettingsInfo) => void;
   onKeysChanged?: () => void;
   onClose?: () => void;
@@ -53,6 +56,8 @@ async function renderMenu(over?: {
   const result = render(
     <SettingsMenu
       settings={over?.settings ?? SETTINGS}
+      theme={over?.theme ?? "default"}
+      onThemeChange={over?.onThemeChange ?? (() => {})}
       onSaved={onSaved}
       onKeysChanged={over?.onKeysChanged}
       onClose={onClose}
@@ -120,13 +125,17 @@ const ON_DEFAULT: SettingsInfo = {
   defaultMode: { configured: true, vision: false },
 };
 
-test("renders the two sections in order with both shortcut chips", async () => {
+test("renders the three sections in order with both shortcut chips", async () => {
   installBackend();
   await renderMenu();
 
   const dialog = screen.getByRole("dialog", { name: "Settings" });
   const text = dialog.textContent ?? "";
-  const order = [text.indexOf("Answers"), text.indexOf("Shortcuts")];
+  const order = [
+    text.indexOf("Answers"),
+    text.indexOf("Theme"),
+    text.indexOf("Shortcuts"),
+  ];
   expect(Math.min(...order)).toBeGreaterThanOrEqual(0);
   expect([...order].sort((a, b) => a - b)).toEqual(order);
   expect(text).toContain("Summon");
@@ -143,6 +152,60 @@ test("renders the two sections in order with both shortcut chips", async () => {
   // keyed pill is pinned in the keyed tests below.
   expect(text).not.toContain("Key added");
   expect(screen.queryByText("Set")).toBeNull();
+});
+
+// ---- The theme rows -------------------------------------------------------
+// The panel is a controlled view of App's theme state: rows report the pick
+// via onThemeChange and NOTHING else moves — no IPC (a theme is chrome, not
+// behavior config) and no storage write (that ownership stays in App, pinned
+// below so a future refactor can't split the write across both).
+
+test("the active theme wears the check, following the prop", async () => {
+  installBackend();
+  await renderMenu();
+
+  expect(
+    screen
+      .getByRole("button", { name: "Use the default theme" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+  expect(
+    screen
+      .getByRole("button", { name: "Use the Micrographics theme" })
+      .getAttribute("aria-current"),
+  ).toBeNull();
+});
+
+test("a micrographics render moves the check to its row", async () => {
+  installBackend();
+  await renderMenu({ theme: "micrographics" });
+
+  expect(
+    screen
+      .getByRole("button", { name: "Use the Micrographics theme" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
+  expect(
+    screen
+      .getByRole("button", { name: "Use the default theme" })
+      .getAttribute("aria-current"),
+  ).toBeNull();
+});
+
+test("picking a theme reports the pick — zero IPC, storage untouched", async () => {
+  const backend = installBackend();
+  const picks: ThemeId[] = [];
+  const user = userEvent.setup();
+  await renderMenu({ onThemeChange: (next) => picks.push(next) });
+
+  const before = backend.calls.length;
+  await user.click(
+    screen.getByRole("button", { name: "Use the Micrographics theme" }),
+  );
+
+  expect(picks).toEqual(["micrographics"]);
+  expect(backend.calls.length).toBe(before);
+  expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
 });
 
 // ---- The answer modes and their key lines ---------------------------------
