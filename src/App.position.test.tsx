@@ -5,7 +5,6 @@
 // no anchor facets (top-pinned growth from the dragged spot); the top-right
 // default carries v="top" h="right" like any other anchor.
 
-import { act } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { SettingsInfo } from "./types";
 import {
@@ -136,13 +135,11 @@ test("a drag-initiated flip patches the placement in place", async () => {
   await renderApp();
   expect(document.documentElement.dataset.anchorV).toBe("top");
 
-  await act(async () => {
-    fireBackendEvent("settings://position", {
-      mode: "manual",
-      anchor: "top-right",
-      locked: false,
-      manualEdge: "top",
-    });
+  await fireBackendEvent("settings://position", {
+    mode: "manual",
+    anchor: "top-right",
+    locked: false,
+    manualEdge: "top",
   });
 
   const root = document.documentElement.dataset;
@@ -156,4 +153,24 @@ test("a drag-initiated flip patches the placement in place", async () => {
       .querySelector(".panel-header")
       ?.getAttribute("data-tauri-drag-region"),
   ).toBe("deep");
+});
+
+test("a low drop's flip carries the bottom facet through the event path", async () => {
+  // The live path after a real drag near the screen bottom: the settle
+  // persists edge=bottom and the event must flip the menus upward without
+  // any refetch.
+  installBackend();
+  await renderApp();
+
+  await fireBackendEvent("settings://position", {
+    mode: "manual",
+    anchor: "top-right",
+    locked: false,
+    manualEdge: "bottom",
+  });
+
+  const root = document.documentElement.dataset;
+  expect(root.positionMode).toBe("manual");
+  expect(root.anchorV).toBe("bottom");
+  expect(root.anchorH).toBeUndefined();
 });

@@ -343,21 +343,20 @@ pub fn manual_snapshot(app: &AppHandle) -> Option<ManualSpot> {
             w: monitor.size().width,
             h: monitor.size().height,
         },
-        monitor.scale_factor(),
     ))
 }
 
-/// Which vertical edge a dropped window pins — pure math. Top when a full
-/// cap-height window still fits below the drop (growth and menus keep
-/// opening downward); otherwise the drop's bottom edge becomes the
-/// invariant and everything opens upward, matching the bottom anchors the
-/// drop visually resembles (a menu on a low drop would otherwise clip at
-/// the screen bottom).
-fn manual_spot_from_rect(window: Rect, monitor: Rect, scale: f64) -> ManualSpot {
-    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
-    let bottom_limit = monitor.y + monitor.h as i32 + to_phys(APRON_BOTTOM) as i32;
-    let cap_h = overlay_window_height(monitor.h, scale, None);
-    if window.y + cap_h as i32 <= bottom_limit {
+/// Which vertical edge a dropped window pins — pure math. Bottom when the
+/// drop's vertical center sits in the monitor's lower half ("I put it near
+/// the bottom"): its bottom edge becomes the invariant and menus/growth
+/// open upward, matching the bottom anchors the drop visually resembles —
+/// a low drop's menus would otherwise clip at the screen edge. The
+/// midpoint rule is symmetric in the panel's height, so a tall and a short
+/// panel dropped at the same visual place pin the same way.
+fn manual_spot_from_rect(window: Rect, monitor: Rect) -> ManualSpot {
+    let window_center = window.y + window.h as i32 / 2;
+    let monitor_center = monitor.y + monitor.h as i32 / 2;
+    if window_center <= monitor_center {
         ManualSpot {
             x: window.x,
             y: window.y,
@@ -971,11 +970,23 @@ mod tests {
             overlay_rect(FHD, 1.0, manual_bottom(100, 300), None).h,
             320, // 300 − (0 − 20) — the top apron may overhang
         );
+        // The menu-open sentinel (the frontend reports unbounded): the
+        // window extends upward to the cap — the exact geometry a low drop
+        // clipped before bottom-lean existed.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_bottom(100, 1000), Some(100_000)),
+            Rect {
+                x: 100,
+                y: 180,
+                w: 484,
+                h: 820
+            }
+        );
     }
 
     #[test]
-    fn a_drop_pins_top_when_the_cap_fits_below_it_else_bottom() {
-        // Cap window on FHD is 820: a drop at y=200 leaves 200+820 ≤ 1124.
+    fn a_drop_pins_the_edge_its_center_is_nearer_to() {
+        // Center 350 of 540: upper half → the top edge is the invariant.
         assert_eq!(
             manual_spot_from_rect(
                 Rect {
@@ -985,7 +996,6 @@ mod tests {
                     h: 300
                 },
                 FHD,
-                1.0
             ),
             ManualSpot {
                 x: 100,
@@ -993,8 +1003,8 @@ mod tests {
                 edge: ManualEdge::Top
             }
         );
-        // A low drop (y=800) can't fit the cap below — its bottom edge
-        // (y + window height) becomes the invariant.
+        // Center 950: lower half — the bottom edge (y + window height)
+        // becomes the invariant.
         assert_eq!(
             manual_spot_from_rect(
                 Rect {
@@ -1004,13 +1014,29 @@ mod tests {
                     h: 300
                 },
                 FHD,
-                1.0
             ),
             ManualSpot {
                 x: 100,
                 y: 1100,
                 edge: ManualEdge::Bottom
             }
+        );
+        // The rule is height-symmetric: a TALL panel dropped high (center
+        // 490) stays top-pinned even though a cap window wouldn't fit
+        // below it — where it pins depends on where it sits, not on how
+        // much it happened to contain at drop time.
+        assert_eq!(
+            manual_spot_from_rect(
+                Rect {
+                    x: 100,
+                    y: 100,
+                    w: 484,
+                    h: 780
+                },
+                FHD,
+            )
+            .edge,
+            ManualEdge::Top
         );
     }
 

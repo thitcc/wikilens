@@ -304,12 +304,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   + Manual, persisted in `settings.json` with independent anchor/manual
   memories and a padlock); each placement pins its own edge as the height
   changes (bottom anchors grow upward, center stays centered). A Manual drop
-  picks its own pinned edge (`ManualEdge`): top when a cap-height window
-  still fits below it, else **bottom** — the drop's bottom edge becomes the
-  invariant and menus/growth open upward via the same `data-anchor-v`
-  facet the bottom anchors use (a low drop's menus would otherwise clip at
-  the screen bottom). A Manual spot on no connected monitor falls back to
-  the anchor for that show without rewriting settings.
+  picks its own pinned edge (`ManualEdge`) by its vertical **midpoint**:
+  upper half of the monitor pins the top; lower half pins the drop's bottom
+  edge — menus/growth then open upward via the same `data-anchor-v` facet
+  the bottom anchors use (a low drop's menus would otherwise clip at the
+  screen bottom). A Manual spot on no connected monitor falls back to the
+  anchor for that show without rewriting settings.
 - Panel geometry is **split across two runtimes**: `window.rs` constants
   (`PANEL_GAP`, `APRON_*`, `PANEL_HEIGHT_FRAC`) size the window; the CSS
   margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css` must

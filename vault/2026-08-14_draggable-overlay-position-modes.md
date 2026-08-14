@@ -133,7 +133,10 @@ mode where the panel stays exactly where it was dragged, across sessions.
 - 2026-08-14 — post-PR review fixes: the Manual option's "Drag the header"
   note dropped (the name carries it), and on-device testing showed a low
   Manual drop clipping its menus at the screen bottom — Manual now picks a
-  pinned edge at drop time (`ManualEdge`: top when a cap window fits below,
-  else bottom), a bottom-pinned drop borrowing the bottom-anchor facet
-  wholesale (menus and growth open upward). `PositionInfo` gains
-  `manualEdge`; coordinates still never cross IPC.
+  pinned edge at drop time (`ManualEdge`, by the drop's vertical midpoint:
+  lower half of the monitor pins the bottom), a bottom-pinned drop
+  borrowing the bottom-anchor facet wholesale (menus and growth open
+  upward). The midpoint rule is height-symmetric — a cap-fit rule was
+  considered and rejected (it made the edge depend on how much the panel
+  happened to contain at drop time). `PositionInfo` gains `manualEdge`;
+  coordinates still never cross IPC.
