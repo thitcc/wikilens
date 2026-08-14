@@ -299,6 +299,32 @@ function App() {
     }
   }, [theme]);
 
+  // The stored placement reaches CSS the same way (root data attributes,
+  // styles.css `:root[data-anchor-v=…]`): the vertical facet keeps the panel
+  // on its pinned edge while the window is cap-expanded, the horizontal one
+  // will steer the entrance motion. Manual carries no anchor facets —
+  // top-pinned growth from the dragged spot — only the mode facet. No
+  // settings yet = no attributes = the top-right default.
+  useEffect(() => {
+    const root = document.documentElement;
+    const position = settings?.position;
+    if (!position || position.mode === "manual") {
+      delete root.dataset.anchorV;
+      delete root.dataset.anchorH;
+    } else {
+      const anchor = position.anchor;
+      root.dataset.anchorV =
+        anchor === "center" ? "center" : anchor.startsWith("bottom") ? "bottom" : "top";
+      root.dataset.anchorH =
+        anchor === "center" ? "center" : anchor.endsWith("left") ? "left" : "right";
+    }
+    if (position) {
+      root.dataset.positionMode = position.mode;
+    } else {
+      delete root.dataset.positionMode;
+    }
+  }, [settings]);
+
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
     let active = true;

@@ -22,7 +22,8 @@
         "visible": false,
         "shadow": false,
         "resizable": false,
-        "width": 464,
+        "maximizable": false,
+        "width": 484,
         "height": 800
       },
       {
