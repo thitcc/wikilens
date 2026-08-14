@@ -78,9 +78,12 @@ Copy the boxes into the release notes/log and tick them as you go.
       right, left anchors from the left, Center and Manual rise — and the
       first summon after launch plays the same motion as later ones.
 - [ ] Drag the panel by its header (cursor turns to a grab hand on the bare
-      header). The chips riding the header still click — gear, history,
-      game chip, the suggestion chip — and a double-click on the header does
-      **not** maximize.
+      header), by any bare patch of the glass (the band above the header,
+      the gaps between sections), and by the transparent apron just outside
+      the glass. The chips riding the header still click — gear, history,
+      game chip, the suggestion chip — buttons/text inputs everywhere keep
+      working, answer text still selects, and a double-click on the header
+      does **not** maximize.
 - [ ] Drag while anchored: the Settings stepper reads **Manual** on its next
       open (the auto-flip), and the remembered anchor is still one step away
       — stepping back to it snaps the panel home; stepping to Manual again

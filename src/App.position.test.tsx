@@ -102,27 +102,39 @@ test("a bottom-pinned manual spot borrows the bottom-anchor facet", async () => 
   expect(root.positionMode).toBe("manual");
 });
 
-// ---- The header drag handle -------------------------------------------------
-// The header carries data-tauri-drag-region="deep" exactly while the position
-// is unlocked: the padlock removes the gesture at its source (Rust's Moved
-// snap-back is defense in depth only).
+// ---- The drag surface -------------------------------------------------------
+// While unlocked, the whole transparent window drags: the header (deep — its
+// chips still click), the panel's bare glass (bare attribute — clicks that
+// target a child never drag), and the apron band around the panel (bare
+// attribute on body). The padlock removes every one of them at the source
+// (Rust's Moved snap-back is defense in depth only).
 
-test("the header offers the drag region while unlocked", async () => {
+test("the header, the glass, and the apron offer the drag while unlocked", async () => {
   installBackend();
   await renderApp();
 
   const header = document.querySelector(".panel-header");
   expect(header?.getAttribute("data-tauri-drag-region")).toBe("deep");
   expect(header?.classList.contains("panel-header--draggable")).toBe(true);
+  // Bare (not "deep") on the panel and the body: only clicks that target
+  // the bare surface itself drag.
+  expect(
+    document.querySelector(".panel")?.getAttribute("data-tauri-drag-region"),
+  ).toBe("");
+  expect(document.body.getAttribute("data-tauri-drag-region")).toBe("");
 });
 
-test("the padlock removes the header drag region", async () => {
+test("the padlock removes the whole drag surface", async () => {
   installBackend({ get_settings: () => SETTINGS_POSITION_LOCKED });
   await renderApp();
 
   const header = document.querySelector(".panel-header");
   expect(header?.hasAttribute("data-tauri-drag-region")).toBe(false);
   expect(header?.classList.contains("panel-header--draggable")).toBe(false);
+  expect(
+    document.querySelector(".panel")?.hasAttribute("data-tauri-drag-region"),
+  ).toBe(false);
+  expect(document.body.hasAttribute("data-tauri-drag-region")).toBe(false);
 });
 
 // ---- settings://position ----------------------------------------------------

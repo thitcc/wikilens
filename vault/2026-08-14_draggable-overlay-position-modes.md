@@ -140,3 +140,11 @@ mode where the panel stays exactly where it was dragged, across sessions.
   considered and rejected (it made the edge depend on how much the panel
   happened to contain at drop time). `PositionInfo` gains `manualEdge`;
   coordinates still never cross IPC.
+- 2026-08-14 — two more on-device findings: the flipped (upward) menus used
+  a static viewport cap and clipped at the window top when the panel was
+  tall (fixed with the panel-aware calc — `100vh − aprons + clearance −
+  100%`, the 100% being the menu's containing block, the panel); and the
+  drag surface widened from the header row to every bare patch of the
+  glass plus the apron band (bare `data-tauri-drag-region` on `.panel` and
+  body/#root — interactive children still win; the apron ate clicks
+  anyway, so it becomes a handle instead of a dead zone).

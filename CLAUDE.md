@@ -328,7 +328,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   drag and flip the mode to Manual. A real drag flips effective placement via
   the `DragTracker` override on the first foreign Moved (the debounced
   persist lags ~500ms); while locked, a foreign Moved snaps back instead.
-  The header renders its `data-tauri-drag-region` only while unlocked.
+  The drag surface (unlocked only): the header (`deep`), the panel's bare
+  glass (bare attribute — child targets never drag), and the apron band via
+  a bare attribute on body/#root (that band eats clicks over the game
+  anyway, so it doubles as a handle instead of a dead zone).
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - **Sample the foreground window at the top of `show_overlay`, before
   `show()`/`set_focus()`** — after `set_focus()` the overlay *is* the

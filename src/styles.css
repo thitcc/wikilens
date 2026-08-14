@@ -440,17 +440,21 @@ body {
 }
 
 /* Top-anchored menus keep their 42px header attachment but grow upward past
-   the panel top instead of downward over the content. Degenerate case: a
-   panel streamed to the full cap leaves no room above — the menu clips at
-   the window top (mirror of the tall-panel squeeze the measured model menu
-   flips around); browsing menus on an idle panel, the common case, gets the
-   full free space. */
+   the panel top instead of downward over the content. The cap is the exact
+   room between the anchor line (panel top + clearance) and the window's
+   top apron — the 100% term is the panel's own height (the menu's
+   containing block), which floats with content on a bottom-pinned panel, so
+   a static viewport cap over-granted and the menu clipped at the window
+   top. First paint while the cap resize is still landing computes against
+   the hugged window (a squashed frame); the resize recalcs 100vh and the
+   menu takes its real room — the same transient the downward variant has
+   always had. */
 :root[data-anchor-v="bottom"] .menu--top {
   top: auto;
   bottom: calc(100% - var(--menu-clearance-top));
   max-height: calc(
-    100vh - var(--shadow-room-top) - var(--menu-clearance-top) -
-      var(--shadow-room-bottom)
+    100vh - var(--shadow-room-top) - var(--shadow-room-bottom) +
+      var(--menu-clearance-top) - 100%
   );
 }
 
