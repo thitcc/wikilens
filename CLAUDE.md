@@ -322,16 +322,24 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   eats mouse input (not click-through) — an idle panel's dead zone stole the
   game's clicks.
 - The `WindowEvent::Moved` handler's **applied-target guard is load-bearing**:
-  `apply_rect` records its target *before* `set_position` (WM_MOVE can
+  `apply_rect` records its target *before* the OS call (WM_MOVE can
   dispatch synchronously inside it), and bottom/center anchors move `y` on
   every height report — without the guard a streaming answer would read as a
   drag and flip the mode to Manual. A real drag flips effective placement via
   the `DragTracker` override on the first foreign Moved (the debounced
-  persist lags ~500ms); while locked, a foreign Moved snaps back instead.
-  The drag surface (unlocked only): the header (`deep`), the panel's bare
-  glass (bare attribute — child targets never drag), and the apron band via
-  a bare attribute on body/#root (that band eats clicks over the game
-  anyway, so it doubles as a handle instead of a dead zone).
+  persist lags ~500ms, and waits out a still-held mouse button); while
+  locked, a foreign Moved snaps back instead. The settle **clamps the drop
+  fully onto the monitor showing the largest share of the panel** (never
+  biased to the primary) before persisting — load-bearing, not cosmetic: the
+  layout re-validates the stored spot on every height report, and an
+  off-screen spot failing that check teleported the panel to the remembered
+  anchor when a menu opened. A clamped spot always passes (pin-tested), so
+  the anchor fallback fires only for the monitor-unplugged restore. The drag
+  surface (unlocked only) is **the WikiLens row and above, nothing else**:
+  the header (`deep`) plus the `.drag-strip` band overhanging the panel top
+  (top apron + panel top padding, full window width, bare attribute) — the
+  bare glass and the side aprons were drag handles for one round and got
+  reverted on device feedback.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - **Sample the foreground window at the top of `show_overlay`, before
   `show()`/`set_focus()`** — after `set_focus()` the overlay *is* the

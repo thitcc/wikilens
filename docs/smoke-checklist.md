@@ -77,10 +77,10 @@ Copy the boxes into the release notes/log and tick them as you go.
 - [ ] Entrance motion follows the placement: right anchors slide from the
       right, left anchors from the left, Center and Manual rise — and the
       first summon after launch plays the same motion as later ones.
-- [ ] Drag the panel by its header (cursor turns to a grab hand on the bare
-      header), by any bare patch of the glass (the band above the header,
-      the gaps between sections), and by the transparent apron just outside
-      the glass. The chips riding the header still click — gear, history,
+- [ ] Drag the panel by the WikiLens row and by the band above it (up to the
+      window's top edge) — the grab hand shows across that whole band. The
+      glass below the header, the section gaps, and the apron at the sides
+      must NOT drag. The chips riding the header still click — gear, history,
       game chip, the suggestion chip — buttons/text inputs everywhere keep
       working, answer text still selects, and a double-click on the header
       does **not** maximize.
@@ -95,6 +95,15 @@ Copy the boxes into the release notes/log and tick them as you go.
       low drop pins its bottom edge — the bottom-anchor behavior); stream
       an answer there and the panel grows upward. A **high** drop keeps
       menus opening downward.
+- [ ] Drop the panel partway **off any screen edge**: on release it snaps
+      fully back on-screen. Then open Settings there and let an answer
+      stream: the panel must not move at all (the teleport-to-anchor
+      regression — an off-screen spot used to fail validation on the next
+      height report).
+- [ ] With two monitors, drop the panel straddling the seam with the bigger
+      share (~60%) on the second monitor: it pops fully onto the second
+      monitor, not back to the primary — and it lives there freely
+      afterwards.
 - [ ] Quit (tray) and relaunch on Manual: the panel summons at the dragged
       spot. Drag it to the second monitor, restart: same. Unplug that
       monitor, summon: the panel falls back to the remembered anchor —

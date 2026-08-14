@@ -148,3 +148,18 @@ mode where the panel stays exactly where it was dragged, across sessions.
   glass plus the apron band (bare `data-tauri-drag-region` on `.panel` and
   body/#root — interactive children still win; the apron ate clicks
   anyway, so it becomes a handle instead of a dead zone).
+- 2026-08-14 — round 3, and a real root cause: "the panel moves on its own
+  when Settings opens in Manual" was the settle persisting a drop
+  partially off-screen, the next height report failing `manual_host`, and
+  the layout falling back to the remembered anchor — a teleport, not a
+  wobble. Fixed by the keep-on-screen settle: the drop snaps fully onto
+  the monitor showing the largest share of the panel (zero overlap → the
+  nearest; never biased to the primary — a ~60% straddle pops onto the
+  second monitor), so a stored spot always passes the strip check and the
+  mid-session fallback is unreachable by construction (regression-pinned).
+  The settle also waits out a still-held mouse button, and `apply_rect`
+  went atomic (one `SetWindowPos`) — the split set_size/set_position pair
+  wobbled bottom-pinned panels one frame per menu open/close. The widened
+  drag surface was reverted on feedback: the WikiLens row and above only
+  (`.drag-strip` band over the top apron + panel top padding, grab cursor
+  across it), never the side glass or aprons.
