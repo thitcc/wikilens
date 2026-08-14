@@ -1,12 +1,13 @@
 ---
 title: Panel corner-pick — choose where the overlay docks
 type: plan
-status: idea
+status: dropped
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-14
 tags: [overlay]
 related:
   - "[[2026-07-18_impeccable-design-context]]"
+  - "[[2026-08-14_draggable-overlay-position-modes]]"
 commit:
 ---
 
@@ -44,3 +45,7 @@ bottom corner.
 
 - 2026-08-04 — created; migrated from the CLAUDE.md §6 roadmap when the
   section retired in favor of vault idea docs.
+- 2026-08-14 — dropped: superseded by
+  [[2026-08-14_draggable-overlay-position-modes]], which covers the corner
+  goal and removes this doc's no-dragging non-goal (drag + anchors land
+  together).
