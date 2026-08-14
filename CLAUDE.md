@@ -455,3 +455,14 @@ vault (not the repo root — that would index `node_modules`).
 - `.impeccable/` holds the tracked machine-readable sidecar + live-mode
   config; critique snapshots under `.impeccable/critique/` are local-only
   (gitignored).
+- **Front-end changes with open visual choices get a proof sheet, decided
+  mid-session.** Build the variants as one self-contained HTML in
+  `.impeccable/critique/` (gitignored) — a faithful mock on the real tokens,
+  every variant under **both themes**, interactive where feel matters (live
+  controls, toggleable motion) — publish it as an artifact, then **ask for
+  the picks right there in the same session** (AskUserQuestion, recommended
+  option first). Never end the turn to wait for a fresh prompt while a
+  proof-sheet decision is pending: sheet → picks → implement is one
+  continuous loop. Record the picks in the vault plan doc's status log
+  before implementing (precedent: the settings-stepper sheet,
+  `vault/2026-08-13_settings-stepper.md`).
