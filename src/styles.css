@@ -710,14 +710,19 @@ body {
 
 /* A game-style stepper is the whole pick: the arrows cycle the value (with
    wrap — see stepper.ts) and the center value opens the option popover. The
-   padding-right matches .key-line's below, so the steppers and the key lines
-   land their right clusters on one edge. Settings-only classes, so the airier
-   metrics can't reach the game / model / add-game menus. */
+   hairline frame is the picked chrome (border sheet, 2026-08-13) — the
+   framed-control voice of the input frame's family, not a button border;
+   the shortcut rows deliberately stay bare (their accent border remains the
+   armed recorder's voice). Symmetric horizontal padding seats the arrow
+   squares off the frame. Settings-only classes, so the airier metrics can't
+   reach the game / model / add-game menus. */
 .stepper-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding-right: var(--space-4);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
 }
 
 /* An arrow: the trash/caret recipe — a fixed square seat around a below-ramp

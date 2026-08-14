@@ -88,3 +88,8 @@ Full execution detail lives in the approved plan file (Claude session,
   rows read too big. Width sheet (100/90/85/80%, both themes) → pick **90%**,
   centered, applied to the steppers, the shortcut rows, AND the Custom API
   key lines so the whole control column shares one rail.
+- 2026-08-13 — border follow-up: border sheet (none / hairline box / hairline
+  + inset / underline, both themes) → pick **hairline box, steppers only** —
+  no inset fill, shortcut rows deliberately bare (the accent border stays the
+  armed recorder's one voice). Recorded in DESIGN.md §5 as the framed-control
+  voice, revising the first sheet's borderless pick after the in-app look.

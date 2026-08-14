@@ -418,6 +418,11 @@ field with a border needs no second voice.
   rows, and the Custom API key lines — sit on one **90% centered rail**
   inside the card, so the controls read as a column set into the plate;
   headings, notes, and error boxes keep the card's full measure.
+- **Frame:** the stepper row wears a **1px hairline frame** at control radius
+  (`--border` — the framed-control voice, the input frame's family, not a
+  button border). Deliberately steppers only: the shortcut rows stay bare, so
+  the accent border remains the armed recorder's one voice, and the key
+  lines stay storage-bare.
 - **Arrows:** the fixed 20×20 square seat (the trash/caret recipe) around a
   9px glyph; bare muted ink at rest, veil + ink promotion on hover, 0.6
   opacity disabled. No transition — a cycled value is an instant state
