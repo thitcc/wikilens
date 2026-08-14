@@ -1,13 +1,13 @@
 ---
 title: Draggable overlay with anchored and manual position modes
 type: plan
-status: active
+status: done
 created: 2026-08-14
 updated: 2026-08-14
 tags: [overlay, frontend, rust, tauri]
 related:
   - "[[2026-08-04_panel-corner-pick]]"
-commit:
+commit: [920fccc, 02b63ba, 40641eb, 9afcad4]
 ---
 
 # Draggable overlay with anchored and manual position modes
@@ -121,3 +121,12 @@ mode where the panel stays exactly where it was dragged, across sessions.
   heading); **C1 rise** (8px up, 120ms ease-out) for the Center/Manual
   entrance — declined C2 sink. Corner anchors keep the edge slide (left
   mirror settled by symmetry, not asked).
+- 2026-08-14 — done. Landed as planned in four feat commits (schema →
+  layout → stepper/padlock → drag) on `feat/overlay-position-modes`; the
+  center-anchor growth rule resolved to center-pinned symmetric growth (no
+  wobble surfaced worth a decision doc), the apron went symmetric as
+  designed. Deferred, deliberately: no clamp for the apron's
+  adjacent-monitor overhang, and the drag-persist debounce stays at 500ms
+  until real use argues otherwise. Manual smoke (drag/DPI/multi-monitor/
+  lock) is §3b of docs/smoke-checklist.md — not yet run on-device this
+  session.

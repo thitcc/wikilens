@@ -63,6 +63,43 @@ Copy the boxes into the release notes/log and tick them as you go.
       the 70% cap with no 1px grow/shrink jitter (the DPI report ping-pong
       guard).
 
+### 3b. Position: anchors, drag, padlock
+
+- [ ] Settings → **Position**: each of the five anchors places the panel with
+      the same 12px visual gap it has top-right today — on the primary AND
+      the >100% scale monitor (the apron overhang math is per-monitor).
+- [ ] On a **bottom** anchor: open a menu — the panel must not jump (it stays
+      pinned to the bottom edge while the window expands), and the game/model
+      menus open **upward**. Stream a long answer: the panel grows upward,
+      bottom edge glued.
+- [ ] On **Center**: stream a long answer — the panel grows symmetrically
+      around its center, no walk toward either edge.
+- [ ] Entrance motion follows the placement: right anchors slide from the
+      right, left anchors from the left, Center and Manual rise — and the
+      first summon after launch plays the same motion as later ones.
+- [ ] Drag the panel by its header (cursor turns to a grab hand on the bare
+      header). The chips riding the header still click — gear, history,
+      game chip, the suggestion chip — and a double-click on the header does
+      **not** maximize.
+- [ ] Drag while anchored: the Settings stepper reads **Manual** on its next
+      open (the auto-flip), and the remembered anchor is still one step away
+      — stepping back to it snaps the panel home; stepping to Manual again
+      returns to the dragged spot.
+- [ ] Drag mid-stream: the panel must NOT snap back while the answer grows
+      (the applied-target guard) — the window only resizes under the cursor.
+- [ ] Quit (tray) and relaunch on Manual: the panel summons at the dragged
+      spot. Drag it to the second monitor, restart: same. Unplug that
+      monitor, summon: the panel falls back to the remembered anchor —
+      re-plug and it returns to the dragged spot (settings were not
+      rewritten).
+- [ ] **Padlock** (Position heading's right rail): locked = the header
+      offers no drag (arrow cursor, drag does nothing) in every mode,
+      Manual included; the stepper still switches placements. Unlock
+      restores the drag. The lock survives a restart.
+- [ ] Capture (Ctrl+Shift+C) while Manual on the second monitor: the
+      snapshot freezes the monitor under the cursor as always, and the
+      capture flow's re-show restores the dragged position.
+
 ### 4. Transparency
 
 - [ ] No black rectangle behind the glass panel (transparency regression).

@@ -170,6 +170,12 @@ All changes land through a pull request — no direct commits to `main`:
   cancels). Both the summon and capture shortcuts are configurable; choices
   persist in `settings.json` in the app-data dir, and **Reset** restores a
   default.
+- **Moving the panel:** it docks top-right by default. **Settings → Position**
+  docks it to any corner or the center — or just drag it by its header, which
+  flips Position to **Manual** and remembers the exact spot across restarts.
+  Anchors and the dragged spot are remembered independently, so stepping
+  between them restores each. The padlock on the Position heading stops
+  accidental drags (in every mode); the stepper keeps working while locked.
 - The app starts hidden and lives in the **system tray**. It only quits via the
   tray's **Quit** item — closing the window just hides it.
 
