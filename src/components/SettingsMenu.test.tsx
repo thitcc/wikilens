@@ -27,6 +27,7 @@ import {
   APP_VERSION,
   KEY_STATUS,
   SETTINGS,
+  SETTINGS_POSITION_LOCKED,
   deferred,
   installBackend,
 } from "../test/backend";
@@ -148,7 +149,7 @@ async function openAnswers(user: ReturnType<typeof userEvent.setup>) {
   await user.click(answersValue());
 }
 
-test("renders the three sections in order with both shortcut chips", async () => {
+test("renders the four sections in order with both shortcut chips", async () => {
   installBackend();
   await renderMenu();
 
@@ -157,6 +158,7 @@ test("renders the three sections in order with both shortcut chips", async () =>
   const order = [
     text.indexOf("Answers"),
     text.indexOf("Theme"),
+    text.indexOf("Position"),
     text.indexOf("Shortcuts"),
   ];
   expect(Math.min(...order)).toBeGreaterThanOrEqual(0);
@@ -1204,4 +1206,160 @@ test("a default shortcut offers no Reset", async () => {
   expect(
     screen.queryByRole("button", { name: /Reset the Summon shortcut/ }),
   ).toBeNull();
+});
+
+// ---- The Position stepper + padlock -----------------------------------------
+// The IPC template again (pickMode's twin): each pick round-trips
+// set_panel_position and the fresh SettingsInfo comes back through onSaved;
+// the padlock is its own single-purpose command (set_position_locked). The
+// lock pins the drag gesture only — the stepper stays live while locked.
+
+/** The Position stepper's center value. */
+const positionValue = () =>
+  screen.getByRole("button", { name: "Choose the panel position" });
+
+/** SETTINGS moved to a stored bottom-left anchor. */
+const ON_BOTTOM_LEFT: SettingsInfo = {
+  ...SETTINGS,
+  position: { mode: "anchored", anchor: "bottom-left", locked: false },
+};
+
+test("the position popover lists all six placements", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.click(positionValue());
+  for (const name of [
+    "Dock the panel to the top right",
+    "Dock the panel to the top left",
+    "Dock the panel to the bottom right",
+    "Dock the panel to the bottom left",
+    "Center the panel on the screen",
+    "Keep the panel where you drag it",
+  ]) {
+    expect(screen.getByRole("button", { name })).toBeTruthy();
+  }
+});
+
+test("a placement pick round-trips set_panel_position through onSaved", async () => {
+  const backend = installBackend({ set_panel_position: () => ON_BOTTOM_LEFT });
+  let saved: SettingsInfo | null = null;
+  const user = userEvent.setup();
+  const menu = await renderMenu({ onSaved: (next) => (saved = next) });
+
+  await user.click(positionValue());
+  await user.click(
+    screen.getByRole("button", { name: "Dock the panel to the bottom left" }),
+  );
+
+  expect(backend.callsTo("set_panel_position")).toEqual([
+    { choice: "bottom-left" },
+  ]);
+  expect(saved).toEqual(ON_BOTTOM_LEFT);
+  // The controlled view: the value moves once the fresh settings come back.
+  menu.rerenderWith(ON_BOTTOM_LEFT);
+  expect(positionValue().textContent).toContain("Bottom Left");
+});
+
+test("the arrows cycle the placement with wrap", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  // top-right is the first option — the previous arrow wraps to Manual.
+  await user.click(
+    screen.getByRole("button", { name: "Switch to the previous position" }),
+  );
+  expect(backend.callsTo("set_panel_position")).toEqual([{ choice: "manual" }]);
+});
+
+test("a failed placement pick renders its error under the stepper", async () => {
+  installBackend({
+    set_panel_position: () => {
+      throw "the settings file is read-only";
+    },
+  });
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.click(positionValue());
+  await user.click(
+    screen.getByRole("button", { name: "Center the panel on the screen" }),
+  );
+  await screen.findByText("the settings file is read-only");
+});
+
+test("the padlock toggles set_position_locked and reflects the stored state", async () => {
+  const backend = installBackend({
+    set_position_locked: () => SETTINGS_POSITION_LOCKED,
+  });
+  let saved: SettingsInfo | null = null;
+  const user = userEvent.setup();
+  const menu = await renderMenu({ onSaved: (next) => (saved = next) });
+
+  const lock = screen.getByRole("button", { name: "Lock the panel position" });
+  expect(lock.getAttribute("aria-pressed")).toBe("false");
+  await user.click(lock);
+
+  expect(backend.callsTo("set_position_locked")).toEqual([{ locked: true }]);
+  expect(saved).toEqual(SETTINGS_POSITION_LOCKED);
+
+  menu.rerenderWith(SETTINGS_POSITION_LOCKED);
+  const unlock = screen.getByRole("button", {
+    name: "Unlock the panel position",
+  });
+  expect(unlock.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("the stepper stays live while locked — the lock pins the gesture only", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu({ settings: SETTINGS_POSITION_LOCKED });
+
+  await user.click(
+    screen.getByRole("button", { name: "Switch to the next position" }),
+  );
+  expect(backend.callsTo("set_panel_position")).toEqual([
+    { choice: "top-left" },
+  ]);
+});
+
+test("a placement pick in flight gates the panel's other controls", async () => {
+  const gate = deferred<SettingsInfo>();
+  installBackend({ set_panel_position: () => gate.promise });
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.click(positionValue());
+  await user.click(
+    screen.getByRole("button", { name: "Dock the panel to the bottom left" }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Lock the panel position" }),
+  ).toHaveProperty("disabled", true);
+  expect(answersValue()).toHaveProperty("disabled", true);
+
+  gate.resolve(ON_BOTTOM_LEFT);
+  await act(async () => {});
+  expect(answersValue()).toHaveProperty("disabled", false);
+});
+
+test("opening the position popover closes the answers popover", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await openAnswers(user);
+  expect(
+    screen.getByRole("button", { name: "Answer with your own provider" }),
+  ).toBeTruthy();
+
+  await user.click(positionValue());
+  expect(
+    screen.queryByRole("button", { name: "Answer with your own provider" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Keep the panel where you drag it" }),
+  ).toBeTruthy();
 });

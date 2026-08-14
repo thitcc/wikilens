@@ -113,3 +113,11 @@ mode where the panel stays exactly where it was dragged, across sessions.
 - 2026-08-14 — created; supersedes [[2026-08-04_panel-corner-pick]] (flipped
   to dropped) — this plan covers its goal and removes its no-dragging
   non-goal.
+- 2026-08-14 — position-lock-motion sheet: **A1 heading rail** for the
+  padlock (the version-stamp precedent; zero Stepper changes) — declined A2
+  beside-the-stepper (crowds the frame, breaks the heading→stepper
+  adjacency); **B1 icon-only** locked state (closed padlock in accent ink;
+  open muted when free) — declined B2's LOCKED pill (second voice on the
+  heading); **C1 rise** (8px up, 120ms ease-out) for the Center/Manual
+  entrance — declined C2 sink. Corner anchors keep the edge slide (left
+  mirror settled by symmetry, not asked).

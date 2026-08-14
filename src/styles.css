@@ -148,7 +148,8 @@ body {
 .group-header:focus-visible,
 .menu-action:focus-visible,
 .stepper-arrow:focus-visible,
-.stepper-value:focus-visible {
+.stepper-value:focus-visible,
+.lock-btn:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
@@ -693,6 +694,51 @@ body {
   text-transform: none;
   letter-spacing: normal;
   opacity: 0.7;
+}
+
+/* The Position heading seats a control on its right rail (the version-stamp
+   position), so it centers instead of baselining. */
+.menu-heading--lock {
+  display: flex;
+  align-items: center;
+}
+
+/* The Position padlock (sheet picks A1/B1, 2026-08-14): the trash/caret
+   recipe — a fixed square seat, bare muted ink at rest, veil on hover —
+   with accent ink while engaged (One Signal Rule: the lock is a held
+   state, like a selection). */
+.lock-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-20);
+  height: var(--space-20);
+  margin-left: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.lock-btn:hover:not(:disabled) {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
+.lock-btn:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+.lock-btn.is-locked {
+  color: var(--accent);
+}
+
+.lock-btn svg {
+  display: block;
 }
 
 /* Left cluster of a row: monogram tile + truncating name. */
@@ -1451,6 +1497,34 @@ body {
   @keyframes panel-summon {
     from {
       transform: translateX(12px);
+      opacity: 0;
+    }
+  }
+
+  /* A-01's placement variants (sheet pick C1, 2026-08-14): the travel still
+     says where the panel came from — the anchored edge for left corners,
+     and with no edge to come from (Center / Manual) a short rise to hand.
+     Same 120ms ease-out clock; only the animation-name swaps, so the
+     arm/replay machinery stays A-01's. */
+  :root[data-anchor-h="left"] .panel--summoning {
+    animation-name: panel-summon-left;
+  }
+
+  :root[data-anchor-h="center"] .panel--summoning,
+  :root[data-position-mode="manual"] .panel--summoning {
+    animation-name: panel-summon-rise;
+  }
+
+  @keyframes panel-summon-left {
+    from {
+      transform: translateX(-12px);
+      opacity: 0;
+    }
+  }
+
+  @keyframes panel-summon-rise {
+    from {
+      transform: translateY(8px);
       opacity: 0;
     }
   }

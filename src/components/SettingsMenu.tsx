@@ -10,6 +10,8 @@ import {
   setApiKey,
   setHotkey,
   setMode,
+  setPanelPosition,
+  setPositionLocked,
   suspendHotkeys,
 } from "../api";
 import type {
@@ -17,6 +19,7 @@ import type {
   HotkeyRole,
   KeyStatus,
   Mode,
+  PositionChoice,
   SettingsInfo,
 } from "../types";
 import {
@@ -58,11 +61,72 @@ const ROLE_NAMES: Record<HotkeyRole, string> = {
  * neither — its slot sits under the heading, not on a row. */
 const KEYS_ROW = "keys";
 
-/** The two option popovers' ids, for the value buttons' `aria-controls`.
+/** The option popovers' ids, for the value buttons' `aria-controls`.
  * Module constants are safe: App's `openMenu` union guarantees one mounted
  * SettingsMenu. */
 const ANSWERS_POPOVER_ID = "settings-answers-options";
 const THEME_POPOVER_ID = "settings-theme-options";
+const POSITION_POPOVER_ID = "settings-position-options";
+
+/** The padlock's error tag — not an option id (the Position slot renders
+ * both), same reasoning as KEYS_ROW. */
+const POSITION_LOCK_ROW = "position-lock";
+
+/** The Position stepper's wire values, in cycle order. */
+const POSITION_OPTIONS: { id: PositionChoice; name: string; label: string; note?: string | null }[] = [
+  { id: "top-right", name: "Top Right", label: "Dock the panel to the top right" },
+  { id: "top-left", name: "Top Left", label: "Dock the panel to the top left" },
+  {
+    id: "bottom-right",
+    name: "Bottom Right",
+    label: "Dock the panel to the bottom right",
+  },
+  {
+    id: "bottom-left",
+    name: "Bottom Left",
+    label: "Dock the panel to the bottom left",
+  },
+  { id: "center", name: "Center", label: "Center the panel on the screen" },
+  {
+    id: "manual",
+    name: "Manual",
+    label: "Keep the panel where you drag it",
+    note: "Drag the header",
+  },
+];
+
+/** The padlock states — hand-drawn to the trash icon's 16-grid, stroke ink
+ * so the open/closed shackle reads at 12px. */
+const LOCK_OPEN_ICON = (
+  <svg
+    aria-hidden="true"
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinecap="round"
+  >
+    <rect x="3.5" y="7" width="9" height="6" rx="1.2" />
+    <path d="M5.5 7V4.8a2.6 2.6 0 0 1 5-1" />
+  </svg>
+);
+const LOCK_CLOSED_ICON = (
+  <svg
+    aria-hidden="true"
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinecap="round"
+  >
+    <rect x="3.5" y="7" width="9" height="6" rx="1.2" />
+    <path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7" />
+  </svg>
+);
 
 /** Bootstrap Icons "trash" (MIT), sized like the header gear. Static, so it
  * lives at module scope rather than being rebuilt on every render. */
@@ -154,9 +218,9 @@ export function SettingsMenu({
   /** Which stepper's option popover is open — at most one: the popover is a
    * scoped third altitude (vault/2026-08-13_stepper-popover-third-altitude.md)
    * and a second one would stack over it. */
-  const [openStepper, setOpenStepper] = useState<"answers" | "theme" | null>(
-    null,
-  );
+  const [openStepper, setOpenStepper] = useState<
+    "answers" | "theme" | "position" | null
+  >(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   /** The scrolling list — the steppers close their popover when it scrolls
    * (placement is measured once per open). */
@@ -580,6 +644,42 @@ export function SettingsMenu({
     setOpenKey((open) => (open === id ? null : id));
   }
 
+  /** The stepper's current value: the anchor, or "manual" while dragged. */
+  const currentPosition: PositionChoice =
+    settings.position.mode === "manual" ? "manual" : settings.position.anchor;
+
+  async function pickPosition(next: PositionChoice) {
+    if (busyAll || currentPosition === next) return;
+    setAction("source");
+    setActionRow(next);
+    setSourceError(null);
+    try {
+      onSaved(await setPanelPosition(next));
+    } catch (e) {
+      setSourceError({ rowId: next, message: String(e) });
+    } finally {
+      setAction("idle");
+      setActionRow(null);
+    }
+  }
+
+  /** Flip the padlock. Locked = the header never drags, in any mode; the
+   * stepper keeps working — the lock pins the gesture, not the setting. */
+  async function toggleLock() {
+    if (busyAll) return;
+    setAction("source");
+    setActionRow(POSITION_LOCK_ROW);
+    setSourceError(null);
+    try {
+      onSaved(await setPositionLocked(!settings.position.locked));
+    } catch (e) {
+      setSourceError({ rowId: POSITION_LOCK_ROW, message: String(e) });
+    } finally {
+      setAction("idle");
+      setActionRow(null);
+    }
+  }
+
   /** The Answers enum. One option on an unconfigured install that never
    * chose Default — the arrows disable and the popover lists the lone row.
    * The mode pick is an IPC round trip with an error slot; the theme pick
@@ -753,6 +853,54 @@ export function SettingsMenu({
           cardRef={menuRef}
           listRef={listRef}
         />
+
+        {/* The padlock rides the heading's right rail (the version-stamp
+            seat; sheet picks A1/B1, 2026-08-14): accent closed lock while
+            engaged, muted open lock while free. It pins the drag gesture
+            only — the stepper stays live either way. */}
+        <div className="menu-heading menu-heading--lock">
+          Position
+          <button
+            type="button"
+            className={
+              "lock-btn" + (settings.position.locked ? " is-locked" : "")
+            }
+            disabled={busyAll}
+            aria-pressed={settings.position.locked}
+            aria-label={
+              settings.position.locked
+                ? "Unlock the panel position"
+                : "Lock the panel position"
+            }
+            title={
+              settings.position.locked
+                ? "Position locked — dragging is off"
+                : "Lock the position against accidental drags"
+            }
+            onClick={() => void toggleLock()}
+          >
+            {settings.position.locked ? LOCK_CLOSED_ICON : LOCK_OPEN_ICON}
+          </button>
+        </div>
+        <Stepper
+          options={POSITION_OPTIONS}
+          currentId={currentPosition}
+          disabled={busyAll}
+          onPick={(id) => void pickPosition(id as PositionChoice)}
+          prevLabel="Switch to the previous position"
+          nextLabel="Switch to the next position"
+          valueLabel="Choose the panel position"
+          popoverId={POSITION_POPOVER_ID}
+          open={openStepper === "position"}
+          onOpenChange={(next) => setOpenStepper(next ? "position" : null)}
+          cardRef={menuRef}
+          listRef={listRef}
+        />
+        {sourceError !== null &&
+          (sourceError.rowId === POSITION_LOCK_ROW ||
+            POSITION_OPTIONS.some((o) => o.id === sourceError.rowId)) && (
+            <div className="menu-error">{sourceError.message}</div>
+          )}
 
         <div className="menu-heading">Shortcuts</div>
         {row("summon", settings.hotkeys.summon)}
