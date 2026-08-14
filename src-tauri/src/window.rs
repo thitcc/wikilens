@@ -124,6 +124,18 @@ impl DragTracker {
         *self.drag.lock().unwrap_or_else(PoisonError::into_inner) = None;
         self.generation.fetch_add(1, Ordering::SeqCst);
     }
+
+    /// Release the override once its position is safely in the store — but
+    /// only if no newer drag arrived meanwhile (checked under the drag lock,
+    /// which `set_drag` also takes). Without this the override lingers for
+    /// the session and `layout_overlay` never leaves the size-only path: the
+    /// locked snap-back and the unplugged-monitor fallback would go inert.
+    fn release_drag(&self, generation: u64) {
+        let mut drag = self.drag.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.generation.load(Ordering::SeqCst) == generation {
+            *drag = None;
+        }
+    }
 }
 
 /// Event emitted after the panel is shown so the frontend can focus the input.
@@ -396,6 +408,10 @@ pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
         };
         match settings.set_panel_position(next) {
             Ok(()) => {
+                // The store now equals the override — release it so layout
+                // returns to the stored-Manual path (same output, but the
+                // locked snap-back and monitor-fallback branches live again).
+                tracker.release_drag(generation);
                 let _ = app.emit_to(
                     OVERLAY_LABEL,
                     EVENT_POSITION,
