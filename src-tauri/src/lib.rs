@@ -77,6 +77,9 @@ pub fn run() {
         // The overlay's reported panel height (window.rs) — window-geometry
         // state, deliberately outside session-scoped AppState.
         .manage(window::OverlayHeight::default())
+        // Drag bookkeeping (applied-target echo filter + in-flight override);
+        // window-geometry state like OverlayHeight.
+        .manage(window::DragTracker::default())
         .setup(|app| {
             let handle = app.handle();
             // Settings load first: tray creation and hotkey registration both
@@ -139,17 +142,26 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|win, event| {
-            // Closing the window (e.g. Alt+F4) hides it instead of quitting; the
-            // app only exits via the tray's Quit item. The overlay routes
-            // through window::hide_overlay so this path fires overlay://hidden
-            // like every other hide.
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                if win.label() == window::OVERLAY_LABEL {
-                    window::hide_overlay(win.app_handle());
-                } else {
-                    let _ = win.hide();
+            match event {
+                // Closing the window (e.g. Alt+F4) hides it instead of
+                // quitting; the app only exits via the tray's Quit item. The
+                // overlay routes through window::hide_overlay so this path
+                // fires overlay://hidden like every other hide.
+                WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    if win.label() == window::OVERLAY_LABEL {
+                        window::hide_overlay(win.app_handle());
+                    } else {
+                        let _ = win.hide();
+                    }
                 }
+                // A header drag (or a foreign move) of the overlay — the
+                // handler filters our own layout writes and debounces the
+                // Manual persist / locked snap-back (window.rs).
+                WindowEvent::Moved(pos) if win.label() == window::OVERLAY_LABEL => {
+                    window::on_overlay_moved(win.app_handle(), (pos.x, pos.y));
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![

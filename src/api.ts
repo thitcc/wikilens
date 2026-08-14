@@ -17,6 +17,7 @@ import type {
   Mode,
   ModelList,
   PositionChoice,
+  PositionInfo,
   ProviderInfo,
   SettingsInfo,
   ShownInfo,
@@ -163,6 +164,17 @@ export function setPanelPosition(choice: PositionChoice): Promise<SettingsInfo> 
  * (the stepper keeps working). Resolves with the fresh settings. */
 export function setPositionLocked(locked: boolean): Promise<SettingsInfo> {
   return invoke<SettingsInfo>("set_position_locked", { locked });
+}
+
+/** Rust changed the stored placement itself — a header drag settled into
+ * Manual (`settings://position`). Payload mirrors `SettingsInfo.position`;
+ * the dragged coordinates never ride along. */
+export function onPanelPositionChanged(
+  cb: (position: PositionInfo) => void,
+): Promise<UnlistenFn> {
+  return listen<PositionInfo>("settings://position", (event) =>
+    cb(event.payload),
+  );
 }
 
 /** The rejection value `ask` settles with after `cancelAsk` wins — mirrors

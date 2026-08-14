@@ -632,6 +632,9 @@ pub fn set_panel_position(
         },
     };
     settings.set_panel_position(next).map_err(String::from)?;
+    // The store is authoritative now — a pending drag persist must not
+    // overwrite this pick half a second later.
+    window::clear_drag_override(&app);
     window::apply_layout(&app);
     Ok(settings_info(&settings, sense_default_mode()))
 }

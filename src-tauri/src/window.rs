@@ -1,11 +1,13 @@
 //! Overlay window control: toggle/show/hide and anchored/manual placement.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
-use crate::settings::{PanelAnchor, PositionMode, SettingsStore};
+use crate::settings::{PanelAnchor, PanelPosition, PositionMode, SettingsStore};
 
 /// Window label from `tauri.conf.json`.
 pub const OVERLAY_LABEL: &str = "overlay";
@@ -70,6 +72,60 @@ fn overlay_window_height(monitor_height: u32, scale: f64, desired: Option<u32>) 
     (panel + to_phys(APRON_TOP + APRON_BOTTOM)).min(monitor_height)
 }
 
+/// Drag bookkeeping for the overlay, managed in `lib.rs` beside
+/// `OverlayHeight`.
+///
+/// `applied` is the last outer position `apply_rect` handed the OS, recorded
+/// BEFORE `set_position` because WM_MOVE can dispatch synchronously inside
+/// the call — a `Moved` matching it is our own echo. The guard is
+/// load-bearing: bottom/center anchors move `y` on every height report, so
+/// without it a streaming answer would read as a drag and flip the mode to
+/// Manual. `drag` is the in-flight override: set on the FIRST foreign Moved
+/// (flipping effective placement to Manual before the debounced persist can
+/// run, so a mid-drag height report can't snap the window back), cleared
+/// when a Position pick makes the store authoritative again. `generation`
+/// coalesces the debounce tasks.
+#[derive(Default)]
+pub struct DragTracker {
+    applied: Mutex<Option<(i32, i32)>>,
+    drag: Mutex<Option<(i32, i32)>>,
+    generation: AtomicU64,
+}
+
+impl DragTracker {
+    fn set_applied(&self, pos: (i32, i32)) {
+        *self.applied.lock().unwrap_or_else(PoisonError::into_inner) = Some(pos);
+    }
+
+    fn is_applied(&self, pos: (i32, i32)) -> bool {
+        *self.applied.lock().unwrap_or_else(PoisonError::into_inner) == Some(pos)
+    }
+
+    fn drag(&self) -> Option<(i32, i32)> {
+        *self.drag.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Record a drag position; returns the new generation for the debounce.
+    fn set_drag(&self, pos: (i32, i32)) -> u64 {
+        *self.drag.lock().unwrap_or_else(PoisonError::into_inner) = Some(pos);
+        self.generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Invalidate pending debounce tasks without recording a drag.
+    fn bump(&self) -> u64 {
+        self.generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
+    }
+
+    fn clear(&self) {
+        *self.drag.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        self.generation.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 /// Event emitted after the panel is shown so the frontend can focus the input.
 const EVENT_SHOWN: &str = "overlay://shown";
 
@@ -97,6 +153,17 @@ pub struct ShownInfo {
 /// `C` fired the toggle; re-summon selected the draft, so the next keystroke
 /// replaced the whole question). Kept for any accidental hide.
 const EVENT_HIDDEN: &str = "overlay://hidden";
+
+/// Event emitted to the overlay webview when Rust itself changes the stored
+/// placement (a drag settled into Manual) — the stepper and the root data
+/// attributes track the flip with the menu closed. Payload: `PositionInfo`
+/// (mode/anchor/locked, never coordinates; pinned with `SettingsInfo`).
+pub const EVENT_POSITION: &str = "settings://position";
+
+/// Debounce before persisting a drag (or snapping a locked window back):
+/// `Moved` fires per-frame during a drag, and writing settings — or calling
+/// `set_position` — inside the OS move loop would churn or fight it.
+const DRAG_SETTLE: Duration = Duration::from_millis(500);
 
 fn overlay_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(OVERLAY_LABEL)
@@ -257,6 +324,92 @@ pub fn apply_layout(app: &AppHandle) {
     }
 }
 
+/// A Position pick makes the store authoritative again: drop the drag
+/// override and invalidate any pending debounce task (a stale drag persist
+/// firing after an anchor pick would overwrite it).
+pub fn clear_drag_override(app: &AppHandle) {
+    if let Some(tracker) = app.try_state::<DragTracker>() {
+        tracker.clear();
+    }
+}
+
+/// The overlay moved (`WindowEvent::Moved`, routed from lib.rs). Our own
+/// `apply_rect` writes are filtered by the applied-target guard; anything
+/// else while visible is a user drag — or, with the padlock on, a foreign/OS
+/// move to undo.
+pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
+    let Some(tracker) = app.try_state::<DragTracker>() else {
+        return;
+    };
+    if tracker.is_applied(pos) {
+        return;
+    }
+    let Some(win) = overlay_window(app) else {
+        return;
+    };
+    if !win.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Some(settings) = app.try_state::<SettingsStore>() else {
+        return;
+    };
+
+    if settings.panel_position().locked {
+        // Locked never flips the mode: snap back to the stored placement
+        // once the move settles. Defense in depth — the header offers no
+        // drag region while locked, so only foreign/OS moves land here.
+        let generation = tracker.bump();
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(DRAG_SETTLE).await;
+            let Some(tracker) = app.try_state::<DragTracker>() else {
+                return;
+            };
+            if tracker.generation() == generation {
+                apply_layout(&app);
+            }
+        });
+        return;
+    }
+
+    // Effective placement flips to Manual NOW (the override) — the store
+    // catches up after the settle, and the anchor memory rides along
+    // untouched, so stepping back to it still restores.
+    let generation = tracker.set_drag(pos);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(DRAG_SETTLE).await;
+        let Some(tracker) = app.try_state::<DragTracker>() else {
+            return;
+        };
+        let Some(settings) = app.try_state::<SettingsStore>() else {
+            return;
+        };
+        if tracker.generation() != generation {
+            return; // superseded by more drag, or by a Position pick
+        }
+        let current = settings.panel_position();
+        let next = PanelPosition {
+            mode: PositionMode::Manual,
+            manual: Some(pos),
+            ..current
+        };
+        match settings.set_panel_position(next) {
+            Ok(()) => {
+                let _ = app.emit_to(
+                    OVERLAY_LABEL,
+                    EVENT_POSITION,
+                    crate::commands::position_info(&settings),
+                );
+            }
+            // Keep the session override: the panel stays where dragged and
+            // the stepper shows the stale value until a successful save —
+            // never yank the window back over a disk error.
+            Err(e) => eprintln!("[wikilens] couldn't persist the dragged position: {e}"),
+        }
+    });
+}
+
 /// Hide the overlay and notify the frontend. Every hide path routes through
 /// here (`Esc` via the `hide_overlay` command, the hotkey toggle, the tray,
 /// Alt+F4, the capture flow) so `overlay://hidden` always fires — the
@@ -401,6 +554,35 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
         .unwrap_or_default();
     let desired = app.try_state::<OverlayHeight>().and_then(|s| s.desired());
 
+    // An in-flight drag owns the position: follow it as Manual, but apply
+    // SIZE only — a set_position here would fight the OS move loop, and the
+    // drag's own Moved stream keeps the override current.
+    if let Some((x, y)) = app.try_state::<DragTracker>().and_then(|t| t.drag()) {
+        let monitor = match win.current_monitor()? {
+            Some(m) => m,
+            None => match win.primary_monitor()? {
+                Some(m) => m,
+                None => return Ok(()),
+            },
+        };
+        let rect = overlay_rect(
+            Rect {
+                x: monitor.position().x,
+                y: monitor.position().y,
+                w: monitor.size().width,
+                h: monitor.size().height,
+            },
+            monitor.scale_factor(),
+            Placement::Manual(x, y),
+            desired,
+        );
+        let size = PhysicalSize::new(rect.w, rect.h);
+        if win.outer_size()? != size {
+            win.set_size(size)?;
+        }
+        return Ok(());
+    }
+
     // Manual: lay out on the monitor hosting the stored spot, provided the
     // header is still grabbable there.
     if position.mode == PositionMode::Manual {
@@ -467,6 +649,11 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
 /// (against the real window) instead of at the store means a report after a
 /// failed resize still retries.
 fn apply_rect(win: &WebviewWindow, rect: Rect) -> tauri::Result<()> {
+    // Record BEFORE set_position: WM_MOVE can dispatch synchronously inside
+    // it, and the Moved handler must already know this position is ours.
+    if let Some(tracker) = win.app_handle().try_state::<DragTracker>() {
+        tracker.set_applied((rect.x, rect.y));
+    }
     let target_size = PhysicalSize::new(rect.w, rect.h);
     let target_pos = PhysicalPosition::new(rect.x, rect.y);
     if win.outer_size()? == target_size && win.outer_position()? == target_pos {

@@ -20,6 +20,7 @@ import {
   onCaptureHotkey,
   onOverlayHidden,
   onOverlayShown,
+  onPanelPositionChanged,
   PANEL_HEIGHT_UNBOUNDED,
   setOverlayHeight,
   showOverlay,
@@ -565,6 +566,12 @@ function App() {
       setAttachment(info);
       setError(null);
     }).then(register);
+    // A drag settled into Manual Rust-side — patch the placement in place so
+    // the root data attributes and the stepper's next open track it with the
+    // menu closed (settings state is otherwise fed only by onSaved).
+    void onPanelPositionChanged((position) => {
+      setSettings((prev) => (prev ? { ...prev, position } : prev));
+    }).then(register);
     void onCaptureError((message) => setError(message)).then(register);
     // The global Ctrl+Shift+C hotkey funnels into the same request as the
     // footer button; the ref keeps this mount-only listener current.
@@ -939,7 +946,22 @@ function App() {
         if (e.animationName === "panel-summon") setSummoning(false);
       }}
     >
-      <header className="panel-header">
+      <header
+        // The header is the drag handle ("deep": bare header area and inert
+        // spans drag; the chips/buttons still block — DebugApp precedent).
+        // The attribute renders only while unlocked, so the padlock removes
+        // the gesture at its source; silently inert without the
+        // start-dragging permission in capabilities/default.json.
+        className={
+          "panel-header" +
+          (settings && !settings.position.locked
+            ? " panel-header--draggable"
+            : "")
+        }
+        {...(settings && !settings.position.locked
+          ? { "data-tauri-drag-region": "deep" }
+          : {})}
+      >
         {/* The gear rides with the brand (the game chip owns the right edge).
             Disabled until get_settings resolves — the popover needs data. */}
         <span className="brand-cluster">

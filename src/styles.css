@@ -214,6 +214,14 @@ body {
   align-self: center;
 }
 
+/* The drag handle's affordance — only while the position is unlocked (App
+   renders the class with the drag-region attribute; the debug header's
+   recipe). Chips keep their own cursors. */
+.panel-header--draggable {
+  cursor: grab;
+  user-select: none;
+}
+
 .panel-header {
   display: flex;
   align-items: center;
