@@ -355,12 +355,14 @@ fn settings_info_serializes_exactly_the_known_fields() {
         .collect();
     assert_eq!(
         position,
-        BTreeSet::from(["mode", "anchor", "locked"]),
+        BTreeSet::from(["mode", "anchor", "locked", "manualEdge"]),
         "new PositionInfo IPC field — coordinates must never cross; update this pin deliberately"
     );
     assert_eq!(value["position"]["mode"], "anchored");
     assert_eq!(value["position"]["anchor"], "top-right");
     assert_eq!(value["position"]["locked"], false);
+    // The edge is the ONLY Manual fact that crosses — never x/y.
+    assert!(value["position"]["manualEdge"].is_null());
 }
 
 /// `overlay://shown` became a payload-carrying IPC surface when foreground

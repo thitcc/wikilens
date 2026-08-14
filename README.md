@@ -174,8 +174,10 @@ All changes land through a pull request — no direct commits to `main`:
   docks it to any corner or the center — or just drag it by its header, which
   flips Position to **Manual** and remembers the exact spot across restarts.
   Anchors and the dragged spot are remembered independently, so stepping
-  between them restores each. The padlock on the Position heading stops
-  accidental drags (in every mode); the stepper keeps working while locked.
+  between them restores each. Dropped near the bottom of the screen, the
+  panel grows and opens its menus upward, like the bottom anchors. The
+  padlock on the Position heading stops accidental drags (in every mode);
+  the stepper keeps working while locked.
 - The app starts hidden and lives in the **system tray**. It only quits via the
   tray's **Quit** item — closing the window just hides it.
 

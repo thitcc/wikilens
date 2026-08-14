@@ -87,6 +87,11 @@ Copy the boxes into the release notes/log and tick them as you go.
       returns to the dragged spot.
 - [ ] Drag mid-stream: the panel must NOT snap back while the answer grows
       (the applied-target guard) — the window only resizes under the cursor.
+- [ ] Drag the panel near the screen **bottom** and open Settings/game
+      menus: they open **upward** and nothing clips at the screen edge (the
+      low drop pins its bottom edge — the bottom-anchor behavior); stream
+      an answer there and the panel grows upward. A **high** drop keeps
+      menus opening downward.
 - [ ] Quit (tray) and relaunch on Manual: the panel summons at the dragged
       spot. Drag it to the second monitor, restart: same. Unplug that
       monitor, summon: the panel falls back to the remembered anchor —

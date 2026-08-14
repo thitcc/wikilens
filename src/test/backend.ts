@@ -129,7 +129,12 @@ export const SETTINGS: SettingsInfo = {
   },
   mode: null,
   defaultMode: { configured: false, vision: false },
-  position: { mode: "anchored", anchor: "top-right", locked: false },
+  position: {
+    mode: "anchored",
+    anchor: "top-right",
+    locked: false,
+    manualEdge: null,
+  },
 };
 
 /** Fresh-install key state: the fixture providers, none keyed.

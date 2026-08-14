@@ -14,7 +14,7 @@ use crate::history::{HistoryEntry, HistoryStore, NewEntry};
 use crate::keys::{DpapiKeyStore, KeyStore};
 use crate::models::{self, ModelInfo, ModelSource};
 use crate::settings::{
-    HotkeyRole, Mode, PanelAnchor, PanelPosition, PositionMode, SettingsStore,
+    HotkeyRole, ManualEdge, Mode, PanelAnchor, PanelPosition, PositionMode, SettingsStore,
 };
 use crate::target::{self, AskTargets, LlmTarget};
 use crate::state::AppState;
@@ -125,6 +125,10 @@ pub struct PositionInfo {
     /// Manual → anchored step restores.
     pub anchor: PanelAnchor,
     pub locked: bool,
+    /// Which vertical edge the stored Manual spot pins (`null` = no spot
+    /// yet). The frontend flips menus/alignment upward for `"bottom"` — the
+    /// coordinate itself stays Rust-side.
+    pub manual_edge: Option<ManualEdge>,
 }
 
 /// Extensible settings envelope — future config-panel tenants join here.
@@ -171,6 +175,7 @@ pub(crate) fn position_info(settings: &SettingsStore) -> PositionInfo {
         mode: position.mode,
         anchor: position.anchor,
         locked: position.locked,
+        manual_edge: position.manual.map(|spot| spot.edge),
     }
 }
 
@@ -627,7 +632,7 @@ pub fn set_panel_position(
         },
         None => PanelPosition {
             mode: PositionMode::Manual,
-            manual: current.manual.or_else(|| window::overlay_outer_position(&app)),
+            manual: current.manual.or_else(|| window::manual_snapshot(&app)),
             ..current
         },
     };

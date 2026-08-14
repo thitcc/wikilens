@@ -156,6 +156,11 @@ export interface PositionInfo {
   anchor: PanelAnchor;
   /** The padlock: `true` = the header never drags, in every mode. */
   locked: boolean;
+  /** Which vertical edge the stored Manual spot pins (mirrors Rust
+   * `ManualEdge`); `null` = never dragged. `"bottom"` (a low drop) flips
+   * menus and growth upward, the bottom-anchor way. The coordinates
+   * themselves never cross IPC. */
+  manualEdge: "top" | "bottom" | null;
 }
 
 /** One provider's key presence, from `list_key_status` / `set_api_key` /

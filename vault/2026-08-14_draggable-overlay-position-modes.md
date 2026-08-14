@@ -130,3 +130,10 @@ mode where the panel stays exactly where it was dragged, across sessions.
   until real use argues otherwise. Manual smoke (drag/DPI/multi-monitor/
   lock) is §3b of docs/smoke-checklist.md — not yet run on-device this
   session.
+- 2026-08-14 — post-PR review fixes: the Manual option's "Drag the header"
+  note dropped (the name carries it), and on-device testing showed a low
+  Manual drop clipping its menus at the screen bottom — Manual now picks a
+  pinned edge at drop time (`ManualEdge`: top when a cap window fits below,
+  else bottom), a bottom-pinned drop borrowing the bottom-anchor facet
+  wholesale (menus and growth open upward). `PositionInfo` gains
+  `manualEdge`; coordinates still never cross IPC.

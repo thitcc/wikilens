@@ -302,16 +302,27 @@ function App() {
 
   // The stored placement reaches CSS the same way (root data attributes,
   // styles.css `:root[data-anchor-v=…]`): the vertical facet keeps the panel
-  // on its pinned edge while the window is cap-expanded, the horizontal one
-  // will steer the entrance motion. Manual carries no anchor facets —
-  // top-pinned growth from the dragged spot — only the mode facet. No
-  // settings yet = no attributes = the top-right default.
+  // on its pinned edge while the window is cap-expanded (and flips the menus
+  // with it), the horizontal one steers the entrance motion. Manual carries
+  // the vertical facet of its pinned edge — a low drop is bottom-pinned and
+  // borrows the bottom-anchor CSS wholesale — and never a horizontal one.
+  // No settings yet = no attributes = the top-right default.
   useEffect(() => {
     const root = document.documentElement;
     const position = settings?.position;
-    if (!position || position.mode === "manual") {
+    if (!position) {
       delete root.dataset.anchorV;
       delete root.dataset.anchorH;
+      delete root.dataset.positionMode;
+      return;
+    }
+    if (position.mode === "manual") {
+      delete root.dataset.anchorH;
+      if (position.manualEdge === "bottom") {
+        root.dataset.anchorV = "bottom";
+      } else {
+        delete root.dataset.anchorV;
+      }
     } else {
       const anchor = position.anchor;
       root.dataset.anchorV =
@@ -319,11 +330,7 @@ function App() {
       root.dataset.anchorH =
         anchor === "center" ? "center" : anchor.endsWith("left") ? "left" : "right";
     }
-    if (position) {
-      root.dataset.positionMode = position.mode;
-    } else {
-      delete root.dataset.positionMode;
-    }
+    root.dataset.positionMode = position.mode;
   }, [settings]);
 
   // Load the supported games once; default the selection to the first game.

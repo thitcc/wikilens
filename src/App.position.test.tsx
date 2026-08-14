@@ -32,7 +32,12 @@ test("the top-right default mirrors its anchor facets", async () => {
 test("a stored bottom-left anchor lands as bottom/left", async () => {
   installBackend({
     get_settings: () =>
-      withPosition({ mode: "anchored", anchor: "bottom-left", locked: false }),
+      withPosition({
+        mode: "anchored",
+        anchor: "bottom-left",
+        locked: false,
+        manualEdge: null,
+      }),
   });
   await renderApp();
 
@@ -44,7 +49,12 @@ test("a stored bottom-left anchor lands as bottom/left", async () => {
 test("center is its own facet on both axes", async () => {
   installBackend({
     get_settings: () =>
-      withPosition({ mode: "anchored", anchor: "center", locked: false }),
+      withPosition({
+        mode: "anchored",
+        anchor: "center",
+        locked: false,
+        manualEdge: null,
+      }),
   });
   await renderApp();
 
@@ -56,12 +66,39 @@ test("center is its own facet on both axes", async () => {
 test("manual mode drops the anchor facets and flags the mode", async () => {
   installBackend({
     get_settings: () =>
-      withPosition({ mode: "manual", anchor: "top-right", locked: false }),
+      withPosition({
+        mode: "manual",
+        anchor: "top-right",
+        locked: false,
+        manualEdge: "top",
+      }),
   });
   await renderApp();
 
   const root = document.documentElement.dataset;
   expect(root.anchorV).toBeUndefined();
+  expect(root.anchorH).toBeUndefined();
+  expect(root.positionMode).toBe("manual");
+});
+
+test("a bottom-pinned manual spot borrows the bottom-anchor facet", async () => {
+  // A low drop stores edge=bottom: the menus and the cap-state alignment
+  // must flip upward exactly like a bottom anchor (the CSS keys on
+  // data-anchor-v) — without it, a menu opened near the screen bottom
+  // clips off-screen.
+  installBackend({
+    get_settings: () =>
+      withPosition({
+        mode: "manual",
+        anchor: "top-right",
+        locked: false,
+        manualEdge: "bottom",
+      }),
+  });
+  await renderApp();
+
+  const root = document.documentElement.dataset;
+  expect(root.anchorV).toBe("bottom");
   expect(root.anchorH).toBeUndefined();
   expect(root.positionMode).toBe("manual");
 });
@@ -104,6 +141,7 @@ test("a drag-initiated flip patches the placement in place", async () => {
       mode: "manual",
       anchor: "top-right",
       locked: false,
+      manualEdge: "top",
     });
   });
 

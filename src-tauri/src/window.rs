@@ -7,7 +7,9 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
-use crate::settings::{PanelAnchor, PanelPosition, PositionMode, SettingsStore};
+use crate::settings::{
+    ManualEdge, ManualSpot, PanelAnchor, PanelPosition, PositionMode, SettingsStore,
+};
 
 /// Window label from `tauri.conf.json`.
 pub const OVERLAY_LABEL: &str = "overlay";
@@ -317,11 +319,57 @@ pub fn show_overlay_if_hidden(app: &AppHandle) {
     }
 }
 
-/// The overlay's current outer position (physical virtual-screen px) — the
-/// first Manual pick's "stay where you are" snapshot (`set_panel_position`).
-pub fn overlay_outer_position(app: &AppHandle) -> Option<(i32, i32)> {
+/// Snapshot the overlay's current rect as a Manual spot — the first Manual
+/// pick's "stay where you are" (`set_panel_position`) and the drag-settle
+/// persist both use it, so the two paths can't disagree on the edge rule.
+pub fn manual_snapshot(app: &AppHandle) -> Option<ManualSpot> {
     let win = overlay_window(app)?;
-    win.outer_position().ok().map(|p| (p.x, p.y))
+    let pos = win.outer_position().ok()?;
+    let size = win.outer_size().ok()?;
+    let monitor = match win.current_monitor().ok()? {
+        Some(m) => m,
+        None => win.primary_monitor().ok()??,
+    };
+    Some(manual_spot_from_rect(
+        Rect {
+            x: pos.x,
+            y: pos.y,
+            w: size.width,
+            h: size.height,
+        },
+        Rect {
+            x: monitor.position().x,
+            y: monitor.position().y,
+            w: monitor.size().width,
+            h: monitor.size().height,
+        },
+        monitor.scale_factor(),
+    ))
+}
+
+/// Which vertical edge a dropped window pins — pure math. Top when a full
+/// cap-height window still fits below the drop (growth and menus keep
+/// opening downward); otherwise the drop's bottom edge becomes the
+/// invariant and everything opens upward, matching the bottom anchors the
+/// drop visually resembles (a menu on a low drop would otherwise clip at
+/// the screen bottom).
+fn manual_spot_from_rect(window: Rect, monitor: Rect, scale: f64) -> ManualSpot {
+    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
+    let bottom_limit = monitor.y + monitor.h as i32 + to_phys(APRON_BOTTOM) as i32;
+    let cap_h = overlay_window_height(monitor.h, scale, None);
+    if window.y + cap_h as i32 <= bottom_limit {
+        ManualSpot {
+            x: window.x,
+            y: window.y,
+            edge: ManualEdge::Top,
+        }
+    } else {
+        ManualSpot {
+            x: window.x,
+            y: window.y + window.h as i32,
+            edge: ManualEdge::Bottom,
+        }
+    }
 }
 
 /// Re-apply the stored placement to the live window — the `set_panel_position`
@@ -400,10 +448,16 @@ pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
         if tracker.generation() != generation {
             return; // superseded by more drag, or by a Position pick
         }
+        // Snapshot the LIVE rect (== the drag end) rather than the raw Moved
+        // position: the same edge rule as the Manual pick, and a low drop
+        // stores its bottom edge so menus and growth open upward there.
+        let Some(spot) = manual_snapshot(&app) else {
+            return;
+        };
         let current = settings.panel_position();
         let next = PanelPosition {
             mode: PositionMode::Manual,
-            manual: Some(pos),
+            manual: Some(spot),
             ..current
         };
         match settings.set_panel_position(next) {
@@ -450,8 +504,8 @@ struct Rect {
 /// Where the layout math is told to put the window.
 enum Placement {
     Anchor(PanelAnchor),
-    /// The stored manual spot: the window's outer top-left, physical px.
-    Manual(i32, i32),
+    /// The stored manual spot (`x` + the pinned edge's `y`, physical px).
+    Manual(ManualSpot),
 }
 
 /// How much of the panel's top strip must sit on a monitor for a stored
@@ -473,9 +527,9 @@ const MIN_GRAB_WIDTH: u32 = 100;
 /// Growth (the height report changing the window height) falls out of
 /// recomputing per call: top anchors keep the top edge (grow down), bottom
 /// anchors keep the bottom edge (grow up), center keeps the window center.
-/// Manual keeps the stored top-left and clamps the height to the room below
-/// it on the hosting monitor, floored so a pathological spot can't collapse
-/// the window.
+/// Manual pins whichever edge the drop chose (`ManualEdge`) and clamps the
+/// height to the room on the open side of it, floored so a pathological
+/// spot can't collapse the window.
 fn overlay_rect(monitor: Rect, scale: f64, placement: Placement, desired: Option<u32>) -> Rect {
     let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
     let win_w = to_phys(APRON_LEFT + PANEL_WIDTH + APRON_RIGHT);
@@ -509,17 +563,35 @@ fn overlay_rect(monitor: Rect, scale: f64, placement: Placement, desired: Option
                 h: win_h,
             }
         }
-        Placement::Manual(x, y) => {
-            // The panel may reach the monitor's bottom edge — only the apron
-            // hangs off past it.
-            let room_below =
-                (monitor.y + monitor.h as i32 + to_phys(APRON_BOTTOM) as i32 - y).max(0) as u32;
+        Placement::Manual(spot) => {
+            // The panel may reach the monitor's edge — only the apron hangs
+            // off past it.
             let floor = to_phys(MIN_PANEL_HEIGHT + APRON_TOP + APRON_BOTTOM);
-            Rect {
-                x,
-                y,
-                w: win_w,
-                h: win_h.min(room_below).max(floor),
+            match spot.edge {
+                ManualEdge::Top => {
+                    let room_below = (monitor.y + monitor.h as i32 + to_phys(APRON_BOTTOM) as i32
+                        - spot.y)
+                        .max(0) as u32;
+                    Rect {
+                        x: spot.x,
+                        y: spot.y,
+                        w: win_w,
+                        h: win_h.min(room_below).max(floor),
+                    }
+                }
+                ManualEdge::Bottom => {
+                    // `spot.y` is the window's BOTTOM; the cap expansion and
+                    // content growth open upward, the bottom-anchor way.
+                    let room_above =
+                        (spot.y - monitor.y + to_phys(APRON_TOP) as i32).max(0) as u32;
+                    let h = win_h.min(room_above).max(floor);
+                    Rect {
+                        x: spot.x,
+                        y: spot.y - h as i32,
+                        w: win_w,
+                        h,
+                    }
+                }
             }
         }
     }
@@ -572,7 +644,8 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
 
     // An in-flight drag owns the position: follow it as Manual, but apply
     // SIZE only — a set_position here would fight the OS move loop, and the
-    // drag's own Moved stream keeps the override current.
+    // drag's own Moved stream keeps the override current. Mid-drag the live
+    // top is the reference (the edge is decided at settle time).
     if let Some((x, y)) = app.try_state::<DragTracker>().and_then(|t| t.drag()) {
         let monitor = match win.current_monitor()? {
             Some(m) => m,
@@ -589,7 +662,11 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
                 h: monitor.size().height,
             },
             monitor.scale_factor(),
-            Placement::Manual(x, y),
+            Placement::Manual(ManualSpot {
+                x,
+                y,
+                edge: ManualEdge::Top,
+            }),
             desired,
         );
         let size = PhysicalSize::new(rect.w, rect.h);
@@ -600,16 +677,26 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
     }
 
     // Manual: lay out on the monitor hosting the stored spot, provided the
-    // header is still grabbable there.
+    // panel is still grabbable there.
     if position.mode == PositionMode::Manual {
-        if let Some((x, y)) = position.manual {
+        if let Some(spot) = position.manual {
             // The window's current scale approximates the strip's own — fine
-            // for a visibility probe (mixed-DPI drift is a few px).
+            // for a visibility probe (mixed-DPI drift is a few px). For a
+            // top-pinned spot the probe is the header strip; for a
+            // bottom-pinned one, the panel's bottom strip (its top floats
+            // with content, but the height clamp keeps everything between
+            // the pinned bottom and the monitor top).
             let scale = win.scale_factor()?;
             let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
+            let strip_y = match spot.edge {
+                ManualEdge::Top => spot.y + to_phys(APRON_TOP) as i32,
+                ManualEdge::Bottom => {
+                    spot.y - to_phys(APRON_BOTTOM) as i32 - to_phys(HEADER_GRAB_HEIGHT) as i32
+                }
+            };
             let strip = Rect {
-                x: x + to_phys(APRON_LEFT) as i32,
-                y: y + to_phys(APRON_TOP) as i32,
+                x: spot.x + to_phys(APRON_LEFT) as i32,
+                y: strip_y,
                 w: to_phys(PANEL_WIDTH),
                 h: to_phys(HEADER_GRAB_HEIGHT),
             };
@@ -627,7 +714,7 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
                 let rect = overlay_rect(
                     rects[i],
                     monitors[i].scale_factor(),
-                    Placement::Manual(x, y),
+                    Placement::Manual(spot),
                     desired,
                 );
                 return apply_rect(win, rect);
@@ -822,11 +909,27 @@ mod tests {
         assert_eq!(tall.y, short.y);
     }
 
+    fn manual_top(x: i32, y: i32) -> Placement {
+        Placement::Manual(ManualSpot {
+            x,
+            y,
+            edge: ManualEdge::Top,
+        })
+    }
+
+    fn manual_bottom(x: i32, y: i32) -> Placement {
+        Placement::Manual(ManualSpot {
+            x,
+            y,
+            edge: ManualEdge::Bottom,
+        })
+    }
+
     #[test]
-    fn manual_keeps_the_spot_and_clamps_to_the_room_below() {
+    fn manual_top_keeps_the_spot_and_clamps_to_the_room_below() {
         // Plenty of room: the stored spot and the capped height, untouched.
         assert_eq!(
-            overlay_rect(FHD, 1.0, Placement::Manual(100, 200), None),
+            overlay_rect(FHD, 1.0, manual_top(100, 200), None),
             Rect {
                 x: 100,
                 y: 200,
@@ -837,12 +940,77 @@ mod tests {
         // Near the bottom: the height gives way (panel may reach the monitor
         // edge; only the apron hangs off) down to the floor.
         assert_eq!(
-            overlay_rect(FHD, 1.0, Placement::Manual(100, 1000), None).h,
+            overlay_rect(FHD, 1.0, manual_top(100, 1000), None).h,
             184, // floor: MIN_PANEL_HEIGHT 120 + 64 chrome
         );
         assert_eq!(
-            overlay_rect(FHD, 1.0, Placement::Manual(100, 900), Some(220)).h,
+            overlay_rect(FHD, 1.0, manual_top(100, 900), Some(220)).h,
             224, // room below (1080 + 44 − 900) wins over the 284 report
+        );
+    }
+
+    #[test]
+    fn manual_bottom_pins_the_bottom_edge_and_opens_upward() {
+        // y is the window's BOTTOM. Cap expansion extends upward from it.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_bottom(100, 1000), None),
+            Rect {
+                x: 100,
+                y: 1000 - 820,
+                w: 484,
+                h: 820
+            }
+        );
+        // Growth invariance: two heights, same bottom edge (the low-drop
+        // twin of the bottom anchors' rule).
+        let tall = overlay_rect(FHD, 1.0, manual_bottom(100, 1000), None);
+        let short = overlay_rect(FHD, 1.0, manual_bottom(100, 1000), Some(220));
+        assert_eq!(tall.y + tall.h as i32, short.y + short.h as i32);
+        // Near the monitor top the height gives way to the room above.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_bottom(100, 300), None).h,
+            320, // 300 − (0 − 20) — the top apron may overhang
+        );
+    }
+
+    #[test]
+    fn a_drop_pins_top_when_the_cap_fits_below_it_else_bottom() {
+        // Cap window on FHD is 820: a drop at y=200 leaves 200+820 ≤ 1124.
+        assert_eq!(
+            manual_spot_from_rect(
+                Rect {
+                    x: 100,
+                    y: 200,
+                    w: 484,
+                    h: 300
+                },
+                FHD,
+                1.0
+            ),
+            ManualSpot {
+                x: 100,
+                y: 200,
+                edge: ManualEdge::Top
+            }
+        );
+        // A low drop (y=800) can't fit the cap below — its bottom edge
+        // (y + window height) becomes the invariant.
+        assert_eq!(
+            manual_spot_from_rect(
+                Rect {
+                    x: 100,
+                    y: 800,
+                    w: 484,
+                    h: 300
+                },
+                FHD,
+                1.0
+            ),
+            ManualSpot {
+                x: 100,
+                y: 1100,
+                edge: ManualEdge::Bottom
+            }
         );
     }
 

@@ -1221,7 +1221,12 @@ const positionValue = () =>
 /** SETTINGS moved to a stored bottom-left anchor. */
 const ON_BOTTOM_LEFT: SettingsInfo = {
   ...SETTINGS,
-  position: { mode: "anchored", anchor: "bottom-left", locked: false },
+  position: {
+    mode: "anchored",
+    anchor: "bottom-left",
+    locked: false,
+    manualEdge: null,
+  },
 };
 
 test("the position popover lists all six placements", async () => {

@@ -191,8 +191,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
     by id.
   - `capture://error` — `string`; user-readable capture failure (e.g. the
     selection was too small).
-  - `settings://position` — `PositionInfo` (`{mode, anchor, locked}`, the
-    dragged coordinates never cross IPC — pinned with `SettingsInfo`); fired
+  - `settings://position` — `PositionInfo` (`{mode, anchor, locked,
+    manualEdge}`, the dragged coordinates never cross IPC — pinned with
+    `SettingsInfo`); fired
     only when Rust itself changes the stored placement (a header drag settled
     into Manual), so the root data attributes and the Position stepper track
     the flip with the menu closed. Picks made *from* the UI don't fire it —
@@ -302,9 +303,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   high-DPI setups. Placement comes from **Settings → Position** (five anchors
   + Manual, persisted in `settings.json` with independent anchor/manual
   memories and a padlock); each placement pins its own edge as the height
-  changes (bottom anchors grow upward, center stays centered, Manual keeps
-  its top-left). A Manual spot on no connected monitor falls back to the
-  anchor for that show without rewriting settings.
+  changes (bottom anchors grow upward, center stays centered). A Manual drop
+  picks its own pinned edge (`ManualEdge`): top when a cap-height window
+  still fits below it, else **bottom** — the drop's bottom edge becomes the
+  invariant and menus/growth open upward via the same `data-anchor-v`
+  facet the bottom anchors use (a low drop's menus would otherwise clip at
+  the screen bottom). A Manual spot on no connected monitor falls back to
+  the anchor for that show without rewriting settings.
 - Panel geometry is **split across two runtimes**: `window.rs` constants
   (`PANEL_GAP`, `APRON_*`, `PANEL_HEIGHT_FRAC`) size the window; the CSS
   margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css` must

@@ -127,11 +127,51 @@ impl PositionMode {
     }
 }
 
+/// Which vertical edge a dropped Manual spot pins. `Top` when a cap-height
+/// window still fits below the drop (growth and menus keep opening
+/// downward); `Bottom` when it doesn't — the window's bottom edge at drop
+/// time becomes the invariant and everything opens upward, the
+/// bottom-anchor behavior the drop visually resembles. The edge crosses IPC
+/// (`PositionInfo.manualEdge`) so the frontend can flip the menus; the
+/// coordinate never does.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ManualEdge {
+    Top,
+    Bottom,
+}
+
+impl ManualEdge {
+    fn as_str(self) -> &'static str {
+        match self {
+            ManualEdge::Top => "top",
+            ManualEdge::Bottom => "bottom",
+        }
+    }
+
+    fn parse(s: &str) -> Option<ManualEdge> {
+        match s {
+            "top" => Some(ManualEdge::Top),
+            "bottom" => Some(ManualEdge::Bottom),
+            _ => None,
+        }
+    }
+}
+
+/// A dragged spot: the window's outer `x`, plus `y` as the pinned edge's
+/// coordinate — the window TOP for `edge: Top`, the window BOTTOM for
+/// `edge: Bottom`. Physical virtual-screen px (what `WindowEvent::Moved`
+/// delivers).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ManualSpot {
+    pub x: i32,
+    pub y: i32,
+    pub edge: ManualEdge,
+}
+
 /// The overlay placement choice. Both memories persist independently: `anchor`
 /// survives Manual picks and drags, `manual` survives anchor picks — stepping
-/// between them restores each. Coordinates are the window's *outer* position
-/// in physical virtual-screen px (what `WindowEvent::Moved` delivers) and
-/// never cross IPC.
+/// between them restores each. Coordinates never cross IPC.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PanelPosition {
     pub mode: PositionMode,
@@ -139,7 +179,7 @@ pub struct PanelPosition {
     /// Last dragged spot; `None` until the panel is first dragged (or Manual
     /// is first picked, which snapshots the current position). Manual mode
     /// with no stored spot lays out from `anchor`.
-    pub manual: Option<(i32, i32)>,
+    pub manual: Option<ManualSpot>,
     /// The padlock: `true` = the header never drags, in every mode.
     pub locked: bool,
 }
@@ -214,12 +254,16 @@ struct PositionEntries {
     extra: serde_json::Map<String, serde_json::Value>,
 }
 
-/// The dragged spot on disk: window outer position, physical virtual-screen
-/// px (negative on monitors left/above the primary).
-#[derive(Serialize, Deserialize, Clone, Copy)]
+/// The dragged spot on disk: window outer coordinates, physical
+/// virtual-screen px (negative on monitors left/above the primary). `y` is
+/// the pinned edge's coordinate; `edge` is raw so an unrecognized value
+/// falls back alone (to `"top"`).
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(default)]
 struct ManualPoint {
     x: i32,
     y: i32,
+    edge: Option<String>,
 }
 
 type JsonMap = serde_json::Map<String, serde_json::Value>;
@@ -449,7 +493,11 @@ impl SettingsStore {
             position: PositionEntries {
                 mode: Some(next.position.mode.as_str().to_string()),
                 anchor: Some(next.position.anchor.as_str().to_string()),
-                manual: next.position.manual.map(|(x, y)| ManualPoint { x, y }),
+                manual: next.position.manual.map(|spot| ManualPoint {
+                    x: spot.x,
+                    y: spot.y,
+                    edge: Some(spot.edge.as_str().to_string()),
+                }),
                 locked: Some(next.position.locked),
                 extra: position_extra,
             },
@@ -502,10 +550,21 @@ fn resolve_position(stored: &PositionEntries) -> PanelPosition {
             defaults.anchor
         }),
     };
+    let manual = stored.manual.as_ref().map(|p| ManualSpot {
+        x: p.x,
+        y: p.y,
+        edge: match &p.edge {
+            None => ManualEdge::Top,
+            Some(s) => ManualEdge::parse(s).unwrap_or_else(|| {
+                eprintln!("wikilens: stored manual edge {s:?} is invalid; using top");
+                ManualEdge::Top
+            }),
+        },
+    });
     PanelPosition {
         mode,
         anchor,
-        manual: stored.manual.map(|p| (p.x, p.y)),
+        manual,
         locked: stored.locked.unwrap_or(defaults.locked),
     }
 }
@@ -606,11 +665,16 @@ mod tests {
 
         let store = SettingsStore::load(path.clone());
         assert_eq!(store.panel_position(), PanelPosition::default());
+        let spot = ManualSpot {
+            x: -8,
+            y: 1240,
+            edge: ManualEdge::Bottom,
+        };
         store
             .set_panel_position(PanelPosition {
                 mode: PositionMode::Manual,
                 anchor: PanelAnchor::BottomLeft,
-                manual: Some((-8, 1240)),
+                manual: Some(spot),
                 locked: false,
             })
             .unwrap();
@@ -619,7 +683,7 @@ mod tests {
         let position = reloaded.panel_position();
         assert_eq!(position.mode, PositionMode::Manual);
         assert_eq!(position.anchor, PanelAnchor::BottomLeft);
-        assert_eq!(position.manual, Some((-8, 1240)));
+        assert_eq!(position.manual, Some(spot));
         assert!(!position.locked);
 
         // The file holds the wire strings — pinned like `mode`'s so the serde
@@ -632,6 +696,7 @@ mod tests {
         );
         assert!(raw.contains("\"x\": -8"), "raw file was: {raw}");
         assert!(raw.contains("\"y\": 1240"), "raw file was: {raw}");
+        assert!(raw.contains("\"edge\": \"bottom\""), "raw file was: {raw}");
     }
 
     #[test]
@@ -689,6 +754,19 @@ mod tests {
     }
 
     #[test]
+    fn manual_edge_serde_matches_the_stored_wire_strings() {
+        assert_eq!(serde_json::to_value(ManualEdge::Top).unwrap(), "top");
+        assert_eq!(serde_json::to_value(ManualEdge::Bottom).unwrap(), "bottom");
+        assert_eq!(
+            serde_json::from_value::<ManualEdge>("bottom".into()).unwrap(),
+            ManualEdge::Bottom
+        );
+        assert!(serde_json::from_value::<ManualEdge>("sideways".into()).is_err());
+        assert_eq!(ManualEdge::parse("top"), Some(ManualEdge::Top));
+        assert_eq!(ManualEdge::Bottom.as_str(), "bottom");
+    }
+
+    #[test]
     fn invalid_stored_position_falls_back_alone() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
@@ -696,7 +774,7 @@ mod tests {
             &path,
             r#"{
                 "hotkeys": { "capture": "Alt+KeyQ" },
-                "position": { "mode": "banana", "anchor": "under-the-couch", "manual": { "x": 4, "y": 9 } }
+                "position": { "mode": "banana", "anchor": "under-the-couch", "manual": { "x": 4, "y": 9, "edge": "sideways" } }
             }"#,
         )
         .unwrap();
@@ -706,7 +784,14 @@ mod tests {
         let position = store.panel_position();
         assert_eq!(position.mode, PositionMode::Anchored);
         assert_eq!(position.anchor, PanelAnchor::TopRight);
-        assert_eq!(position.manual, Some((4, 9)));
+        assert_eq!(
+            position.manual,
+            Some(ManualSpot {
+                x: 4,
+                y: 9,
+                edge: ManualEdge::Top,
+            })
+        );
         assert!(!position.locked);
         assert_eq!(store.shortcut(HotkeyRole::Capture), alt_q());
         // The file is not rewritten by load — repair happens on the next save.
@@ -851,7 +936,11 @@ mod tests {
         assert!(matches!(
             store.set_panel_position(PanelPosition {
                 mode: PositionMode::Manual,
-                manual: Some((10, 10)),
+                manual: Some(ManualSpot {
+                    x: 10,
+                    y: 10,
+                    edge: ManualEdge::Top,
+                }),
                 ..PanelPosition::default()
             }),
             Err(AppError::Settings(_))
