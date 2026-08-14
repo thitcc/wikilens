@@ -1,13 +1,13 @@
 ---
 title: Codify the proof-sheet workflow as a skill
 type: plan
-status: active
+status: done
 created: 2026-08-13
 updated: 2026-08-13
 tags: [frontend]
 related:
   - "[[2026-08-13_settings-stepper]]"
-commit:
+commit: [33011dc, 8ce0cbc]
 ---
 
 # Codify the proof-sheet workflow as a skill
@@ -61,3 +61,8 @@ grid, backdrop, specimen injection) was rebuilt from scratch for every sheet.
 - 2026-08-13 — created; branch `chore/proof-sheet-skill`. Mid-plan pick
   (AskUserQuestion): register the permanent hook ignores — chosen over
   keeping the classify-as-intentional routine.
+- 2026-08-13 — shipped: `33011dc` (skill + skeleton + hook-ignore config;
+  suppression verified empirically — a throwaway off-palette write under
+  `.impeccable/critique/` produced zero findings) and `8ce0cbc` (CLAUDE.md
+  bullet → pointer). The generator picked the skill up on directory scan
+  (`generated: proof-sheet`, 8 adapters). Closed.
