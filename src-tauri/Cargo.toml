@@ -54,8 +54,13 @@ tokio-util = "0.7"
 # -> OpenProcess + QueryFullProcessImageNameW; detect/foreground.rs,
 # vault/2026-08-04_game-auto-detection.md); both transitively imply
 # Win32_Foundation, which stays listed for documentation.
+# Win32_UI_WindowsAndMessaging also supplies SetWindowPos, the atomic
+# move+resize behind window.rs::apply_rect (the split set_size/set_position
+# pair wobbled bottom-pinned panels for a frame). Win32_UI_Input_KeyboardAndMouse
+# adds GetAsyncKeyState so the drag-settle task can wait out a still-held
+# mouse button before snapping the drop on-screen (window.rs::mouse_button_down).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Security_Cryptography", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Security_Cryptography", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 # For #[tokio::test] in the ignored live-wiki integration test (wiki/mod.rs).

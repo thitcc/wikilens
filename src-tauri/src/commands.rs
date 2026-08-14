@@ -632,7 +632,7 @@ pub fn set_panel_position(
         },
         None => PanelPosition {
             mode: PositionMode::Manual,
-            manual: current.manual.or_else(|| window::manual_snapshot(&app)),
+            manual: current.manual.or_else(|| window::settle_manual_spot(&app)),
             ..current
         },
     };

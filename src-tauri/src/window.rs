@@ -319,24 +319,65 @@ pub fn show_overlay_if_hidden(app: &AppHandle) {
     }
 }
 
-/// Snapshot the overlay's current rect as a Manual spot — the first Manual
+/// Settle the overlay's current rect into a Manual spot — the first Manual
 /// pick's "stay where you are" (`set_panel_position`) and the drag-settle
 /// persist both use it, so the two paths can't disagree on the edge rule.
-pub fn manual_snapshot(app: &AppHandle) -> Option<ManualSpot> {
+///
+/// Settling first snaps the panel fully onto the monitor showing the largest
+/// share of it (zero overlap → the nearest one), so a stored spot can never
+/// rest off-screen or straddle monitors. That containment is load-bearing,
+/// not cosmetic: `layout_overlay` re-validates the spot on every height
+/// report, and an off-screen spot failing `manual_host` there teleported the
+/// panel to the remembered anchor the next time a menu opened. A clamped
+/// spot always passes the strip check (pinned by test), so the mid-session
+/// fallback is unreachable by construction — it survives only for the
+/// monitor-unplugged restore.
+pub fn settle_manual_spot(app: &AppHandle) -> Option<ManualSpot> {
     let win = overlay_window(app)?;
     let pos = win.outer_position().ok()?;
     let size = win.outer_size().ok()?;
+    let rect = Rect {
+        x: pos.x,
+        y: pos.y,
+        w: size.width,
+        h: size.height,
+    };
+    // The live window's own scale sized the aprons actually on screen — the
+    // right lens for carving the panel box out of the live rect.
+    let scale = win.scale_factor().ok()?;
+    let monitors: Vec<Rect> = win
+        .available_monitors()
+        .ok()?
+        .iter()
+        .map(|m| Rect {
+            x: m.position().x,
+            y: m.position().y,
+            w: m.size().width,
+            h: m.size().height,
+        })
+        .collect();
+    let panel = panel_box(rect, scale);
+    if let Some(i) = best_host(panel, &monitors).or_else(|| nearest_host(panel, &monitors)) {
+        let clamped = clamp_panel_into(rect, monitors[i], scale);
+        if clamped != rect {
+            // Visible on purpose: the drop pops fully onto its monitor. The
+            // echo Moved is filtered by the applied guard; on failure the
+            // clamped spot still persists and the next layout call converges
+            // the window onto it.
+            if let Err(e) = apply_rect(&win, clamped) {
+                eprintln!("[wikilens] couldn't snap the drop on-screen: {e}");
+            }
+        }
+        return Some(manual_spot_from_rect(clamped, monitors[i]));
+    }
+    // No monitor info at all — the pre-clamp behavior: snapshot as-is
+    // against whatever monitor the OS attributes the window to.
     let monitor = match win.current_monitor().ok()? {
         Some(m) => m,
         None => win.primary_monitor().ok()??,
     };
     Some(manual_spot_from_rect(
-        Rect {
-            x: pos.x,
-            y: pos.y,
-            w: size.width,
-            h: size.height,
-        },
+        rect,
         Rect {
             x: monitor.position().x,
             y: monitor.position().y,
@@ -390,6 +431,25 @@ pub fn clear_drag_override(app: &AppHandle) {
     if let Some(tracker) = app.try_state::<DragTracker>() {
         tracker.clear();
     }
+}
+
+/// Whether a mouse button is still held — the settle task's "is the drag
+/// really over?" probe. Physical buttons on purpose (swap-agnostic: either
+/// held postpones the settle; a rare right-button hold delaying it is
+/// harmless), and `GetAsyncKeyState` because the task runs off the input
+/// thread, where `GetKeyState`'s per-thread queue state is meaningless.
+#[cfg(windows)]
+fn mouse_button_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
+    };
+    // High bit set (negative SHORT) = currently down.
+    unsafe { GetAsyncKeyState(VK_LBUTTON as i32) < 0 || GetAsyncKeyState(VK_RBUTTON as i32) < 0 }
+}
+
+#[cfg(not(windows))]
+fn mouse_button_down() -> bool {
+    false
 }
 
 /// The overlay moved (`WindowEvent::Moved`, routed from lib.rs). Our own
@@ -447,10 +507,20 @@ pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
         if tracker.generation() != generation {
             return; // superseded by more drag, or by a Position pick
         }
-        // Snapshot the LIVE rect (== the drag end) rather than the raw Moved
-        // position: the same edge rule as the Manual pick, and a low drop
-        // stores its bottom edge so menus and growth open upward there.
-        let Some(spot) = manual_snapshot(&app) else {
+        // A still hand can outlast the debounce mid-drag: wait out the held
+        // button, or the settle clamp below would yank the window out from
+        // under the cursor. Superseded the moment the drag resumes.
+        while mouse_button_down() {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if tracker.generation() != generation {
+                return;
+            }
+        }
+        // Settle the LIVE rect (== the drag end) rather than the raw Moved
+        // position: the same edge rule as the Manual pick, the drop snapped
+        // fully onto its best monitor, and a low drop stores its bottom
+        // edge so menus and growth open upward there.
+        let Some(spot) = settle_manual_spot(&app) else {
             return;
         };
         let current = settings.panel_position();
@@ -624,6 +694,73 @@ fn overlap(a: i32, aw: u32, b: i32, bw: u32) -> u32 {
     (hi - lo).max(0) as u32
 }
 
+/// The glass box inside a window rect: the aprons carved off, at the scale
+/// the window was laid out at. The settle clamp reasons about this box, not
+/// the window — the aprons are invisible and deliberately overhang edges.
+fn panel_box(window: Rect, scale: f64) -> Rect {
+    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
+    Rect {
+        x: window.x + to_phys(APRON_LEFT) as i32,
+        y: window.y + to_phys(APRON_TOP) as i32,
+        w: window.w.saturating_sub(to_phys(APRON_LEFT) + to_phys(APRON_RIGHT)),
+        h: window.h.saturating_sub(to_phys(APRON_TOP) + to_phys(APRON_BOTTOM)),
+    }
+}
+
+/// The monitor showing the largest share of the panel — the "60% onto the
+/// second monitor pops it fully there" rule, and never a bias toward the
+/// primary. `None` when no monitor shows any of it.
+fn best_host(panel: Rect, monitors: &[Rect]) -> Option<usize> {
+    let mut best: Option<(usize, u64)> = None;
+    for (i, m) in monitors.iter().enumerate() {
+        let area = u64::from(overlap(panel.x, panel.w, m.x, m.w))
+            * u64::from(overlap(panel.y, panel.h, m.y, m.h));
+        if area > 0 && best.is_none_or(|(_, b)| area > b) {
+            best = Some((i, area));
+        }
+    }
+    best.map(|(i, _)| i)
+}
+
+/// Zero-overlap fallback (a drop thrown into a virtual-desktop dead zone):
+/// the monitor the panel's center is nearest to, by L1 distance to the rect.
+fn nearest_host(panel: Rect, monitors: &[Rect]) -> Option<usize> {
+    let cx = panel.x + panel.w as i32 / 2;
+    let cy = panel.y + panel.h as i32 / 2;
+    monitors
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, m)| {
+            let dx = (m.x - cx).max(cx - (m.x + m.w as i32 - 1)).max(0) as i64;
+            let dy = (m.y - cy).max(cy - (m.y + m.h as i32 - 1)).max(0) as i64;
+            dx + dy
+        })
+        .map(|(i, _)| i)
+}
+
+/// Move a window rect the least distance that puts its panel box fully
+/// inside the monitor. Flush edges are allowed (the drop keeps the player's
+/// intent; only the apron overhangs), and `min` runs before `max` so a
+/// monitor smaller than the panel pins the panel's top-left edge instead of
+/// panicking the way `i32::clamp` would on min > max.
+fn clamp_panel_into(window: Rect, monitor: Rect, scale: f64) -> Rect {
+    let panel = panel_box(window, scale);
+    let px = panel
+        .x
+        .min(monitor.x + monitor.w as i32 - panel.w as i32)
+        .max(monitor.x);
+    let py = panel
+        .y
+        .min(monitor.y + monitor.h as i32 - panel.h as i32)
+        .max(monitor.y);
+    Rect {
+        x: window.x + (px - panel.x),
+        y: window.y + (py - panel.y),
+        w: window.w,
+        h: window.h,
+    }
+}
+
 /// Lay the overlay out from the stored placement — the one sizer AND
 /// positioner. `show_overlay` and `set_overlay_height` both route here, so a
 /// height report never moves an edge the placement pins, and an anchored
@@ -751,7 +888,7 @@ pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
 /// (against the real window) instead of at the store means a report after a
 /// failed resize still retries.
 fn apply_rect(win: &WebviewWindow, rect: Rect) -> tauri::Result<()> {
-    // Record BEFORE set_position: WM_MOVE can dispatch synchronously inside
+    // Record BEFORE the OS call: WM_MOVE can dispatch synchronously inside
     // it, and the Moved handler must already know this position is ours.
     if let Some(tracker) = win.app_handle().try_state::<DragTracker>() {
         tracker.set_applied((rect.x, rect.y));
@@ -760,6 +897,32 @@ fn apply_rect(win: &WebviewWindow, rect: Rect) -> tauri::Result<()> {
     let target_pos = PhysicalPosition::new(rect.x, rect.y);
     if win.outer_size()? == target_size && win.outer_position()? == target_pos {
         return Ok(());
+    }
+    // One SetWindowPos lands position and size in the same frame. The split
+    // set_size → set_position pair let a bottom-pinned expansion paint one
+    // frame grown downward past its pinned edge before the position caught
+    // up — a visible panel wobble on every menu open/close there.
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+        };
+        let hwnd = win.hwnd()?.0;
+        let ok = unsafe {
+            SetWindowPos(
+                hwnd as _,
+                std::ptr::null_mut(),
+                rect.x,
+                rect.y,
+                rect.w as i32,
+                rect.h as i32,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+        };
+        if ok != 0 {
+            return Ok(());
+        }
+        // A refused SetWindowPos falls through to the split calls.
     }
     win.set_size(target_size)?;
     win.set_position(target_pos)?;
@@ -1099,5 +1262,172 @@ mod tests {
             manual_host(strip_at(1850, 200), MIN_GRAB_WIDTH, &[FHD, right_of_fhd]),
             Some(1)
         );
+    }
+
+    // ---- the settle clamp --------------------------------------------------
+
+    const RIGHT_OF_FHD: Rect = Rect {
+        x: 1920,
+        y: 0,
+        w: 1920,
+        h: 1080,
+    };
+
+    #[test]
+    fn best_host_picks_the_monitor_showing_more_panel() {
+        // ~60% of the panel's width on the second monitor → it wins (the
+        // user's rule: majority pops it fully there, never the primary).
+        let panel = Rect {
+            x: 1920 - 168,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(best_host(panel, &[FHD, RIGHT_OF_FHD]), Some(1));
+        // Fully on the first → the first, area or not.
+        let panel = Rect {
+            x: 100,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(best_host(panel, &[FHD, RIGHT_OF_FHD]), Some(0));
+        // Above every monitor: no host at all.
+        let panel = Rect {
+            x: 100,
+            y: -900,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(best_host(panel, &[FHD, RIGHT_OF_FHD]), None);
+    }
+
+    #[test]
+    fn nearest_host_catches_a_zero_overlap_throw() {
+        // Fully left of the first monitor: nearest by distance, not primary.
+        let panel = Rect {
+            x: -600,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(nearest_host(panel, &[FHD, RIGHT_OF_FHD]), Some(0));
+        // Fully right of the second: the second.
+        let panel = Rect {
+            x: 4000,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(nearest_host(panel, &[FHD, RIGHT_OF_FHD]), Some(1));
+        assert_eq!(nearest_host(panel, &[]), None);
+    }
+
+    #[test]
+    fn clamp_pulls_an_offscreen_drop_flush_inside() {
+        // Half off the bottom-right: the PANEL comes back flush to both
+        // edges — the window sits past them by exactly the aprons.
+        let window = Rect {
+            x: 1700,
+            y: 900,
+            w: 484,
+            h: 484,
+        };
+        assert_eq!(
+            clamp_panel_into(window, FHD, 1.0),
+            Rect {
+                x: 1500 - 32, // panel x 1500 = 1920 − 420
+                y: 660 - 20,  // panel y 660 = 1080 − 420 (panel h = 484 − 64)
+                w: 484,
+                h: 484,
+            }
+        );
+        // A window already inside is untouched…
+        let window = Rect {
+            x: 100,
+            y: 100,
+            w: 484,
+            h: 484,
+        };
+        assert_eq!(clamp_panel_into(window, FHD, 1.0), window);
+        // …and so is an anchored-style apron overhang (panel flush, apron
+        // hanging past the edge — the legal maximum).
+        let window = Rect {
+            x: -32,
+            y: -20,
+            w: 484,
+            h: 820,
+        };
+        assert_eq!(clamp_panel_into(window, FHD, 1.0), window);
+    }
+
+    #[test]
+    fn clamp_survives_a_monitor_smaller_than_the_panel() {
+        // min before max: the panel's top-left edge pins to the monitor's —
+        // i32::clamp would panic on min > max here.
+        let tiny = Rect {
+            x: 0,
+            y: 0,
+            w: 300,
+            h: 200,
+        };
+        let window = Rect {
+            x: 500,
+            y: 500,
+            w: 484,
+            h: 484,
+        };
+        let clamped = clamp_panel_into(window, tiny, 1.0);
+        assert_eq!((clamped.x + 32, clamped.y + 20), (0, 0));
+    }
+
+    /// The teleport regression: a drop half off the screen used to persist
+    /// unclamped, fail `manual_host` on the next height report (opening
+    /// Settings fires one), and snap the panel to the remembered anchor. A
+    /// spot built from a clamped rect must always find its host — the
+    /// mid-session fallback stays unreachable.
+    #[test]
+    fn a_clamped_drop_always_passes_the_strip_check() {
+        for window in [
+            Rect {
+                x: 1700,
+                y: 900,
+                w: 484,
+                h: 484,
+            }, // off the bottom-right corner
+            Rect {
+                x: -300,
+                y: -100,
+                w: 484,
+                h: 484,
+            }, // off the top-left corner
+            Rect {
+                x: 900,
+                y: 950,
+                w: 484,
+                h: 484,
+            }, // off the bottom only
+        ] {
+            let clamped = clamp_panel_into(window, FHD, 1.0);
+            let spot = manual_spot_from_rect(clamped, FHD);
+            // The strip exactly as `layout_overlay` builds it at scale 1.0.
+            let strip_y = match spot.edge {
+                ManualEdge::Top => spot.y + APRON_TOP as i32,
+                ManualEdge::Bottom => {
+                    spot.y - APRON_BOTTOM as i32 - HEADER_GRAB_HEIGHT as i32
+                }
+            };
+            let strip = Rect {
+                x: spot.x + APRON_LEFT as i32,
+                y: strip_y,
+                w: PANEL_WIDTH,
+                h: HEADER_GRAB_HEIGHT,
+            };
+            assert_eq!(
+                manual_host(strip, MIN_GRAB_WIDTH, &[FHD]),
+                Some(0),
+                "{window:?}"
+            );
+        }
     }
 }
