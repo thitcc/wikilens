@@ -7,7 +7,7 @@ updated: 2026-08-14
 tags: [overlay, frontend, rust, tauri]
 related:
   - "[[2026-08-04_panel-corner-pick]]"
-commit: [920fccc, 02b63ba, 40641eb, 9afcad4]
+commit: [920fccc, 02b63ba, 40641eb, 9afcad4, 1ad622f]
 ---
 
 # Draggable overlay with anchored and manual position modes
