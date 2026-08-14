@@ -422,7 +422,9 @@ field with a border needs no second voice.
   (`--border` — the framed-control voice, the input frame's family, not a
   button border). Deliberately steppers only: the shortcut rows stay bare, so
   the accent border remains the armed recorder's one voice, and the key
-  lines stay storage-bare.
+  lines stay storage-bare. The frame takes an **extra 8px below its section
+  heading** — a bare row's padding is invisible, a frame is not, so the gap
+  matches the optical heading-to-row rhythm the Shortcuts section sets.
 - **Arrows:** the fixed 20×20 square seat (the trash/caret recipe) around a
   9px glyph; bare muted ink at rest, veil + ink promotion on hover, 0.6
   opacity disabled. No transition — a cycled value is an instant state

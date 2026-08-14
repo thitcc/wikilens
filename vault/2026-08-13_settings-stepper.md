@@ -93,3 +93,8 @@ Full execution detail lives in the approved plan file (Claude session,
   no inset fill, shortcut rows deliberately bare (the accent border stays the
   armed recorder's one voice). Recorded in DESIGN.md §5 as the framed-control
   voice, revising the first sheet's borderless pick after the in-app look.
+- 2026-08-13 — detail sheet (heading→stepper gap + inner borders): pick
+  **+8px** under the section headings (the frame lands on the Shortcuts
+  section's optical rhythm; heading→hotkey gap untouched); inner borders
+  **declined for both** the Custom API key lines and the shortcut rows —
+  the frame stays the steppers' voice alone.

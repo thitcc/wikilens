@@ -725,6 +725,15 @@ body {
   border-radius: var(--radius-control);
 }
 
+/* The frame sat visually closer to its section heading than the Summon text
+   sits under SHORTCUTS (a bare row's padding is invisible; a frame isn't).
+   The extra 8px puts the frame on the same optical rhythm (detail sheet,
+   2026-08-13) — beats the settings rhythm's 2px by specificity, and the
+   heading → hotkey-row gap stays untouched. */
+.menu-heading + .stepper-row {
+  margin-top: var(--space-8);
+}
+
 /* An arrow: the trash/caret recipe — a fixed square seat around a below-ramp
    glyph (content-sized it is barely a hit target), bare ink at rest, veil on
    hover. The 9px glyph is the direction-hint size (DESIGN.md §3): typography
