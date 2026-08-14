@@ -977,6 +977,17 @@ body {
   padding-left: var(--space-20);
 }
 
+/* The control rail: the steppers, the shortcut rows, and the key lines under
+   Custom API all sit on one 90% centered rail (the width-sheet pick,
+   2026-08-13) — headings, notes, and errors keep the card's full measure.
+   margin-inline only, so the settings rhythm's margin-top above survives. */
+.stepper-row,
+.hotkey-row,
+.keys-nest {
+  width: 90%;
+  margin-inline: auto;
+}
+
 /* Settings shortcuts: one row per shortcut. Armed = accent border only (One
    Signal Rule — Moonlight Blue marks the live recorder, rose stays failure). */
 .hotkey-row {

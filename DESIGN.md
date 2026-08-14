@@ -414,6 +414,10 @@ field with a border needs no second voice.
   apply — `cycle` in `stepper.ts`); the centered value opens a floating
   option popover. With one option (an install with no built-in) the arrows
   disable and the value still opens its one-row popover.
+- **Rail:** the settings control rows — both steppers, the shortcut recorder
+  rows, and the Custom API key lines — sit on one **90% centered rail**
+  inside the card, so the controls read as a column set into the plate;
+  headings, notes, and error boxes keep the card's full measure.
 - **Arrows:** the fixed 20×20 square seat (the trash/caret recipe) around a
   9px glyph; bare muted ink at rest, veil + ink promotion on hover, 0.6
   opacity disabled. No transition — a cycled value is an instant state

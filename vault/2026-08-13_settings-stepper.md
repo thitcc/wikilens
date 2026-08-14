@@ -84,3 +84,7 @@ Full execution detail lives in the approved plan file (Claude session,
 - 2026-08-13 — shipped: `e41086b` (Stepper + SettingsMenu rewiring + CSS +
   test sweep, 233 green) and `3c2765d` (DESIGN.md amendments + sidecar,
   CLAUDE.md/README/smoke-checklist). A-06 reuses A-04's keyframes. Closed.
+- 2026-08-13 — width follow-up on the user's in-app review: full-width control
+  rows read too big. Width sheet (100/90/85/80%, both themes) → pick **90%**,
+  centered, applied to the steppers, the shortcut rows, AND the Custom API
+  key lines so the whole control column shares one rail.
