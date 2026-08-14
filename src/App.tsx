@@ -333,19 +333,6 @@ function App() {
     root.dataset.positionMode = position.mode;
   }, [settings]);
 
-  // The transparent apron/gap band around the panel already eats mouse input
-  // over the game (never click-through) — while unlocked it doubles as a
-  // drag surface, turning a dead zone into a handle. Bare attribute: clicks
-  // whose target is a real element inside the panel never reach body/#root.
-  useEffect(() => {
-    const unlocked = settings !== null && !settings.position.locked;
-    for (const el of [document.body, document.getElementById("root")]) {
-      if (!el) continue;
-      if (unlocked) el.setAttribute("data-tauri-drag-region", "");
-      else el.removeAttribute("data-tauri-drag-region");
-    }
-  }, [settings]);
-
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
     let active = true;
@@ -954,13 +941,13 @@ function App() {
       ? games.find((g) => g.id === detectedGame)
       : undefined;
 
-  // The drag surface while unlocked: the header (deep — its inert spans drag,
-  // its chips still click) plus every bare patch of the glass (bare attribute
-  // on .panel: the padding band above the header, the gaps between sections —
-  // clicks that target a child never drag). The apron band around the panel
-  // joins via the body-level attribute set in the placement effect. All of it
-  // disappears while the padlock is on; silently inert without the
-  // start-dragging permission in capabilities/default.json.
+  // The drag surface while unlocked: the WikiLens row and everything above
+  // it, nothing else. The header drags deep (its inert spans drag, its chips
+  // still click); the strip is an invisible child overhanging the panel top,
+  // covering the top apron + the panel's own top padding at full window
+  // width. Bare attribute on the strip: it has no children, so its target is
+  // always itself. Both disappear while the padlock is on; silently inert
+  // without the start-dragging permission in capabilities/default.json.
   const dragUnlocked = settings !== null && !settings.position.locked;
 
   return (
@@ -971,11 +958,13 @@ function App() {
         (preSummon ? " panel--pre-summon" : "") +
         (summoning ? " panel--summoning" : "")
       }
-      {...(dragUnlocked ? { "data-tauri-drag-region": "" } : {})}
       onAnimationEnd={(e) => {
         if (e.animationName === "panel-summon") setSummoning(false);
       }}
     >
+      {dragUnlocked && (
+        <div className="drag-strip" data-tauri-drag-region="" aria-hidden="true" />
+      )}
       <header
         className={
           "panel-header" + (dragUnlocked ? " panel-header--draggable" : "")

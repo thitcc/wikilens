@@ -222,6 +222,21 @@ body {
   user-select: none;
 }
 
+/* The rest of the drag surface: an invisible band from the window's top
+   edge down to exactly the header's top (top apron + the panel's own
+   --space-14 padding), spanning the full window width. Rendered only while
+   unlocked, beside the header's deep region — together they make "the
+   WikiLens row and above". Overlaps no menu: --menu-clearance-top starts
+   42px into the panel, the band ends at 14px. */
+.drag-strip {
+  position: absolute;
+  top: calc(-1 * var(--shadow-room-top));
+  left: calc(-1 * var(--shadow-room-left));
+  right: calc(-1 * var(--shadow-room-right));
+  height: calc(var(--shadow-room-top) + var(--space-14));
+  cursor: grab;
+}
+
 .panel-header {
   display: flex;
   align-items: center;

@@ -103,25 +103,28 @@ test("a bottom-pinned manual spot borrows the bottom-anchor facet", async () => 
 });
 
 // ---- The drag surface -------------------------------------------------------
-// While unlocked, the whole transparent window drags: the header (deep — its
-// chips still click), the panel's bare glass (bare attribute — clicks that
-// target a child never drag), and the apron band around the panel (bare
-// attribute on body). The padlock removes every one of them at the source
-// (Rust's Moved snap-back is defense in depth only).
+// While unlocked, exactly the WikiLens row and above drags: the header (deep
+// — its chips still click) plus the .drag-strip band overhanging the panel
+// top (bare attribute; it has no children). Nothing else — a round of
+// on-device feedback removed the bare glass and the apron band from the
+// surface. The padlock removes both at the source (Rust's Moved snap-back is
+// defense in depth only).
 
-test("the header, the glass, and the apron offer the drag while unlocked", async () => {
+test("the header row and the band above it drag while unlocked", async () => {
   installBackend();
   await renderApp();
 
   const header = document.querySelector(".panel-header");
   expect(header?.getAttribute("data-tauri-drag-region")).toBe("deep");
   expect(header?.classList.contains("panel-header--draggable")).toBe(true);
-  // Bare (not "deep") on the panel and the body: only clicks that target
-  // the bare surface itself drag.
   expect(
-    document.querySelector(".panel")?.getAttribute("data-tauri-drag-region"),
+    document.querySelector(".drag-strip")?.getAttribute("data-tauri-drag-region"),
   ).toBe("");
-  expect(document.body.getAttribute("data-tauri-drag-region")).toBe("");
+  // The removed surface stays removed: the glass and the apron never drag.
+  expect(
+    document.querySelector(".panel")?.hasAttribute("data-tauri-drag-region"),
+  ).toBe(false);
+  expect(document.body.hasAttribute("data-tauri-drag-region")).toBe(false);
 });
 
 test("the padlock removes the whole drag surface", async () => {
@@ -131,10 +134,7 @@ test("the padlock removes the whole drag surface", async () => {
   const header = document.querySelector(".panel-header");
   expect(header?.hasAttribute("data-tauri-drag-region")).toBe(false);
   expect(header?.classList.contains("panel-header--draggable")).toBe(false);
-  expect(
-    document.querySelector(".panel")?.hasAttribute("data-tauri-drag-region"),
-  ).toBe(false);
-  expect(document.body.hasAttribute("data-tauri-drag-region")).toBe(false);
+  expect(document.querySelector(".drag-strip")).toBeNull();
 });
 
 // ---- settings://position ----------------------------------------------------

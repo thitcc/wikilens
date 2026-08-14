@@ -29,7 +29,4 @@ afterEach(() => {
   delete document.documentElement.dataset.anchorV;
   delete document.documentElement.dataset.anchorH;
   delete document.documentElement.dataset.positionMode;
-  // And the body-level drag surface (App's unlock effect writes it outside
-  // React's tree).
-  document.body.removeAttribute("data-tauri-drag-region");
 });
