@@ -41,6 +41,8 @@ test("the Settings pick round-trips storage and data-theme with zero IPC", async
   await screen.findByText(`v${APP_VERSION}`);
 
   const before = backend.calls.length;
+  // The theme options live in the stepper value's popover.
+  await user.click(screen.getByRole("button", { name: "Choose the theme" }));
   await user.click(
     screen.getByRole("button", { name: "Use the Micrographics theme" }),
   );
@@ -61,7 +63,8 @@ test("the Settings pick round-trips storage and data-theme with zero IPC", async
   ).toBe(MICRO_PROMPT_PLACEHOLDER);
 
   // And back: the default pick removes the attribute rather than writing
-  // data-theme="default".
+  // data-theme="default". The first pick closed the popover — reopen it.
+  await user.click(screen.getByRole("button", { name: "Choose the theme" }));
   await user.click(
     screen.getByRole("button", { name: "Use the default theme" }),
   );

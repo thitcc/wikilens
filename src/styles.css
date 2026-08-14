@@ -123,7 +123,7 @@ body {
 /* Authored keyboard-focus rings (One Signal Rule: Moonlight Blue marks the
    interactive, the selected, and the focused). :focus-visible only — pointer
    presses never ring. Standalone controls ring outside; in-list rows — and
-   anything painted ON a row, like the settings caret — ring inset so the two
+   anything painted ON a row, like the stepper arrows — ring inset so the two
    rings don't overlap; inputs keep their accent border-shift instead (see
    .prompt-input:focus). */
 .quiet-chip:focus-visible,
@@ -141,7 +141,8 @@ body {
 .model-row:focus-visible,
 .group-header:focus-visible,
 .menu-action:focus-visible,
-.caret-toggle:focus-visible {
+.stepper-arrow:focus-visible,
+.stepper-value:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
@@ -705,26 +706,132 @@ body {
   font-size: var(--text-label);
 }
 
-/* ---- Settings: the Answers mode rows ---- */
+/* ---- Settings: the enum steppers ---- */
 
-/* One row per answer MODE — the built-in model, or your own provider. The row
-   is the whole pick; the Custom row also carries the disclosure caret as a
-   sibling (a button can't nest in a button), floated over it by .caret-rail.
-   The padding-right matches .key-line's below, so the mode rows and the key
-   lines land their right clusters on one edge. */
-.source-row {
+/* A game-style stepper is the whole pick: the arrows cycle the value (with
+   wrap — see stepper.ts) and the center value opens the option popover. The
+   hairline frame is the picked chrome (border sheet, 2026-08-13) — the
+   framed-control voice of the input frame's family, not a button border;
+   the shortcut rows deliberately stay bare (their accent border remains the
+   armed recorder's voice). Symmetric horizontal padding seats the arrow
+   squares off the frame. Settings-only classes, so the airier metrics can't
+   reach the game / model / add-game menus. */
+.stepper-row {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding-right: var(--space-4);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
 }
 
-/* Settings-only, so the airier rows can't reach the game / model / add-game
-   menus — they share .menu-list and .model-row, but not .source-row. */
-.source-row .model-row {
+/* The frame sat visually closer to its section heading than the Summon text
+   sits under SHORTCUTS (a bare row's padding is invisible; a frame isn't).
+   The extra 8px puts the frame on the same optical rhythm (detail sheet,
+   2026-08-13) — beats the settings rhythm's 2px by specificity, and the
+   heading → hotkey-row gap stays untouched. */
+.menu-heading + .stepper-row {
+  margin-top: var(--space-8);
+}
+
+/* An arrow: the trash/caret recipe — a fixed square seat around a below-ramp
+   glyph (content-sized it is barely a hit target), bare ink at rest, veil on
+   hover. The 9px glyph is the direction-hint size (DESIGN.md §3): typography
+   as iconography, never copy. No transition — a cycled value is an instant
+   state change. */
+.stepper-arrow {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-20);
+  height: var(--space-20);
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.stepper-arrow:hover:not(:disabled) {
+  background: var(--surface-control);
+  color: var(--fg);
+}
+
+.stepper-arrow:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+/* The value wears the settings row voice (the airier --space-8 padding) with
+   the game's centered alignment; the note keeps the right rail, absolute so
+   the name centers against the full row. Open mirrors hover — an owned popup
+   has no native focus ring (DESIGN.md §5). */
+.stepper-value {
+  position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: var(--space-8);
+  background: none;
+  border: none;
+  border-radius: var(--radius-control);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--text-status);
+  cursor: pointer;
+}
+
+.stepper-value:hover:not(:disabled),
+.stepper-value.is-open {
+  background: var(--surface-control);
+}
+
+.stepper-value:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+.stepper-value .row-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepper-value .row-note {
+  position: absolute;
+  right: var(--space-8);
+}
+
+/* The option popover — the scoped third altitude
+   (vault/2026-08-13_stepper-popover-third-altitude.md): Menu Glass and the
+   menu float shadow reused, no new surface or shadow tokens. Positioned by
+   Stepper.tsx from measured row geometry — PAIRED CONSTANTS: its 4px gap and
+   6px inset are POPOVER_GAP / POPOVER_INSET there. The z-index lifts it over
+   the list's scrollbar layer. */
+.stepper-popover {
+  position: absolute;
+  z-index: 2;
+  padding: var(--space-4) var(--space-6);
+  background: var(--surface-menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-menu);
+}
+
+.stepper-popover .model-row {
+  padding: var(--space-8);
+}
+
+.stepper-popover > * + * {
+  margin-top: var(--space-2);
 }
 
 /* The open row's key field: a plain sibling of the row that owns it — no
@@ -764,8 +871,8 @@ body {
 }
 
 /* Right-aligned host hint on a candidate row (wiki.gg vs Fandom), and the
-   settings mode rows' single right-cell signal ("Needs a key" on your own
-   provider, "Not set up here" on the built-in model). */
+   settings steppers' single right-cell signal ("Needs a key" on Custom API,
+   "Not set up here" on Built In). */
 .row-note {
   flex: 0 0 auto;
   color: var(--fg-muted);
@@ -870,88 +977,32 @@ body {
   padding: 0;
 }
 
-/* The settings rows breathe. Scoped to .source-row / .key-line — never
+/* The settings rows breathe. Scoped to .stepper-row / .key-line — never
    .menu-list or .model-row, which the game, model and add-game menus share. */
 .menu-list--settings > * + *,
 .keys-nest > * + * {
   margin-top: var(--space-2);
 }
 
-/* The key lines are disclosed under the "Your own provider" row and indented
-   beneath it, so their belonging is structural rather than announced. */
+/* The key lines exist exactly while Custom API answers (visibility derived
+   from the mode) and sit indented beneath the Answers stepper, so their
+   belonging is structural rather than announced. */
 .keys-nest {
   padding-left: var(--space-20);
 }
 
-/* The disclosure caret is its own control — the keys can be opened without
-   changing which mode is answering. Quiet-chip anatomy (bare ink at rest, veil
-   on hover) in the same fixed square as the trash, for the same reason: a
-   content-sized box around a 9px glyph is barely a hit target, and
-   `line-height: 0` would zero the caret's own line box. */
-.caret-toggle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--space-20);
-  height: var(--space-20);
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: var(--radius-chip);
-  color: var(--fg-muted);
-  font: inherit;
-  cursor: pointer;
+/* The control rail: the steppers, the shortcut rows, and the key lines under
+   Custom API all sit on one 90% centered rail (the width-sheet pick,
+   2026-08-13) — headings, notes, and errors keep the card's full measure.
+   margin-inline only, so the settings rhythm's margin-top above survives. */
+.stepper-row,
+.hotkey-row,
+.keys-nest {
+  width: 90%;
+  margin-inline: auto;
 }
 
-.caret-toggle:hover:not(:disabled) {
-  background: var(--surface-control);
-  color: var(--fg);
-}
-
-.caret-toggle:disabled {
-  opacity: var(--opacity-disabled);
-  cursor: default;
-}
-
-/* The caret sits right after the label AND the row keeps its full width: the
-   rail floats over the row and only the caret inside it takes pointer events,
-   so every pixel of the row still picks the mode. The rail's leading ghost is
-   an invisible copy of the label whose width places the caret — PAIRED
-   CONSTANTS: its padding-left and font-size must track .source-row .model-row's
-   padding and .row-name's type, or the caret drifts off the words. Bounded on
-   the right so a longer label can't push the rail past the row: .menu-list
-   scrolls on Y, which computes overflow-x to auto, and an over-wide child
-   there would raise a horizontal scrollbar across the whole list. */
-.source-row--disclosing {
-  position: relative;
-}
-
-.caret-rail {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  padding-left: var(--space-8);
-  pointer-events: none;
-}
-
-.caret-ghost {
-  visibility: hidden;
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--text-status);
-  white-space: nowrap;
-}
-
-.caret-rail .caret-toggle {
-  pointer-events: auto;
-}
-
-/* Settings popover: one row per shortcut. Armed = accent border only (One
+/* Settings shortcuts: one row per shortcut. Armed = accent border only (One
    Signal Rule — Moonlight Blue marks the live recorder, rose stays failure). */
 .hotkey-row {
   display: flex;
@@ -1421,6 +1472,19 @@ body {
       opacity: 0;
       transform: translateY(-4px);
     }
+  }
+
+  /* A-06 — "this came from that row": the settings stepper's option popover
+     arrives 4px from its anchor row — dropping when placed below it, rising
+     when flipped above (Stepper.tsx sets the --up class from the measured
+     placement). Reuses A-04's keyframes: same voice, same travel. Closing
+     unmounts — instant. */
+  .stepper-popover {
+    animation: menu-arrive-down 120ms ease-out;
+  }
+
+  .stepper-popover--up {
+    animation: menu-arrive-up 120ms ease-out;
   }
 }
 

@@ -1,21 +1,25 @@
-// The Settings panel's contract. Answers half: two MODE rows — the built-in
-// model (when this install has one) and your own provider — and exactly one
-// wears the check. The provider lines under the caret are never choices: they
-// only set and clear keys, because which provider answers is picked from the
-// footer chip. Two rules follow and both are pinned below: a key never moves
-// the check (vault/2026-07-29_keys-are-not-a-mode-choice.md), and the
-// disclosure follows the mode in both directions. A keyed line is static —
-// a "Set" pill and the trash, no button — so the only re-key path is trash,
-// then the unkeyed line (vault/2026-08-02_keyed-lines-are-static.md). A
-// pasted key crosses IPC exactly once via set_api_key and is never displayed
-// back. Recorder half:
+// The Settings panel's contract. Answers half: one game-style STEPPER picks
+// the mode — ◁ Value ▷, arrows cycling with wrap (stepper.ts), the center
+// value opening a floating option popover, the scoped third altitude
+// (vault/2026-08-13_stepper-popover-third-altitude.md). The provider lines
+// under it are never choices: they only set and clear keys, because which
+// provider answers is picked from the footer chip. Two rules follow and both
+// are pinned below: a key never moves the value
+// (vault/2026-07-29_keys-are-not-a-mode-choice.md), and the key lines exist
+// exactly while Custom API answers — visibility derives from the stored mode,
+// so it moves only when the fresh settings come back through onSaved. A keyed
+// line is static — a "Set" pill and the trash, no button — so the only re-key
+// path is trash, then the unkeyed line
+// (vault/2026-08-02_keyed-lines-are-static.md). A pasted key crosses IPC
+// exactly once via set_api_key and is never displayed back. Recorder half:
 // arming suspends the OS hotkeys and swallows keys at capture phase; every
 // exit path (save, refuse, Esc, hide, unmount) resumes them exactly once.
+// Esc is four layers exactly: recording, popover, menu, overlay.
 // Keyboard goes through userEvent only (see harness.tsx — a raw window
 // KeyboardEvent would invert the capture/bubble ordering these tests exist to
 // pin).
 
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import { SettingsMenu } from "./SettingsMenu";
@@ -34,12 +38,17 @@ import type { KeyStatus, SettingsInfo } from "../types";
  *
  * The default settle target is the unkeyed Anthropic key line, and it resolves
  * only because the shared SETTINGS fixture has never chosen a mode — that
- * normalizes to Custom, which mounts the key lines disclosed. A Default-mode
- * fixture mounts them collapsed and needs `settle: settleNoKeys`. That coupling
- * is silent, so it is spelled out here: it is what broke three tests when the
- * caret landed. The version fetch is a second open-time promise, settled by
- * awaiting its row so it can't land as a stray act() warning mid-test;
- * `noVersion` opts out for the failed-lookup test, whose row never appears. */
+ * normalizes to Custom, which renders the key lines. A Default-mode fixture
+ * renders no key lines at all and needs `settle: settleStatuses` (or a text
+ * the landed statuses produce). That coupling is silent, so it is spelled out
+ * here: it is what broke three tests when the disclosure landed. The version
+ * fetch is a second open-time promise, settled by awaiting its row so it
+ * can't land as a stray act() warning mid-test; `noVersion` opts out for the
+ * failed-lookup test, whose row never appears.
+ *
+ * `rerenderWith` re-renders with fresh settings, playing App's onSaved →
+ * setSettings loop — the panel is a controlled view, so a mode flip only
+ * moves the key lines once the fresh SettingsInfo comes back through it. */
 async function renderMenu(over?: {
   settings?: SettingsInfo;
   theme?: ThemeId;
@@ -51,23 +60,25 @@ async function renderMenu(over?: {
   noVersion?: true;
 }) {
   const triggerRef = { current: null };
-  const onSaved = over?.onSaved ?? (() => {});
-  const onClose = over?.onClose ?? (() => {});
-  const result = render(
+  const props = (settings: SettingsInfo) => (
     <SettingsMenu
-      settings={over?.settings ?? SETTINGS}
+      settings={settings}
       theme={over?.theme ?? "default"}
       onThemeChange={over?.onThemeChange ?? (() => {})}
-      onSaved={onSaved}
+      onSaved={over?.onSaved ?? (() => {})}
       onKeysChanged={over?.onKeysChanged}
-      onClose={onClose}
+      onClose={over?.onClose ?? (() => {})}
       triggerRef={triggerRef}
-    />,
+    />
   );
+  const result = render(props(over?.settings ?? SETTINGS));
   await (over?.settle?.() ??
     screen.findByRole("button", { name: "Add a key for Anthropic" }));
   if (!over?.noVersion) await screen.findByText(`v${APP_VERSION}`);
-  return result;
+  return {
+    ...result,
+    rerenderWith: (settings: SettingsInfo) => result.rerender(props(settings)),
+  };
 }
 
 /** SETTINGS with a non-default summon, for the Reset affordance. */
@@ -84,6 +95,22 @@ const CUSTOM_SUMMON: SettingsInfo = {
   },
 };
 
+/** SETTINGS with a configured built-in — the two-option stepper. */
+const CONFIGURED: SettingsInfo = {
+  ...SETTINGS,
+  defaultMode: { configured: true, vision: false },
+};
+
+/** CONFIGURED with Custom API stored as the mode. */
+const ON_CUSTOM: SettingsInfo = { ...CONFIGURED, mode: "custom" };
+
+/** SETTINGS with Default mode chosen and configured behind it. */
+const ON_DEFAULT: SettingsInfo = {
+  ...SETTINGS,
+  mode: "default",
+  defaultMode: { configured: true, vision: false },
+};
+
 /** KEY_STATUS with the Anthropic key stored. */
 const ANTHROPIC_KEYED: KeyStatus[] = KEY_STATUS.map((s) =>
   s.id === "anthropic" ? { ...s, hasKey: true } : s,
@@ -98,16 +125,10 @@ const BOTH_KEYED: KeyStatus[] = KEY_STATUS.map((s) => ({ ...s, hasKey: true }));
 const settleKeyedAnthropic = () =>
   screen.findByRole("button", { name: "Remove the Anthropic API key" });
 
-/** Settle a Default-mode render, where the key lines mount collapsed. The note
- * is the fetch's own consequence (it is gated on `statuses` landing); awaiting
- * the caret instead would resolve synchronously and leave setStatuses outside
- * act(). */
-const settleNoKeys = () => screen.findByText("Needs a key");
-
-/** Disclose the key lines (Default mode mounts them shut). */
-async function openKeys(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: "Show provider keys" }));
-}
+/** Settle a healthy Default-mode render: the key lines aren't rendered there
+ * and nothing else visibly changes when the statuses land, so flush the fetch
+ * inside act() instead of awaiting an artifact. */
+const settleStatuses = () => act(async () => {});
 
 /** Open a provider's key field (a key line expands in place). */
 async function expandKeyForm(
@@ -118,12 +139,14 @@ async function expandKeyForm(
   return screen.getByLabelText(`${name} API key`) as HTMLInputElement;
 }
 
-/** SETTINGS with Default mode chosen and configured behind it. */
-const ON_DEFAULT: SettingsInfo = {
-  ...SETTINGS,
-  mode: "default",
-  defaultMode: { configured: true, vision: false },
-};
+/** The Answers stepper's center value. */
+const answersValue = () =>
+  screen.getByRole("button", { name: "Choose the answer source" });
+
+/** Open the Answers option popover. */
+async function openAnswers(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(answersValue());
+}
 
 test("renders the three sections in order with both shortcut chips", async () => {
   installBackend();
@@ -142,9 +165,13 @@ test("renders the three sections in order with both shortcut chips", async () =>
   expect(text).toContain("Ctrl+`");
   expect(text).toContain("Capture");
   expect(text).toContain("Ctrl+Shift+C");
+  // The stepper's value speaks the new short names; the long row labels are
+  // gone from the visible text (they live on as aria-labels).
+  expect(text).toContain("Custom API");
+  expect(text).not.toContain("Your own provider");
+  expect(text).not.toContain("Built into WikiLens");
   // The merged sections took their old vocabulary with them.
   expect(text).not.toContain("Model source");
-  expect(text).not.toContain("Custom API");
   expect(text).not.toContain("API keys");
   expect(text).not.toContain("Key set");
   // "Key added" went with the one-list IA. An UNKEYED line has no note or
@@ -154,17 +181,22 @@ test("renders the three sections in order with both shortcut chips", async () =>
   expect(screen.queryByText("Set")).toBeNull();
 });
 
-// ---- The theme rows -------------------------------------------------------
-// The panel is a controlled view of App's theme state: rows report the pick
-// via onThemeChange and NOTHING else moves — no IPC (a theme is chrome, not
-// behavior config) and no storage write (that ownership stays in App, pinned
-// below so a future refactor can't split the write across both).
+// ---- The theme stepper ------------------------------------------------------
+// The panel is a controlled view of App's theme state: the stepper reports the
+// pick via onThemeChange and NOTHING else moves — no IPC (a theme is chrome,
+// not behavior config) and no storage write (that ownership stays in App,
+// pinned below so a future refactor can't split the write across both).
 
-test("the active theme wears the check, following the prop", async () => {
+test("the active theme wears the check in the popover, following the prop", async () => {
   installBackend();
+  const user = userEvent.setup();
   await renderMenu();
 
   expect(
+    screen.getByRole("button", { name: "Choose the theme" }).textContent,
+  ).toContain("Default");
+  await user.click(screen.getByRole("button", { name: "Choose the theme" }));
+  expect(
     screen
       .getByRole("button", { name: "Use the default theme" })
       .getAttribute("aria-current"),
@@ -176,11 +208,16 @@ test("the active theme wears the check, following the prop", async () => {
   ).toBeNull();
 });
 
-test("a micrographics render moves the check to its row", async () => {
+test("a micrographics render moves the value and the check", async () => {
   installBackend();
+  const user = userEvent.setup();
   await renderMenu({ theme: "micrographics" });
 
   expect(
+    screen.getByRole("button", { name: "Choose the theme" }).textContent,
+  ).toContain("Micrographics");
+  await user.click(screen.getByRole("button", { name: "Choose the theme" }));
+  expect(
     screen
       .getByRole("button", { name: "Use the Micrographics theme" })
       .getAttribute("aria-current"),
@@ -192,12 +229,13 @@ test("a micrographics render moves the check to its row", async () => {
   ).toBeNull();
 });
 
-test("picking a theme reports the pick — zero IPC, storage untouched", async () => {
+test("picking a theme in the popover reports the pick — zero IPC, storage untouched", async () => {
   const backend = installBackend();
   const picks: ThemeId[] = [];
   const user = userEvent.setup();
   await renderMenu({ onThemeChange: (next) => picks.push(next) });
 
+  await user.click(screen.getByRole("button", { name: "Choose the theme" }));
   const before = backend.calls.length;
   await user.click(
     screen.getByRole("button", { name: "Use the Micrographics theme" }),
@@ -206,6 +244,23 @@ test("picking a theme reports the pick — zero IPC, storage untouched", async (
   expect(picks).toEqual(["micrographics"]);
   expect(backend.calls.length).toBe(before);
   expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
+  // The pick closed the popover behind it.
+  expect(
+    screen.queryByRole("button", { name: "Use the default theme" }),
+  ).toBeNull();
+});
+
+test("cycling the theme with an arrow reports the pick with zero IPC", async () => {
+  const backend = installBackend();
+  const picks: ThemeId[] = [];
+  const user = userEvent.setup();
+  await renderMenu({ onThemeChange: (next) => picks.push(next) });
+
+  const before = backend.calls.length;
+  await user.click(screen.getByRole("button", { name: "Switch to the next theme" }));
+
+  expect(picks).toEqual(["micrographics"]);
+  expect(backend.calls.length).toBe(before);
 });
 
 // ---- The answer modes and their key lines ---------------------------------
@@ -218,14 +273,11 @@ test("an unkeyed key line expands into a masked field with a gated Save", async 
   // At rest the list is lines only — no key field is mounted anywhere.
   expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
   // A key line carries its name and nothing else; the only "needs a key" in
-  // the panel sits on the mode row it actually blocks.
+  // the panel sits on the stepper value it actually blocks.
   expect(
     screen.getByRole("button", { name: "Add a key for Anthropic" }).textContent,
   ).toBe("Anthropic");
-  expect(
-    screen.getByRole("button", { name: "Answer with your own provider" })
-      .textContent,
-  ).toContain("Needs a key");
+  expect(answersValue().textContent).toContain("Needs a key");
 
   const input = await expandKeyForm(user, "Anthropic");
   expect(input.type).toBe("password");
@@ -301,8 +353,9 @@ test("a keyed line is static — Set pill, trash, no replace button, never the k
   expect(deepseek.textContent).toBe("DeepSeek");
 });
 
-test("every keyed line is storage, not a choice; the mode row keeps the only check", async () => {
+test("every keyed line is storage, not a choice; the mode keeps the only check", async () => {
   installBackend({ list_key_status: () => BOTH_KEYED });
+  const user = userEvent.setup();
   await renderMenu({ settle: settleKeyedAnthropic });
 
   // Both providers are keyed. Under the old one-list IA one of them would have
@@ -317,11 +370,13 @@ test("every keyed line is storage, not a choice; the mode row keeps the only che
   expect(screen.getAllByText("Set")).toHaveLength(2);
   expect(screen.queryAllByText("Key added")).toHaveLength(0);
 
-  const custom = screen.getByRole("button", {
-    name: "Answer with your own provider",
-  });
-  expect(custom.getAttribute("aria-current")).toBe("true");
-  expect(custom.textContent).not.toContain("Needs a key");
+  expect(answersValue().textContent).not.toContain("Needs a key");
+  await openAnswers(user);
+  expect(
+    screen
+      .getByRole("button", { name: "Answer with your own provider" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
 });
 
 test("a keyed line offers no click-to-replace; the only re-key path is trash, then the unkeyed line", async () => {
@@ -375,13 +430,12 @@ test("saving a key stores it and leaves the mode where it was", async () => {
   const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
-  // Run it from Default, where "stays put" is actually visible.
+  // A configured built-in exists, so a mode flip WOULD be possible — the key
+  // save still commits nothing (a key is storage, not a choice).
   await renderMenu({
-    settings: ON_DEFAULT,
+    settings: ON_CUSTOM,
     onSaved: (next) => saved.push(next),
-    settle: settleNoKeys,
   });
-  await openKeys(user);
 
   await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
   await user.click(
@@ -392,14 +446,10 @@ test("saving a key stores it and leaves the mode where it was", async () => {
     { providerId: "anthropic", key: "sk-ant-test" },
   ]);
   // The whole point of the split: a key is storage, not a choice. It commits
-  // no mode, reports no settings, and leaves the check on the built-in model.
+  // no mode, reports no settings, and leaves the value where it was.
   expect(backend.callsTo("set_mode")).toHaveLength(0);
   expect(saved).toHaveLength(0);
-  expect(
-    screen
-      .getByRole("button", { name: "Answer with the built-in model" })
-      .getAttribute("aria-current"),
-  ).toBe("true");
+  expect(answersValue().textContent).toContain("Custom API");
   expect(
     await screen.findByRole("button", {
       name: "Remove the Anthropic API key",
@@ -517,40 +567,44 @@ test("removing a key fires onKeysChanged once; a failure fires none", async () =
   expect(changed).toBe(1);
 });
 
-test("picking the built-in row calls set_mode and reports the fresh settings", async () => {
-  const configured: SettingsInfo = {
-    ...SETTINGS,
-    defaultMode: { configured: true, vision: false },
-  };
+test("picking the built-in option calls set_mode and reports the fresh settings", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
   await renderMenu({
-    settings: configured,
+    settings: CONFIGURED,
     onSaved: (next) => saved.push(next),
   });
 
+  await openAnswers(user);
   await user.click(
     screen.getByRole("button", { name: "Answer with the built-in model" }),
   );
   expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
   expect(saved).toHaveLength(1);
+  // The pick closed the popover behind it.
+  expect(
+    screen.queryByRole("button", { name: "Answer with the built-in model" }),
+  ).toBeNull();
 });
 
-test("the stored default mode marks the built-in row as the source", async () => {
+test("the stored default mode shows Built In and keeps the key lines away", async () => {
   installBackend();
-  await renderMenu({ settings: ON_DEFAULT, settle: settleNoKeys });
+  const user = userEvent.setup();
+  await renderMenu({ settings: ON_DEFAULT, settle: settleStatuses });
 
+  expect(answersValue().textContent).toContain("Built In");
+  // The key lines exist exactly while Custom API answers — none here, so
+  // nothing below the stepper can contradict the value.
+  expect(
+    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
+  ).toBeNull();
+  await openAnswers(user);
   expect(
     screen
       .getByRole("button", { name: "Answer with the built-in model" })
       .getAttribute("aria-current"),
   ).toBe("true");
-  // Default mode mounts the key lines collapsed, and nothing behind that caret
-  // is a choice — so nothing there can contradict the check.
-  expect(
-    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
-  ).toBeNull();
   expect(
     screen
       .getByRole("button", { name: "Answer with your own provider" })
@@ -558,168 +612,367 @@ test("the stored default mode marks the built-in row as the source", async () =>
   ).toBeNull();
 });
 
-test("an install with no built-in and no keys lists no built-in row and says nothing can answer", async () => {
+test("an install with no built-in and no keys has a one-option stepper and says nothing can answer", async () => {
   installBackend();
+  const user = userEvent.setup();
   await renderMenu();
 
+  expect(
+    screen.getByText("Nothing can answer yet — add a key below."),
+  ).toBeTruthy();
+  // One option: the arrows have nothing to cycle to and disable; the value
+  // still opens its one-row popover.
+  expect(
+    screen
+      .getByRole("button", { name: "Switch to the previous answer source" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(
+    screen
+      .getByRole("button", { name: "Switch to the next answer source" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  await openAnswers(user);
   expect(
     screen.queryByRole("button", { name: "Answer with the built-in model" }),
   ).toBeNull();
   expect(
-    screen.getByText("Nothing can answer yet — add a key below."),
-  ).toBeTruthy();
+    screen
+      .getByRole("button", { name: "Answer with your own provider" })
+      .getAttribute("aria-current"),
+  ).toBe("true");
 });
 
-test("a stale default mode keeps the built-in row, selected and marked not set up", async () => {
+test("a stale default mode keeps Built In selected, marked not set up, keys away", async () => {
   const stale: SettingsInfo = {
     ...SETTINGS,
     mode: "default",
     defaultMode: { configured: false, vision: false },
   };
   installBackend();
-  // No settle override: nothing is configured behind the chosen Default, so
-  // the seed opens the key lines — which is what keeps "add a key below"
-  // pointing at something.
-  await renderMenu({ settings: stale });
-
-  const builtIn = screen.getByRole("button", {
-    name: "Answer with the built-in model",
+  await renderMenu({
+    settings: stale,
+    settle: () => screen.findByText(/Nothing can answer yet/),
   });
-  expect(builtIn.getAttribute("aria-current")).toBe("true");
-  expect(builtIn.textContent).toContain("Not set up here");
+
+  const value = answersValue();
+  expect(value.textContent).toContain("Built In");
+  expect(value.textContent).toContain("Not set up here");
+  // The keys live behind Custom API now, so the guidance points there.
   expect(
-    screen.getByText("Nothing can answer yet — add a key below."),
+    screen.getByText(
+      "Nothing can answer yet — switch to Custom API and add a key.",
+    ),
   ).toBeTruthy();
-  expect(
-    screen.getByRole("button", { name: "Add a key for Anthropic" }),
-  ).toBeTruthy();
-});
-
-// ---- The disclosure --------------------------------------------------------
-
-test("the caret shows and hides the key lines without touching the mode", async () => {
-  const backend = installBackend();
-  const user = userEvent.setup();
-  await renderMenu();
-
-  const caret = screen.getByRole("button", { name: "Hide provider keys" });
-  expect(caret.getAttribute("aria-expanded")).toBe("true");
-  // The disclosed region names itself, so the relationship survives for AT —
-  // the caret floats in a rail over a different row than the one it opens.
-  expect(caret.getAttribute("aria-controls")).toBe(
-    screen.getByRole("button", { name: "Add a key for Anthropic" }).closest(".keys-nest")?.id,
-  );
-
-  await user.click(caret);
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
-  expect(
-    screen
-      .getByRole("button", { name: "Show provider keys" })
-      .getAttribute("aria-expanded"),
-  ).toBe("false");
-  // Looking at your keys is not picking one: the caret commits nothing and
-  // leaves the check where it was.
-  expect(backend.callsTo("set_mode")).toHaveLength(0);
-  expect(
-    screen
-      .getByRole("button", { name: "Answer with your own provider" })
-      .getAttribute("aria-current"),
-  ).toBe("true");
-
-  await user.click(screen.getByRole("button", { name: "Show provider keys" }));
-  expect(
-    screen.getByRole("button", { name: "Add a key for Anthropic" }),
-  ).toBeTruthy();
 });
 
-test("collapsing the caret drops an open key draft", async () => {
-  installBackend();
+// ---- The keys follow the mode ----------------------------------------------
+// Visibility is derived from the STORED mode: a pick moves the key lines only
+// when the fresh SettingsInfo comes back through onSaved and App re-renders
+// this controlled panel (rerenderWith plays that loop).
+
+test("picking Custom API reveals the key lines once the fresh settings land", async () => {
+  const backend = installBackend({ set_mode: () => ON_CUSTOM });
   const user = userEvent.setup();
-  await renderMenu();
-
-  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
-  // Same key-residency rule the per-row collapse honors, one level out: a
-  // typed key must not sit alive behind a closed disclosure.
-  await user.click(screen.getByRole("button", { name: "Hide provider keys" }));
-  await openKeys(user);
-
-  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
-  expect((await expandKeyForm(user, "Anthropic")).value).toBe("");
-});
-
-test("picking your own provider reveals the key lines", async () => {
-  const backend = installBackend();
-  const user = userEvent.setup();
-  await renderMenu({ settings: ON_DEFAULT, settle: settleNoKeys });
+  const saved: SettingsInfo[] = [];
+  const view = await renderMenu({
+    settings: ON_DEFAULT,
+    onSaved: (next) => saved.push(next),
+    settle: settleStatuses,
+  });
 
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
-
+  await openAnswers(user);
   await user.click(
     screen.getByRole("button", { name: "Answer with your own provider" }),
   );
 
   expect(backend.callsTo("set_mode")).toEqual([{ mode: "custom" }]);
-  // Landing on Custom with nothing keyed used to strand the player: the mode
-  // committed, the note said "add a key below", and the list stayed shut.
+  view.rerenderWith(saved[0]);
   expect(
     await screen.findByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeTruthy();
-  expect(
-    screen.getByRole("button", { name: "Hide provider keys" }),
-  ).toBeTruthy();
 });
 
-test("picking the built-in model puts the key lines away", async () => {
-  const configured: SettingsInfo = {
-    ...SETTINGS,
-    mode: "custom",
-    defaultMode: { configured: true, vision: false },
-  };
-  installBackend();
+test("picking Built In puts the key lines away with the fresh settings", async () => {
+  const backend = installBackend({ set_mode: () => ON_DEFAULT });
   const user = userEvent.setup();
-  await renderMenu({ settings: configured });
+  const saved: SettingsInfo[] = [];
+  const view = await renderMenu({
+    settings: ON_CUSTOM,
+    onSaved: (next) => saved.push(next),
+  });
 
+  await openAnswers(user);
   await user.click(
     screen.getByRole("button", { name: "Answer with the built-in model" }),
   );
 
-  // The mirror half, and the one that rots silently: a list left open under a
-  // row that isn't answering implies a disclosure relationship that is a lie.
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  view.rerenderWith(saved[0]);
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
-  expect(
-    screen.getByRole("button", { name: "Show provider keys" }),
-  ).toBeTruthy();
 });
 
-test("a failed mode flip says so and leaves the disclosure alone", async () => {
+test("leaving Custom API drops an open key draft", async () => {
+  installBackend({ set_mode: () => ON_DEFAULT });
+  const user = userEvent.setup();
+  await renderMenu({ settings: ON_CUSTOM });
+
+  await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
+  await openAnswers(user);
+  await user.click(
+    screen.getByRole("button", { name: "Answer with the built-in model" }),
+  );
+
+  // The key-residency rule, one level out: the typed key must not outlive
+  // the list, and it is gone even before the fresh settings land.
+  expect(screen.queryByLabelText("Anthropic API key")).toBeNull();
+  expect((await expandKeyForm(user, "Anthropic")).value).toBe("");
+});
+
+test("a failed mode flip says so and moves nothing", async () => {
   const backend = installBackend();
   backend.onCommand("set_mode", () => {
     throw "Couldn't save your choice: the disk is full";
   });
   const user = userEvent.setup();
-  await renderMenu({ settings: ON_DEFAULT, settle: settleNoKeys });
+  await renderMenu({ settings: ON_DEFAULT, settle: settleStatuses });
 
+  await openAnswers(user);
   await user.click(
     screen.getByRole("button", { name: "Answer with your own provider" }),
   );
 
   expect(await screen.findByText(/the disk is full/)).toBeTruthy();
-  // The reconcile sits after the await inside the try, so a flip that never
-  // happened moves nothing — neither the list nor the check.
+  // The flip never happened: the value still reads Built In and the key
+  // lines stay away.
+  expect(answersValue().textContent).toContain("Built In");
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
+});
+
+// ---- The steppers ----------------------------------------------------------
+// Game-style enum rows: ◁ Value ▷. The arrows cycle with WRAP (stepper.ts, a
+// deliberate deviation from the menus' clamped highlight); the center value
+// opens a floating option popover, the scoped third altitude. Esc is four
+// layers exactly: recording, popover, menu, overlay.
+
+test("the arrows cycle the mode with wrap", async () => {
+  const backend = installBackend({ set_mode: () => ON_DEFAULT });
+  const user = userEvent.setup();
+  const saved: SettingsInfo[] = [];
+  const view = await renderMenu({
+    settings: CONFIGURED,
+    onSaved: (next) => saved.push(next),
+  });
+
+  // Custom API is the LAST option — the next arrow wraps around to Built In.
+  await user.click(
+    screen.getByRole("button", { name: "Switch to the next answer source" }),
+  );
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+
+  // From Built In the same arrow steps normally to Custom API.
+  view.rerenderWith(saved[0]);
+  await user.click(
+    screen.getByRole("button", { name: "Switch to the next answer source" }),
+  );
+  expect(backend.callsTo("set_mode")).toEqual([
+    { mode: "default" },
+    { mode: "custom" },
+  ]);
+});
+
+test("the value opens the popover: current checked, focused, aria-wired", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  const value = answersValue();
+  expect(value.getAttribute("aria-expanded")).toBe("false");
+  await user.click(value);
+
+  expect(value.getAttribute("aria-expanded")).toBe("true");
+  const current = screen.getByRole("button", {
+    name: "Answer with your own provider",
+  });
+  expect(current.getAttribute("aria-current")).toBe("true");
+  // Focus lands on the current option so AT hears the name and its state.
+  expect(document.activeElement).toBe(current);
+  // The wiring the caret used to carry: value → popover by id.
+  expect(value.getAttribute("aria-controls")).toBe(
+    current.closest(".stepper-popover")?.id,
+  );
+});
+
+test("picking the current option closes the popover without IPC", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await openAnswers(user);
+  const before = backend.calls.length;
+  await user.click(
+    screen.getByRole("button", { name: "Answer with your own provider" }),
+  );
+
+  expect(
+    screen.queryByRole("button", { name: "Answer with your own provider" }),
+  ).toBeNull();
+  expect(backend.calls.length).toBe(before);
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+});
+
+test("ArrowDown and ArrowUp walk the popover options, clamped", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu({ settings: CONFIGURED });
+
+  await openAnswers(user);
+  const builtIn = screen.getByRole("button", {
+    name: "Answer with the built-in model",
+  });
+  const custom = screen.getByRole("button", {
+    name: "Answer with your own provider",
+  });
+  // Focus opened on the current option — Custom API, the last row.
+  expect(document.activeElement).toBe(custom);
+  await user.keyboard("{ArrowUp}");
+  expect(document.activeElement).toBe(builtIn);
+  // Clamped, not wrapped — only the horizontal cycle wraps.
+  await user.keyboard("{ArrowUp}");
+  expect(document.activeElement).toBe(builtIn);
+  await user.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(custom);
+});
+
+test("ArrowLeft on the focused value cycles without opening", async () => {
+  const backend = installBackend();
+  const user = userEvent.setup();
+  await renderMenu({ settings: CONFIGURED });
+
+  act(() => {
+    answersValue().focus();
+  });
+  await user.keyboard("{ArrowLeft}");
+
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  expect(
+    screen.queryByRole("button", { name: "Answer with the built-in model" }),
+  ).toBeNull();
+});
+
+test("Esc closes the popover first, the menu second", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  let closed = 0;
+  await renderMenu({ onClose: () => closed++ });
+
+  await openAnswers(user);
+  await user.keyboard("{Escape}");
+  expect(closed).toBe(0);
+  expect(
+    screen.queryByRole("button", { name: "Answer with your own provider" }),
+  ).toBeNull();
+  // The popover handed focus back to the value it came from.
+  expect(document.activeElement).toBe(answersValue());
+
+  await user.keyboard("{Escape}");
+  expect(closed).toBe(1);
+});
+
+test("an outside click closes the popover and leaves the menu open", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  let closed = 0;
+  await renderMenu({ onClose: () => closed++ });
+
+  await openAnswers(user);
+  await user.click(screen.getByText("Shortcuts"));
+
+  expect(
+    screen.queryByRole("button", { name: "Answer with your own provider" }),
+  ).toBeNull();
+  expect(closed).toBe(0);
+});
+
+test("scrolling the settings list closes the popover", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  const view = await renderMenu();
+
+  await openAnswers(user);
+  const list = view.container.querySelector(".menu-list--settings");
+  expect(list).not.toBeNull();
+  fireEvent.scroll(list as Element);
+
+  expect(
+    screen.queryByRole("button", { name: "Answer with your own provider" }),
+  ).toBeNull();
+});
+
+test("the overlay hiding closes the popover", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await openAnswers(user);
+  await fireBackendEvent("overlay://hidden");
+
+  expect(
+    screen.queryByRole("button", { name: "Answer with your own provider" }),
+  ).toBeNull();
+});
+
+test("a mode flip in flight gates the whole stepper", async () => {
+  const gate = deferred<SettingsInfo>();
+  const backend = installBackend();
+  backend.onCommand("set_mode", () => gate.promise);
+  const user = userEvent.setup();
+  await renderMenu({ settings: CONFIGURED });
+
+  await user.click(
+    screen.getByRole("button", { name: "Switch to the next answer source" }),
+  );
+  // In flight: every stepper control waits (busyAll).
+  expect(answersValue().hasAttribute("disabled")).toBe(true);
   expect(
     screen
-      .getByRole("button", { name: "Answer with the built-in model" })
-      .getAttribute("aria-current"),
-  ).toBe("true");
+      .getByRole("button", { name: "Switch to the next answer source" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+
+  await act(async () => {
+    gate.resolve(ON_DEFAULT);
+  });
+  expect(answersValue().hasAttribute("disabled")).toBe(false);
+});
+
+test("arming a recorder closes an open option popover", async () => {
+  installBackend();
+  const user = userEvent.setup();
+  await renderMenu();
+
+  await user.click(screen.getByRole("button", { name: "Choose the theme" }));
+  expect(
+    screen.getByRole("button", { name: "Use the default theme" }),
+  ).toBeTruthy();
+  await user.click(
+    screen.getByRole("button", { name: "Change the Summon shortcut" }),
+  );
+
+  expect(
+    screen.queryByRole("button", { name: "Use the default theme" }),
+  ).toBeNull();
+  expect(screen.getByText(/Press the new shortcut/)).toBeTruthy();
 });
 
 // ---- What the panel says before it knows -----------------------------------
@@ -733,10 +986,7 @@ test("neither key note speaks while the status fetch is still open", async () =>
   // Derived from a bare some(), these read false while statuses is null — so
   // they flashed on every open and pinned forever when the fetch failed.
   expect(screen.queryByText(/Nothing can answer yet/)).toBeNull();
-  expect(
-    screen.getByRole("button", { name: "Answer with your own provider" })
-      .textContent,
-  ).not.toContain("Needs a key");
+  expect(answersValue().textContent).not.toContain("Needs a key");
 
   await act(async () => {
     gate.resolve(KEY_STATUS);
@@ -754,8 +1004,8 @@ test("a failed key-status read says so instead of reading as no keys", async () 
   });
   await renderMenu({ settle: () => screen.findByText(/store is unreadable/) });
 
-  // The failure is panel-scope: tagged to a row it would have gone unrendered
-  // on a fresh install, and behind the caret it would have gone unseen.
+  // The failure is panel-scope: tagged to a row, it would have gone
+  // unrendered on a Default-mode install where no key line exists.
   expect(screen.queryByText(/Nothing can answer yet/)).toBeNull();
 });
 
@@ -878,7 +1128,7 @@ test("a rejected save shows the message and still resumes", async () => {
   expect(backend.callsTo("resume_hotkeys")).toHaveLength(1);
 });
 
-test("Esc is three-layered while armed: cancel recording, then close", async () => {
+test("Esc is layered while armed: cancel recording, then close", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
   let closed = 0;

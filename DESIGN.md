@@ -56,6 +56,8 @@ typography:
     fontWeight: 400
   caret:
     fontSize: "9px"
+  stepper-arrow:
+    fontSize: "9px"
   monogram:
     fontFamily: "ui-monospace, 'Cascadia Code', Consolas, monospace"
     fontSize: "10px"
@@ -146,6 +148,16 @@ components:
     padding: "5px 8px"
   hotkey-row-armed:
     borderColor: "{colors.moonlight-blue}"
+  stepper-value:
+    textColor: "{colors.moon-ink}"
+    rounded: "{rounded.control}"
+    padding: "8px"
+  stepper-arrow-seat:
+    textColor: "{colors.ink-muted}"
+    rounded: "{rounded.chip}"
+  stepper-popover:
+    backgroundColor: "{colors.menu-glass}"
+    rounded: "{rounded.input}"
   game-suggestion:
     textColor: "{colors.moonlight-blue}"
     rounded: "{rounded.chip}"
@@ -267,12 +279,13 @@ Nothing displays, headlines, or shouts; hierarchy is carried by weight, ink
 strength (muted → ink → strong), tracking, and case. If a design wants a
 bigger font, it wants attention the game should keep.
 
-The ceiling has a floor: below the ramp sit two glyph sizes — the 9px caret
-and the 10px monogram lettering — typography used as iconography, never as
-copy. The smallest reading text remains the 12px Label. Under Micrographics
-two more sizes join the below-ramp band: the 10px indexed section heads
-(decorative micro-copy, never message text) and the 11px source arrow
-(typography as iconography, like the caret).
+The ceiling has a floor: below the ramp sit two glyph sizes — 9px for the
+caret and the settings steppers' ◁ ▷ arrows (direction hints, one size in
+both themes), and the 10px monogram lettering — typography used as
+iconography, never as copy. The smallest reading text remains the 12px
+Label. Under Micrographics two more sizes join the below-ramp band: the 10px
+indexed section heads (decorative micro-copy, never message text) and the
+11px source arrow (typography as iconography, like the caret).
 
 ## 4. Elevation
 
@@ -295,6 +308,12 @@ not by shadow.
 game, and menus above the panel. There is no third level — no raised cards,
 no hovering toasts, no shadowed buttons. If a new element wants a shadow, it
 is claiming to be a window, and it almost certainly isn't one.
+
+One scoped exception, admitted by decision doc
+`vault/2026-08-13_stepper-popover-third-altitude.md`: the settings stepper's
+option popover floats above the settings card, reusing Menu Glass and the
+menu float shadow — no third shadow exists. Nothing else may cite it as
+precedent.
 
 ## 5. Components
 
@@ -368,7 +387,8 @@ field with a border needs no second voice.
   other row uses). The badge is the mark — ink strength alone
   proved illegible without a neighbor to compare against — and it stays
   neutral because storage is not selection: the accent check belongs to the
-  mode rows (the One Signal Rule). A keyed line is not a control at all; its
+  Answers options (the One Signal Rule). A keyed line is not a control at
+  all; its
   only action is the trash, and the unkeyed line's `aria-label` plus the
   badge text carry the state for assistive tech.
 - **Keyboard:** focus stays on the filter input; Up/Down move the highlight
@@ -385,6 +405,42 @@ field with a border needs no second voice.
   (raised veil, chip radius, label size); the armed row speaks with a
   Moonlight Blue border only — recording is an interactive state, so the One
   Signal Rule covers it — and refusals use the rose failure voice.
+
+### Steppers (Settings enum rows)
+
+- **Anatomy:** `◁  Value  ▷` — the game-settings voice for a small enum
+  (Answers, Theme). The arrows cycle the value and **wrap** at the ends (a
+  stepper has no scroll viewport, so the menus' no-wrap rationale doesn't
+  apply — `cycle` in `stepper.ts`); the centered value opens a floating
+  option popover. With one option (an install with no built-in) the arrows
+  disable and the value still opens its one-row popover.
+- **Rail:** the settings control rows — both steppers, the shortcut recorder
+  rows, and the Custom API key lines — sit on one **90% centered rail**
+  inside the card, so the controls read as a column set into the plate;
+  headings, notes, and error boxes keep the card's full measure.
+- **Frame:** the stepper row wears a **1px hairline frame** at control radius
+  (`--border` — the framed-control voice, the input frame's family, not a
+  button border). Deliberately steppers only: the shortcut rows stay bare, so
+  the accent border remains the armed recorder's one voice, and the key
+  lines stay storage-bare. The frame takes an **extra 8px below its section
+  heading** — a bare row's padding is invisible, a frame is not, so the gap
+  matches the optical heading-to-row rhythm the Shortcuts section sets.
+- **Arrows:** the fixed 20×20 square seat (the trash/caret recipe) around a
+  9px glyph; bare muted ink at rest, veil + ink promotion on hover, 0.6
+  opacity disabled. No transition — a cycled value is an instant state
+  change.
+- **Value:** 13px ink centered on the row (the note — "Needs a key",
+  "Not set up here" — keeps the right rail), settings-row padding, 8px
+  radius; hover and open wear the veil (open mirrors hover).
+- **Popover:** Menu Glass, input radius, menu float shadow — the scoped Two
+  Altitudes exception (§4). Options are standard menu rows: accent check on
+  the current one, per-option notes on the right rail. Placement is measured
+  per open from the row (below it, flipping above near the card's bottom
+  edge); a list scroll or window resize closes it rather than re-measuring.
+  Esc layers popover → menu → overlay.
+- **Keyboard:** ArrowLeft/Right on the focused value cycle without opening;
+  in the popover, focus lands on the current option and Up/Down walk the
+  rows, clamped — only the horizontal cycle wraps.
 
 ### Signature: the Monogram Tile
 
@@ -436,6 +492,11 @@ updated in the same PR as any admission.
   question: "the panel noticed the game." Deliberately the same amplitude as
   A-04: this is an offer the player did not ask for, so it must be findable
   and ignorable in one glance, never insistent.
+- **A-06 · stepper-popover-arrive** — the settings stepper's option popover
+  mounts with a 4px arrival from its anchor row, direction-aware — dropping
+  when placed below the row, rising when flipped above (120ms ease-out,
+  reusing A-04's keyframes: same voice, same travel); closing unmounts —
+  instant. Its question: "this came from that row."
 - **debug-shimmer** — the debug window's indeterminate progress shimmer (a
   1.2s translateX loop), gated behind `prefers-reduced-motion` with a static
   accent-strip fallback. Its question: "is this ask still running?"
@@ -488,11 +549,10 @@ same PR.
   `prefers-reduced-motion` with a static fallback (the debug shimmer is the
   template).
 - **Do** retune paired constants together — `styles.css` margins ↔
-  `window.rs` floats, `--menu-clearance*` ↔ `menuPlacement.ts`, and
-  `.caret-ghost`'s padding/type ↔ `.source-row .model-row`'s (the ghost is an
-  invisible copy of the label whose width places the settings caret; the text
-  can't drift, since both render one constant, but the metrics can) — whenever
-  geometry tokens change.
+  `window.rs` floats, `--menu-clearance*` ↔ `menuPlacement.ts`, and the
+  stepper popover's 4px gap / 6px inset ↔ `POPOVER_GAP` / `POPOVER_INSET` in
+  `Stepper.tsx` (jsdom can't read custom properties, so placement math
+  duplicates them in JS) — whenever geometry tokens change.
 - **Do** express a new theme as token overrides only: ink, surfaces, borders,
   shape, shadows, and type voice. Rhythm, pads, text sizes, leadings, blur,
   and every JS-twinned geometry token (`--panel-gap`, `--shadow-room-*`,
@@ -522,8 +582,9 @@ same PR.
 ## 8. Themes
 
 The appearance is a closed set of two themes, picked in **Settings → Theme**
-(the Answers-row anatomy: name-only rows, the accent check on the active one,
-no swatch — the panel itself is the preview). The pick applies live and
+(the stepper anatomy, §5: arrows cycle the theme live, the value's popover
+lists name-only options with the accent check on the active one, no swatch —
+the panel itself is the preview). The pick applies live and
 persists locally (`wikilens.theme` in localStorage). Mechanically a theme is
 a wholesale custom-property swap: the default theme **is** the bare `:root`
 block (no attribute), and a non-default theme is an overrides-only

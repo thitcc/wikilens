@@ -72,12 +72,12 @@ test("the whole first run: pick a provider, key it, get the Model chip", async (
 
   await user.click(screen.getByRole("button", { name: "Set up a model" }));
 
-  // A never-chosen mode normalizes to Custom, so the key lines mount already
-  // disclosed and the line below is reachable without a caret click. Asserted
-  // rather than assumed: this exact fixture dependency is what silently broke
-  // three SettingsMenu tests when the disclosure landed.
+  // A never-chosen mode normalizes to Custom, so the key lines render (they
+  // exist exactly while Custom API answers) and the line below is reachable
+  // directly. Asserted rather than assumed: this exact fixture dependency is
+  // what silently broke three SettingsMenu tests when the disclosure landed.
   expect(
-    await screen.findByRole("button", { name: "Hide provider keys" }),
+    await screen.findByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeTruthy();
 
   // Clicking the unkeyed line is a pure UI move — it opens that line's field

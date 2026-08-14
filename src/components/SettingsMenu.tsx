@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 import {
   getAppVersion,
   listKeyStatus,
@@ -30,6 +30,7 @@ import {
 import { keyHelp } from "../providerHelp";
 import type { ThemeId } from "../theme";
 import { Badge } from "./Badge";
+import { Stepper } from "./Stepper";
 
 interface SettingsMenuProps {
   settings: SettingsInfo;
@@ -57,13 +58,11 @@ const ROLE_NAMES: Record<HotkeyRole, string> = {
  * neither — its slot sits under the heading, not on a row. */
 const KEYS_ROW = "keys";
 
-/** The Custom row's label. Rendered twice — once in the row, once as the
- * caret rail's invisible width spacer — so it lives in one place. */
-const CUSTOM_MODE_LABEL = "Your own provider";
-
-/** The disclosed key list, for the caret's `aria-controls`. A module constant
- * is safe: App's `openMenu` union guarantees one mounted SettingsMenu. */
-const KEYS_NEST_ID = "settings-keys";
+/** The two option popovers' ids, for the value buttons' `aria-controls`.
+ * Module constants are safe: App's `openMenu` union guarantees one mounted
+ * SettingsMenu. */
+const ANSWERS_POPOVER_ID = "settings-answers-options";
+const THEME_POPOVER_ID = "settings-theme-options";
 
 /** Bootstrap Icons "trash" (MIT), sized like the header gear. Static, so it
  * lives at module scope rather than being rebuilt on every render. */
@@ -93,30 +92,31 @@ function comboKeys(parts: string[]) {
 /**
  * The Settings panel: where answers come from, and the two key recorders.
  *
- * Two jobs, not one list. The rows under "Answers" pick a MODE — the built-in
- * model (when this install has one) or your own provider — and exactly one of
- * them wears the check. The provider lines below it are not choices: they only
- * set and clear keys, because which provider answers is picked from the footer
- * chip on the main panel. An unkeyed line opens in place into a single key
- * field (one at a time). A stored key's only action is the trash: the keyed
- * line is static — a neutral "Set" pill marks it, and re-keying means trash,
- * then the now-unkeyed line. Ink strength reinforces the pill (keyed at full
- * ink, unkeyed receding). A pasted key crosses IPC once and is never
- * displayed back.
+ * Two jobs, not one list. The "Answers" stepper picks a MODE — the built-in
+ * model (when this install has one) or Custom API, your own provider — by
+ * cycling the arrows or picking from the value's option popover. The provider
+ * lines below it are not choices: they only set and clear keys, because which
+ * provider answers is picked from the footer chip on the main panel. An
+ * unkeyed line opens in place into a single key field (one at a time). A
+ * stored key's only action is the trash: the keyed line is static — a neutral
+ * "Set" pill marks it, and re-keying means trash, then the now-unkeyed line.
+ * Ink strength reinforces the pill (keyed at full ink, unkeyed receding). A
+ * pasted key crosses IPC once and is never displayed back.
  *
- * Two rules follow from the split, and both are load-bearing. A key never moves
- * the check: saving one stores it and nothing else
- * (vault/2026-07-29_keys-are-not-a-mode-choice.md). And the disclosure follows
- * the mode: landing on your own provider reveals the keys, landing on the
- * built-in model puts them away, so the list can never sit open under a row
- * that isn't answering.
+ * Two rules follow from the split, and both are load-bearing. A key never
+ * moves the value: saving one stores it and nothing else
+ * (vault/2026-07-29_keys-are-not-a-mode-choice.md). And the key lines exist
+ * exactly while Custom API answers — their visibility is derived from the
+ * mode, so the list can never sit open under a value that isn't answering.
  *
  * Arming a recorder suspends the OS registrations (pressing the current combo
  * mid-recording must not toggle the overlay) and swallows every keydown at
- * capture phase — Enter must not reach the prompt, and Esc gets a third layer:
- * cancel recording, then close the menu, then hide the overlay. Same
- * interaction contract as AddGameMenu otherwise: capture-phase Esc,
- * outside-pointerdown close excluding the trigger, direct `.panel` child.
+ * capture phase — Enter must not reach the prompt. Esc is layered four deep,
+ * exactly: cancel recording, then close an open option popover, then close
+ * the menu, then hide the overlay — and deliberately no layer for the key
+ * form. Same interaction contract as AddGameMenu otherwise: capture-phase
+ * Esc, outside-pointerdown close excluding the trigger, direct `.panel`
+ * child.
  */
 export function SettingsMenu({
   settings,
@@ -151,16 +151,16 @@ export function SettingsMenu({
     rowId: string;
     message: string;
   } | null>(null);
-  /** Whether the provider key lines are disclosed under the Custom row. Mount
-   * seed only — `pickMode` owns every reconciliation after that. A stale
-   * default install (Default chosen, nothing configured behind it) opens too:
-   * the guidance under the heading says "add a key below", and a collapsed
-   * list would point at nothing. `defaultMode.configured` is known
-   * synchronously here; `statuses` is not. */
-  const [keysOpen, setKeysOpen] = useState(
-    settings.mode !== "default" || !settings.defaultMode.configured,
+  /** Which stepper's option popover is open — at most one: the popover is a
+   * scoped third altitude (vault/2026-08-13_stepper-popover-third-altitude.md)
+   * and a second one would stack over it. */
+  const [openStepper, setOpenStepper] = useState<"answers" | "theme" | null>(
+    null,
   );
   const menuRef = useRef<HTMLDivElement | null>(null);
+  /** The scrolling list — the steppers close their popover when it scrolls
+   * (placement is measured once per open). */
+  const listRef = useRef<HTMLDivElement | null>(null);
   // Whether THIS menu suspended the registrations — resume exactly once per
   // suspend, whatever exit path runs (save, cancel, hide, unmount).
   const suspendedRef = useRef(false);
@@ -287,6 +287,8 @@ export function SettingsMenu({
     setError(null);
     setHint(null);
     setPendingMods([]);
+    // An open popover under an armed recorder would fight it for the arrows.
+    setOpenStepper(null);
     setRecording(role);
     if (!suspendedRef.current) {
       suspendedRef.current = true;
@@ -325,15 +327,21 @@ export function SettingsMenu({
     await save(role, settings.hotkeys[role].defaultAccelerator);
   }
 
-  // One capture-phase keydown listener for both jobs. Idle: Esc closes the
-  // menu only (App's Esc-hides-overlay listener is bubble-phase on this same
-  // window — see ModelMenu). Armed: swallow everything and run the recorder.
-  // Deliberately no fourth layer for the key form — Esc keeps three exactly.
+  // One capture-phase keydown listener for both jobs. Idle: Esc closes an
+  // open option popover first, then the menu (App's Esc-hides-overlay
+  // listener is bubble-phase on this same window — see ModelMenu). Armed:
+  // swallow everything and run the recorder. Esc is four layers exactly —
+  // recording, popover, menu, overlay — and deliberately none for the key
+  // form.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (recording === null) {
         if (e.key === "Escape") {
           e.stopPropagation();
+          if (openStepper !== null) {
+            setOpenStepper(null);
+            return;
+          }
           onClose();
         }
         return;
@@ -380,7 +388,7 @@ export function SettingsMenu({
       window.removeEventListener("keyup", onKeyUp, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recording, saving, settings, onClose]);
+  }, [recording, saving, settings, onClose, openStepper]);
 
   // Click/tap anywhere outside closes; the trigger is excluded because its
   // own onClick toggles. Closing unmounts — the unmount effect resumes.
@@ -402,7 +410,11 @@ export function SettingsMenu({
   useEffect(() => {
     let disposed = false;
     let cleanup: (() => void) | null = null;
-    void onOverlayHidden(() => disarmRef.current()).then((unlisten) => {
+    void onOverlayHidden(() => {
+      disarmRef.current();
+      // A re-show would float an open popover over stale geometry.
+      setOpenStepper(null);
+    }).then((unlisten) => {
       if (disposed) unlisten();
       else cleanup = unlisten;
     });
@@ -547,15 +559,13 @@ export function SettingsMenu({
     setAction("source");
     setActionRow(next);
     setSourceError(null);
+    // The key lines' visibility is derived from the mode — leaving Custom
+    // unmounts them, so the open form and its typed key must not outlive the
+    // list (the key-residency rule toggleKeyForm honors, one level out).
     setOpenKey(null);
+    setDraft("");
     try {
       onSaved(await setMode(next));
-      // The disclosure follows the mode: your own provider reveals its keys,
-      // the built-in model puts them away. Inside the try and after the await
-      // on purpose — a rejected set_mode must not move the list for a flip
-      // that never happened. Re-clicking the mode you're already on returns
-      // above, so a manually collapsed list stays collapsed.
-      setKeysOpen(next === "custom");
     } catch (e) {
       setSourceError({ rowId: next, message: String(e) });
     } finally {
@@ -570,98 +580,45 @@ export function SettingsMenu({
     setOpenKey((open) => (open === id ? null : id));
   }
 
-  /** The caret. Collapsing takes any open field with it — the same
-   * key-residency rule `toggleKeyForm` honors, one level out: a typed key must
-   * not sit alive behind a closed disclosure. */
-  function toggleKeys() {
-    const next = !keysOpen;
-    setKeysOpen(next);
-    if (!next) {
-      setOpenKey(null);
-      setDraft("");
-    }
-  }
+  /** The Answers enum. One option on an unconfigured install that never
+   * chose Default — the arrows disable and the popover lists the lone row.
+   * The mode pick is an IPC round trip with an error slot; the theme pick
+   * below is pure frontend state with nothing to fail — one Stepper, and
+   * each wiring keeps its own contract. */
+  const modeOptions = [
+    ...(showBuiltIn
+      ? [
+          {
+            id: "default",
+            name: "Built In",
+            label: "Answer with the built-in model",
+            note: settings.defaultMode.configured ? null : "Not set up here",
+          },
+        ]
+      : []),
+    {
+      id: "custom",
+      name: "Custom API",
+      label: "Answer with your own provider",
+      note: needsKey ? "Needs a key" : null,
+    },
+  ];
 
-  /** One mode row: the whole of the answer choice. `disclosure` is the caret
-   * rail on the Custom row — both rows go through here so neither can lose its
-   * error slot the way a hand-written twin did. */
-  const modeRow = (opts: {
-    mode: Mode;
-    name: string;
-    label: string;
-    note: string | null;
-    disclosure?: ReactNode;
-  }) => {
-    const selected = currentMode === opts.mode;
-    return (
-      <Fragment key={opts.mode}>
-        <div
-          className={
-            "source-row" + (opts.disclosure ? " source-row--disclosing" : "")
-          }
-        >
-          <button
-            type="button"
-            className={"model-row" + (selected ? " selected" : "")}
-            disabled={busyAll}
-            aria-current={selected ? "true" : undefined}
-            aria-label={opts.label}
-            onClick={() => void pickMode(opts.mode)}
-          >
-            <span className="row-main">
-              <span className="row-name">{opts.name}</span>
-            </span>
-            <span className="row-side">
-              {opts.note && <span className="row-note">{opts.note}</span>}
-              <span className="check" aria-hidden="true">
-                ✓
-              </span>
-            </span>
-          </button>
-          {opts.disclosure}
-        </div>
-        {sourceError?.rowId === opts.mode && (
-          <div className="menu-error">{sourceError.message}</div>
-        )}
-      </Fragment>
-    );
-  };
-
-  /** One theme row: the appearance pick (DESIGN.md §8). A sibling of modeRow
-   * rather than a parameterization — a mode pick is an IPC round trip with an
-   * error slot, a theme pick is pure frontend state with nothing to fail —
-   * but it clones the same anatomy so the two sections read as one
-   * vocabulary. Deliberately not busyAll-gated: swapping chrome mid-action
-   * is safe, and the live swap is the theme's own preview. */
-  const themeRow = (opts: { id: ThemeId; name: string; label: string }) => {
-    const selected = theme === opts.id;
-    return (
-      // Namespaced key: the mode rows are siblings in the same children list
-      // and already claim "default" (modeRow keys on its Mode).
-      <div className="source-row" key={`theme-${opts.id}`}>
-        <button
-          type="button"
-          className={"model-row" + (selected ? " selected" : "")}
-          aria-current={selected ? "true" : undefined}
-          aria-label={opts.label}
-          onClick={() => onThemeChange(opts.id)}
-        >
-          <span className="row-main">
-            <span className="row-name">{opts.name}</span>
-          </span>
-          <span className="row-side">
-            <span className="check" aria-hidden="true">
-              ✓
-            </span>
-          </span>
-        </button>
-      </div>
-    );
-  };
+  /** The appearance pick (DESIGN.md §8). Deliberately not busyAll-gated:
+   * swapping chrome mid-action is safe, and the live swap is the theme's own
+   * preview. */
+  const themeOptions = [
+    { id: "default", name: "Default", label: "Use the default theme" },
+    {
+      id: "micrographics",
+      name: "Micrographics",
+      label: "Use the Micrographics theme",
+    },
+  ];
 
   /* A key line: an unkeyed name opens the field; a keyed line is static —
      the Set pill marks it and the trash is its only control. Nothing here is
-     a choice — only the two mode rows above are. */
+     a choice — only the Answers stepper above picks the mode. */
   const keyLine = (status: KeyStatus) => (
     <Fragment key={status.id}>
       <div className={"key-line" + (status.hasKey ? " is-keyed" : "")}>
@@ -725,34 +682,6 @@ export function SettingsMenu({
     </Fragment>
   );
 
-  /** The Custom row's caret, floated over the row by `.caret-rail` so it lands
-   * right after the label while every pixel of the row still picks the mode.
-   * Its own control on purpose: the keys can be opened without changing which
-   * mode is answering. */
-  const keysCaret = (
-    <span className="caret-rail">
-      <span className="caret-ghost" aria-hidden="true">
-        {CUSTOM_MODE_LABEL}
-      </span>
-      <button
-        type="button"
-        className="caret-toggle"
-        disabled={busyAll}
-        aria-expanded={keysOpen}
-        aria-controls={KEYS_NEST_ID}
-        aria-label={keysOpen ? "Hide provider keys" : "Show provider keys"}
-        onClick={toggleKeys}
-      >
-        <span
-          className={"group-caret" + (keysOpen ? "" : " is-collapsed")}
-          aria-hidden="true"
-        >
-          ▾
-        </span>
-      </button>
-    </span>
-  );
-
   return (
     <div
       className="menu menu--top"
@@ -761,39 +690,45 @@ export function SettingsMenu({
       role="dialog"
       aria-label="Settings"
     >
-      <div className="menu-list menu-list--settings">
+      <div className="menu-list menu-list--settings" ref={listRef}>
         <div className="menu-heading menu-heading--versioned">
           Answers
           {version !== null && <span className="menu-version">v{version}</span>}
         </div>
-        {/* Panel-scope, so it sits above the rows rather than on one: a failed
-            key-status read would otherwise be tagged to a row that may not
-            exist, or be hidden behind the caret. */}
+        {/* Panel-scope, so it sits above the stepper rather than on it: a
+            failed key-status read isn't any one option's failure, and on a
+            Default-mode install the key lines it describes aren't rendered. */}
         {sourceError?.rowId === KEYS_ROW && (
           <div className="menu-error">{sourceError.message}</div>
         )}
         {nothingCanAnswer && (
           <div className="menu-note">
-            Nothing can answer yet — add a key below.
+            {currentMode === "custom"
+              ? "Nothing can answer yet — add a key below."
+              : "Nothing can answer yet — switch to Custom API and add a key."}
           </div>
         )}
-        {showBuiltIn &&
-          modeRow({
-            mode: "default",
-            name: "Built into WikiLens",
-            label: "Answer with the built-in model",
-            note: settings.defaultMode.configured ? null : "Not set up here",
-          })}
-        {modeRow({
-          mode: "custom",
-          name: CUSTOM_MODE_LABEL,
-          label: "Answer with your own provider",
-          note: needsKey ? "Needs a key" : null,
-          disclosure: keysCaret,
-        })}
+        <Stepper
+          options={modeOptions}
+          currentId={currentMode}
+          disabled={busyAll}
+          onPick={(id) => void pickMode(id as Mode)}
+          prevLabel="Switch to the previous answer source"
+          nextLabel="Switch to the next answer source"
+          valueLabel="Choose the answer source"
+          popoverId={ANSWERS_POPOVER_ID}
+          open={openStepper === "answers"}
+          onOpenChange={(next) => setOpenStepper(next ? "answers" : null)}
+          cardRef={menuRef}
+          listRef={listRef}
+        />
+        {(sourceError?.rowId === "default" ||
+          sourceError?.rowId === "custom") && (
+          <div className="menu-error">{sourceError.message}</div>
+        )}
 
-        {keysOpen && (
-          <div className="keys-nest" id={KEYS_NEST_ID}>
+        {currentMode === "custom" && (
+          <div className="keys-nest">
             {statuses === null && <div className="menu-note">Loading…</div>}
             {statuses?.length === 0 && (
               <div className="menu-note">
@@ -805,16 +740,19 @@ export function SettingsMenu({
         )}
 
         <div className="menu-heading">Theme</div>
-        {themeRow({
-          id: "default",
-          name: "Default",
-          label: "Use the default theme",
-        })}
-        {themeRow({
-          id: "micrographics",
-          name: "Micrographics",
-          label: "Use the Micrographics theme",
-        })}
+        <Stepper
+          options={themeOptions}
+          currentId={theme}
+          onPick={(id) => onThemeChange(id as ThemeId)}
+          prevLabel="Switch to the previous theme"
+          nextLabel="Switch to the next theme"
+          valueLabel="Choose the theme"
+          popoverId={THEME_POPOVER_ID}
+          open={openStepper === "theme"}
+          onOpenChange={(next) => setOpenStepper(next ? "theme" : null)}
+          cardRef={menuRef}
+          listRef={listRef}
+        />
 
         <div className="menu-heading">Shortcuts</div>
         {row("summon", settings.hotkeys.summon)}

@@ -66,9 +66,9 @@ in favor of `deepseek-v4-flash`).
 
 One env-configured model source with the vendor hidden: the footer chip reads
 just **Default**, there is no provider or model menu, and asks resolve entirely
-from these variables. It appears in Settings → **Answers** as **Built into
-WikiLens**; that row and **Your own provider** are what switch between the
-two. On first launch WikiLens auto-senses (a complete
+from these variables. It appears in Settings → **Answers** as **Built In**;
+the Answers stepper's arrows (or its option popover) switch between it and
+**Custom API**. On first launch WikiLens auto-senses (a complete
 `WIKILENS_DEFAULT_*` set selects Default once — your stored choice wins forever
 after). All four are required together:
 
@@ -202,10 +202,10 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 2. Wait for the tray icon to appear (the window starts hidden), then press
    **Ctrl+`** (the key left of 1).
 3. The panel slides in from the right and focuses the input.
-4. Add a key: the header gear (**Settings**) → **Answers** — click a provider's
-   line, paste its key in the field that opens, and press **Save** (the key is
-   never displayed again). Then click **Your own provider** to answer with it,
-   and pick which provider from the footer chip.
+4. Add a key: the header gear (**Settings**) → **Answers** — with **Custom
+   API** as the stepper's value, click a provider's line, paste its key in the
+   field that opens, and press **Save** (the key is never displayed again).
+   Then pick which provider answers from the footer chip.
 5. Choose a **game**, then ask a question — e.g. **Conan Exiles** → *"how do I
    make steel bars?"*, or **Core Keeper** → *"best way to get wood"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer
