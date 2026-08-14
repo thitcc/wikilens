@@ -1,0 +1,8 @@
+{
+  "detector": {
+    "ignoreFiles": [
+      ".impeccable/critique/**",
+      ".claude/skills/proof-sheet/templates/**"
+    ]
+  }
+}

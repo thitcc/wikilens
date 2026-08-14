@@ -1,0 +1,161 @@
+<!--
+  Proof-sheet skeleton — the reusable chrome for a WikiLens design proof sheet.
+
+  A proof sheet is ONE self-contained HTML file presenting the variants of ONE
+  visual decision, built into .impeccable/critique/ (gitignored) and published
+  as an artifact so the user can pick mid-session. Copy this file there under a
+  descriptive name (e.g. stepper-border-sheet.html), fill every «...» marker,
+  and delete the guidance comments that no longer apply.
+
+  Anatomy rules this skeleton encodes (see .claude/skills/proof-sheet/SKILL.md):
+  - Both themes render SIDE BY SIDE — there is no theme toggle, intentionally.
+    The theme class goes on the .backdrop; variant modifier classes on the .card.
+  - One axis (section) per independent choice, indexed A/B/C…, 3-4 axes max.
+  - All specimens share one CARD string injected by script, so variants differ
+    only by CSS — never by drifting markup.
+  - Sheet chrome (--sheet-*) is deliberately NON-product styling; product
+    tokens appear only inside .t-default / .t-micro and must be copied fresh.
+-->
+<title>«Decision Name» Sheet</title>
+<style>
+  /* ── Sheet chrome — the page's own skin, deliberately non-product. ──
+     Never swap product tokens in here; the sheet must look like an
+     instrument for judging the product, not like the product. */
+  :root {
+    --sheet-bg: #0f1013;
+    --sheet-ink: #d3d4dc;
+    --sheet-muted: #83848f;
+    --sheet-line: rgba(255, 255, 255, 0.08);
+    --sheet-accent: #8ab4ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--sheet-bg);
+    color: var(--sheet-ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 48px 24px 96px;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  header.sheet { margin-bottom: 36px; }
+  .sheet h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; color: #f2f2f7; }
+  .sheet .sub { color: var(--sheet-muted); max-width: 64ch; margin-top: 8px; }
+
+  /* One axis per independent choice; the .note carries the rationale the
+     user reads before picking — write it as one or two full sentences. */
+  section.axis { margin-top: 48px; }
+  .axis-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--sheet-line); padding-bottom: 8px; margin-bottom: 18px; }
+  .axis-head .idx { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--sheet-accent); letter-spacing: 0.1em; }
+  .axis-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+  .axis-head .note { margin-left: auto; font-size: 12px; color: var(--sheet-muted); text-align: right; max-width: 46ch; }
+
+  /* Variant label | Default cell | Micrographics cell. */
+  .grid { display: grid; grid-template-columns: 160px 1fr 1fr; gap: 14px 16px; align-items: start; }
+  .colhead { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sheet-muted); }
+  .rowlabel { font-size: 12px; color: var(--sheet-muted); padding-top: 10px; }
+  .rowlabel b { display: block; color: var(--sheet-ink); font-weight: 500; font-size: 14px; }
+
+  /* Fake game scene behind every specimen — the overlay is judged over a
+     game, never over a flat page. */
+  .backdrop {
+    padding: 14px;
+    border-radius: 8px;
+    background:
+      radial-gradient(120% 90% at 12% 0%, rgba(64, 96, 88, 0.35), transparent 60%),
+      radial-gradient(100% 80% at 95% 100%, rgba(120, 84, 48, 0.28), transparent 55%),
+      linear-gradient(160deg, #14181c, #0a0c0e);
+  }
+
+  /* ── Product tokens — COPY CURRENT VALUES AT BUILD TIME. ──
+     Fill both blocks from src/styles.css: the Default values from the :root
+     token block, the Micrographics values from its [data-theme] override
+     block. The skeleton ships names only, on purpose: pasted literals go
+     stale, and a stale-token sheet lies about what the picks will look like.
+     Trim to the props your specimens actually consume; the usual set is:
+       --fg  --fg-muted  --accent
+       --surface-menu  --surface-control  --surface-raised  --surface-inset
+       --border  --radius-chip  --radius-control  --radius-input
+       --shadow-menu  --font-ui  --tracking-label                       */
+  .t-default {
+    /* «paste current Default theme values from src/styles.css» */
+  }
+  .t-micro {
+    /* «paste current Micrographics theme values from src/styles.css» */
+  }
+
+  /* Specimen shell — the glass card every variant renders inside. */
+  .card {
+    font-family: var(--font-ui); color: var(--fg); font-size: 13px;
+    background: var(--surface-menu);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-input);
+    box-shadow: var(--shadow-menu);
+    padding: 4px 6px 6px;
+  }
+  .card > * + * { margin-top: 2px; }
+
+  /* ── Specimen CSS — mirror the REAL component rules from src/styles.css
+     for whatever the sheet shows, consuming the theme vars above. Keep the
+     mirrored rules faithful to shipped state; then express each variant as
+     a small modifier class scoped like the examples below. ── */
+  /* «specimen rules here» */
+
+  /* ── Axis A variants — one modifier class per variant row, applied on the
+     .card. Name them after the axis (a-1/a-2… or semantic like g-8). ── */
+  /* .a-1 «...» { «...» } */
+
+  button:focus-visible { outline: 1px solid var(--sheet-accent); outline-offset: -1px; }
+</style>
+
+<div class="wrap">
+  <header class="sheet">
+    <h1>«Decision Name» Sheet</h1>
+    <p class="sub">
+      «One short paragraph: which decision this sheet settles, what each axis
+      varies, and what is deliberately held constant.»
+    </p>
+  </header>
+
+  <!-- A ─────────────────────────────────────────────── one section per axis -->
+  <section class="axis">
+    <div class="axis-head">
+      <span class="idx">A</span><h2>«Axis title»</h2>
+      <span class="note">«Why this axis is open and what to judge it by.»</span>
+    </div>
+    <div class="grid">
+      <div></div><div class="colhead">Default</div><div class="colhead">Micrographics</div>
+
+      <!-- One trio per variant: label, Default cell, Micrographics cell.
+           Theme class on the backdrop; variant modifier class on the card.
+           The first row is usually the current shipped state, unmodified. -->
+      <div class="rowlabel"><b>«Variant»</b>«one-clause description»</div>
+      <div class="backdrop t-default"><div class="card"></div></div>
+      <div class="backdrop t-micro"><div class="card"></div></div>
+
+      <!-- «duplicate the trio above for each further variant, adding its
+           modifier class to both cards: <div class="card a-2"></div>» -->
+    </div>
+  </section>
+
+  <!-- «duplicate the section above for axes B, C…» -->
+</div>
+
+<script>
+  // One CARD string injected into every .card keeps all specimens
+  // byte-identical — variants differ only by the CSS modifier classes.
+  // Build it from the real component markup, simplified to what the sheet
+  // needs (static text where state doesn't matter).
+  var CARD =
+    '«specimen markup»';
+
+  document.querySelectorAll(".card").forEach(function (card) {
+    card.innerHTML = CARD;
+
+    // Interactivity stub — wire it only where feel matters (a cycling
+    // stepper, a toggle, motion on/off). Read config from data-* attributes
+    // on the injected markup so every specimen stays self-describing.
+    //
+    // card.querySelectorAll("«.widget»").forEach(function (w) { «...» });
+  });
+</script>
