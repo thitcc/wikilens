@@ -87,12 +87,7 @@ const POSITION_OPTIONS: { id: PositionChoice; name: string; label: string; note?
     label: "Dock the panel to the bottom left",
   },
   { id: "center", name: "Center", label: "Center the panel on the screen" },
-  {
-    id: "manual",
-    name: "Manual",
-    label: "Keep the panel where you drag it",
-    note: "Drag the header",
-  },
+  { id: "manual", name: "Manual", label: "Keep the panel where you drag it" },
 ];
 
 /** The padlock states — hand-drawn to the trash icon's 16-grid, stroke ink
