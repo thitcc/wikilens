@@ -172,6 +172,8 @@ pub fn run() {
             commands::set_api_key,
             commands::remove_api_key,
             commands::set_mode,
+            commands::set_panel_position,
+            commands::set_position_locked,
             commands::begin_capture,
             commands::finish_capture,
             commands::cancel_capture,

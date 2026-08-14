@@ -66,6 +66,95 @@ impl Mode {
     }
 }
 
+/// Where an anchored overlay docks. Kebab-case on disk and on the wire
+/// (`"top-right"` …); the serde form and `as_str` are pinned against each
+/// other like `Mode`'s.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PanelAnchor {
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottomLeft,
+    Center,
+}
+
+impl PanelAnchor {
+    fn as_str(self) -> &'static str {
+        match self {
+            PanelAnchor::TopRight => "top-right",
+            PanelAnchor::TopLeft => "top-left",
+            PanelAnchor::BottomRight => "bottom-right",
+            PanelAnchor::BottomLeft => "bottom-left",
+            PanelAnchor::Center => "center",
+        }
+    }
+
+    fn parse(s: &str) -> Option<PanelAnchor> {
+        match s {
+            "top-right" => Some(PanelAnchor::TopRight),
+            "top-left" => Some(PanelAnchor::TopLeft),
+            "bottom-right" => Some(PanelAnchor::BottomRight),
+            "bottom-left" => Some(PanelAnchor::BottomLeft),
+            "center" => Some(PanelAnchor::Center),
+            _ => None,
+        }
+    }
+}
+
+/// Whether the overlay follows its anchor or the player's dragged spot.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PositionMode {
+    Anchored,
+    Manual,
+}
+
+impl PositionMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            PositionMode::Anchored => "anchored",
+            PositionMode::Manual => "manual",
+        }
+    }
+
+    fn parse(s: &str) -> Option<PositionMode> {
+        match s {
+            "anchored" => Some(PositionMode::Anchored),
+            "manual" => Some(PositionMode::Manual),
+            _ => None,
+        }
+    }
+}
+
+/// The overlay placement choice. Both memories persist independently: `anchor`
+/// survives Manual picks and drags, `manual` survives anchor picks — stepping
+/// between them restores each. Coordinates are the window's *outer* position
+/// in physical virtual-screen px (what `WindowEvent::Moved` delivers) and
+/// never cross IPC.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PanelPosition {
+    pub mode: PositionMode,
+    pub anchor: PanelAnchor,
+    /// Last dragged spot; `None` until the panel is first dragged (or Manual
+    /// is first picked, which snapshots the current position). Manual mode
+    /// with no stored spot lays out from `anchor`.
+    pub manual: Option<(i32, i32)>,
+    /// The padlock: `true` = the header never drags, in every mode.
+    pub locked: bool,
+}
+
+impl Default for PanelPosition {
+    fn default() -> Self {
+        PanelPosition {
+            mode: PositionMode::Anchored,
+            anchor: PanelAnchor::TopRight,
+            manual: None,
+            locked: false,
+        }
+    }
+}
+
 /// Everything `persist` writes, mutated as one candidate (clone-mutate-
 /// persist-commit). One write lock held across persist serializes every
 /// mutation, so two concurrent mutators can never save each other's state
@@ -76,6 +165,7 @@ struct Persisted {
     /// `None` = the user never chose; `lib.rs` auto-senses on first launch,
     /// so this survives as `None` only when that persist failed.
     mode: Option<Mode>,
+    position: PanelPosition,
 }
 
 /// On-disk shape. `#[serde(default)]` at every level: an absent file, an
@@ -89,6 +179,7 @@ struct SettingsFile {
     /// whole-file corrupt path; omitted entirely until the user chooses.
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<String>,
+    position: PositionEntries,
     /// Top-level keys a future version wrote — preserved across saves.
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
@@ -106,15 +197,42 @@ struct HotkeyEntries {
     extra: serde_json::Map<String, serde_json::Value>,
 }
 
+#[derive(Serialize, Deserialize, Default)]
+#[serde(default)]
+struct PositionEntries {
+    /// `"anchored"` | `"manual"` / an anchor's kebab string — raw so an
+    /// unrecognized value falls back alone (`resolve_position`), the `mode`
+    /// idiom.
+    mode: Option<String>,
+    anchor: Option<String>,
+    /// Omitted until the panel is first dragged (or Manual first picked).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    manual: Option<ManualPoint>,
+    locked: Option<bool>,
+    /// Same forward-compat preservation, one level down.
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The dragged spot on disk: window outer position, physical virtual-screen
+/// px (negative on monitors left/above the primary).
+#[derive(Serialize, Deserialize, Clone, Copy)]
+struct ManualPoint {
+    x: i32,
+    y: i32,
+}
+
+type JsonMap = serde_json::Map<String, serde_json::Value>;
+/// Unknown JSON preserved per nesting level: (top-level, hotkeys, position).
+type ExtraMaps = (JsonMap, JsonMap, JsonMap);
+
 pub struct SettingsStore {
     path: PathBuf,
     state: RwLock<Persisted>,
     /// Unknown JSON preserved from the loaded file (`SettingsFile::extra`,
-    /// `HotkeyEntries::extra`) — only touched by `load` and `persist`.
-    extra: Mutex<(
-        serde_json::Map<String, serde_json::Value>,
-        serde_json::Map<String, serde_json::Value>,
-    )>,
+    /// `HotkeyEntries::extra`, `PositionEntries::extra`) — only touched by
+    /// `load` and `persist`.
+    extra: Mutex<ExtraMaps>,
     /// True while the frontend recorder is armed and the OS registrations are
     /// dropped (`suspend_hotkeys`/`resume_hotkeys` in `commands.rs`).
     suspended: AtomicBool,
@@ -177,8 +295,9 @@ impl SettingsStore {
             state: RwLock::new(Persisted {
                 hotkeys,
                 mode: resolve_mode(file.mode),
+                position: resolve_position(&file.position),
             }),
-            extra: Mutex::new((file.extra, file.hotkeys.extra)),
+            extra: Mutex::new((file.extra, file.hotkeys.extra, file.position.extra)),
             suspended: AtomicBool::new(false),
             load_error,
         }
@@ -263,6 +382,36 @@ impl SettingsStore {
         Ok(())
     }
 
+    /// The persisted overlay placement (both memories + the padlock).
+    pub fn panel_position(&self) -> PanelPosition {
+        self.read().position
+    }
+
+    /// Store a placement change: persist-then-commit, the `set_mode` shape.
+    /// Callers compose the whole `PanelPosition` (mode + both memories) so a
+    /// pick can never clobber the other mode's remembered state by accident.
+    pub fn set_panel_position(&self, position: PanelPosition) -> Result<(), AppError> {
+        self.writable()?;
+        let mut guard = self.write();
+        let mut next = *guard;
+        next.position = position;
+        self.persist(&next)?;
+        *guard = next;
+        Ok(())
+    }
+
+    /// Flip the padlock alone — single-purpose like `set_mode`, so the
+    /// frontend never re-sends a placement to toggle it.
+    pub fn set_position_locked(&self, locked: bool) -> Result<(), AppError> {
+        self.writable()?;
+        let mut guard = self.write();
+        let mut next = *guard;
+        next.position.locked = locked;
+        self.persist(&next)?;
+        *guard = next;
+        Ok(())
+    }
+
     /// Mark the recorder-armed state. Returns the *previous* value so callers
     /// can make suspend/resume idempotent.
     pub fn suspend(&self) -> bool {
@@ -286,7 +435,7 @@ impl SettingsStore {
             .parent()
             .ok_or_else(|| AppError::Settings("no data directory".to_string()))?;
         fs::create_dir_all(dir).map_err(|e| settings_err(&e))?;
-        let (file_extra, hotkeys_extra) = {
+        let (file_extra, hotkeys_extra, position_extra) = {
             let guard = self.extra.lock().unwrap_or_else(PoisonError::into_inner);
             guard.clone()
         };
@@ -297,6 +446,13 @@ impl SettingsStore {
                 extra: hotkeys_extra,
             },
             mode: next.mode.map(|m| m.as_str().to_string()),
+            position: PositionEntries {
+                mode: Some(next.position.mode.as_str().to_string()),
+                anchor: Some(next.position.anchor.as_str().to_string()),
+                manual: next.position.manual.map(|(x, y)| ManualPoint { x, y }),
+                locked: Some(next.position.locked),
+                extra: position_extra,
+            },
             extra: file_extra,
         };
         let json = serde_json::to_string_pretty(&file).map_err(|e| settings_err(&e))?;
@@ -324,6 +480,34 @@ fn resolve_mode(stored: Option<String>) -> Option<Mode> {
         eprintln!("wikilens: stored mode {s:?} is invalid; treating it as unchosen");
     }
     mode
+}
+
+/// The stored placement, each field falling back alone (the file is never
+/// rewritten by load — the next save repairs it). An unrecognized `mode` or
+/// `anchor` string reverts to that field's default; a wrong-*typed* field
+/// trips the whole-file corrupt path like every other setting.
+fn resolve_position(stored: &PositionEntries) -> PanelPosition {
+    let defaults = PanelPosition::default();
+    let mode = match &stored.mode {
+        None => defaults.mode,
+        Some(s) => PositionMode::parse(s).unwrap_or_else(|| {
+            eprintln!("wikilens: stored position mode {s:?} is invalid; using the default");
+            defaults.mode
+        }),
+    };
+    let anchor = match &stored.anchor {
+        None => defaults.anchor,
+        Some(s) => PanelAnchor::parse(s).unwrap_or_else(|| {
+            eprintln!("wikilens: stored anchor {s:?} is invalid; using the default");
+            defaults.anchor
+        }),
+    };
+    PanelPosition {
+        mode,
+        anchor,
+        manual: stored.manual.map(|p| (p.x, p.y)),
+        locked: stored.locked.unwrap_or(defaults.locked),
+    }
 }
 
 /// A stored accelerator, or the role's default when absent/unparseable.
@@ -410,6 +594,120 @@ mod tests {
 
         let store = SettingsStore::load(path.clone());
         assert_eq!(store.mode(), None);
+        assert_eq!(store.shortcut(HotkeyRole::Capture), alt_q());
+        // The file is not rewritten by load — repair happens on the next save.
+        assert!(fs::read_to_string(&path).unwrap().contains("banana"));
+    }
+
+    #[test]
+    fn set_panel_position_persists_and_reloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.panel_position(), PanelPosition::default());
+        store
+            .set_panel_position(PanelPosition {
+                mode: PositionMode::Manual,
+                anchor: PanelAnchor::BottomLeft,
+                manual: Some((-8, 1240)),
+                locked: false,
+            })
+            .unwrap();
+
+        let reloaded = SettingsStore::load(path.clone());
+        let position = reloaded.panel_position();
+        assert_eq!(position.mode, PositionMode::Manual);
+        assert_eq!(position.anchor, PanelAnchor::BottomLeft);
+        assert_eq!(position.manual, Some((-8, 1240)));
+        assert!(!position.locked);
+
+        // The file holds the wire strings — pinned like `mode`'s so the serde
+        // derives can't drift from `as_str`.
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"mode\": \"manual\""), "raw file was: {raw}");
+        assert!(
+            raw.contains("\"anchor\": \"bottom-left\""),
+            "raw file was: {raw}"
+        );
+        assert!(raw.contains("\"x\": -8"), "raw file was: {raw}");
+        assert!(raw.contains("\"y\": 1240"), "raw file was: {raw}");
+    }
+
+    #[test]
+    fn set_position_locked_persists_and_reloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        assert!(!store.panel_position().locked);
+        store.set_position_locked(true).unwrap();
+        assert!(store.panel_position().locked);
+        // The lock flips alone — placement and memories untouched.
+        assert_eq!(store.panel_position().mode, PositionMode::Anchored);
+
+        let reloaded = SettingsStore::load(path.clone());
+        assert!(reloaded.panel_position().locked);
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"locked\": true"), "raw file was: {raw}");
+    }
+
+    /// The IPC encodings (serde derives) must match the file encodings
+    /// (`as_str`) byte for byte — the round-trip tests pin the file half.
+    #[test]
+    fn panel_anchor_serde_matches_the_stored_wire_strings() {
+        for (anchor, wire) in [
+            (PanelAnchor::TopRight, "top-right"),
+            (PanelAnchor::TopLeft, "top-left"),
+            (PanelAnchor::BottomRight, "bottom-right"),
+            (PanelAnchor::BottomLeft, "bottom-left"),
+            (PanelAnchor::Center, "center"),
+        ] {
+            assert_eq!(serde_json::to_value(anchor).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<PanelAnchor>(wire.into()).unwrap(),
+                anchor
+            );
+            assert_eq!(anchor.as_str(), wire);
+            assert_eq!(PanelAnchor::parse(wire), Some(anchor));
+        }
+        assert!(serde_json::from_value::<PanelAnchor>("under-the-couch".into()).is_err());
+    }
+
+    #[test]
+    fn position_mode_serde_matches_the_stored_wire_strings() {
+        assert_eq!(
+            serde_json::to_value(PositionMode::Anchored).unwrap(),
+            "anchored"
+        );
+        assert_eq!(serde_json::to_value(PositionMode::Manual).unwrap(), "manual");
+        assert_eq!(
+            serde_json::from_value::<PositionMode>("manual".into()).unwrap(),
+            PositionMode::Manual
+        );
+        assert!(serde_json::from_value::<PositionMode>("free".into()).is_err());
+    }
+
+    #[test]
+    fn invalid_stored_position_falls_back_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            r#"{
+                "hotkeys": { "capture": "Alt+KeyQ" },
+                "position": { "mode": "banana", "anchor": "under-the-couch", "manual": { "x": 4, "y": 9 } }
+            }"#,
+        )
+        .unwrap();
+
+        let store = SettingsStore::load(path.clone());
+        // Each bad field reverts alone; the valid ones survive.
+        let position = store.panel_position();
+        assert_eq!(position.mode, PositionMode::Anchored);
+        assert_eq!(position.anchor, PanelAnchor::TopRight);
+        assert_eq!(position.manual, Some((4, 9)));
+        assert!(!position.locked);
         assert_eq!(store.shortcut(HotkeyRole::Capture), alt_q());
         // The file is not rewritten by load — repair happens on the next save.
         assert!(fs::read_to_string(&path).unwrap().contains("banana"));
@@ -550,6 +848,18 @@ mod tests {
             store.set_mode(Mode::Custom),
             Err(AppError::Settings(_))
         ));
+        assert!(matches!(
+            store.set_panel_position(PanelPosition {
+                mode: PositionMode::Manual,
+                manual: Some((10, 10)),
+                ..PanelPosition::default()
+            }),
+            Err(AppError::Settings(_))
+        ));
+        assert!(matches!(
+            store.set_position_locked(true),
+            Err(AppError::Settings(_))
+        ));
         assert!(path.is_dir(), "store path must not have been touched");
     }
 
@@ -561,7 +871,8 @@ mod tests {
             &path,
             r#"{
                 "future_panel": { "layout": "wide" },
-                "hotkeys": { "summon": "Alt+KeyQ", "push_to_talk": "F13" }
+                "hotkeys": { "summon": "Alt+KeyQ", "push_to_talk": "F13" },
+                "position": { "anchor": "center", "future_snap": "edges" }
             }"#,
         )
         .unwrap();
@@ -569,6 +880,7 @@ mod tests {
         let store = SettingsStore::load(path.clone());
         store.set_hotkey(HotkeyRole::Capture, alt_p()).unwrap();
         store.set_mode(Mode::Custom).unwrap();
+        store.set_position_locked(true).unwrap();
 
         let saved: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -577,6 +889,9 @@ mod tests {
         assert_eq!(saved["hotkeys"]["summon"], "Alt+KeyQ");
         assert_eq!(saved["hotkeys"]["capture"], "Alt+KeyP");
         assert_eq!(saved["mode"], "custom");
+        assert_eq!(saved["position"]["future_snap"], "edges");
+        assert_eq!(saved["position"]["anchor"], "center");
+        assert_eq!(saved["position"]["locked"], true);
     }
 
     fn alt_p() -> Shortcut {

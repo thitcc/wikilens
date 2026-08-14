@@ -129,6 +129,7 @@ export const SETTINGS: SettingsInfo = {
   },
   mode: null,
   defaultMode: { configured: false, vision: false },
+  position: { mode: "anchored", anchor: "top-right", locked: false },
 };
 
 /** Fresh-install key state: the fixture providers, none keyed.
@@ -152,6 +153,12 @@ export const SETTINGS_DEFAULT: SettingsInfo = {
 export const SETTINGS_DEFAULT_VISION: SettingsInfo = {
   ...SETTINGS_DEFAULT,
   defaultMode: { configured: true, vision: true },
+};
+
+/** The Position padlock engaged — the header must not offer a drag. */
+export const SETTINGS_POSITION_LOCKED: SettingsInfo = {
+  ...SETTINGS,
+  position: { ...SETTINGS.position, locked: true },
 };
 
 /** The running app version (the `plugin:app|version` wire command).
@@ -223,6 +230,8 @@ export function installBackend(
       set_api_key: () => KEY_STATUS,
       remove_api_key: () => KEY_STATUS,
       set_mode: () => SETTINGS,
+      set_panel_position: () => SETTINGS,
+      set_position_locked: () => SETTINGS,
       suggest_wikis: () => CANDIDATES,
       add_game: () => {
         throw new Error("add_game: override this handler in the test");

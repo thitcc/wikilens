@@ -131,6 +131,33 @@ export interface HotkeyInfo {
 /** The model-source choice ("default" | "custom"), mirroring Rust `Mode`. */
 export type Mode = "default" | "custom";
 
+/** Where an anchored overlay docks, mirroring Rust `PanelAnchor`. */
+export type PanelAnchor =
+  | "top-right"
+  | "top-left"
+  | "bottom-right"
+  | "bottom-left"
+  | "center";
+
+/** Whether the overlay follows its anchor or the player's dragged spot,
+ * mirroring Rust `PositionMode`. */
+export type PositionMode = "anchored" | "manual";
+
+/** The Position stepper's wire value: an anchor, or `"manual"` (mirrors Rust
+ * `PositionChoice`). */
+export type PositionChoice = PanelAnchor | "manual";
+
+/** The overlay placement, from `get_settings`/`set_panel_position`/
+ * `set_position_locked` and the `settings://position` event. `anchor` is the
+ * remembered anchor even while `mode` is `"manual"` — stepping back restores
+ * it. The dragged coordinates deliberately never cross IPC. */
+export interface PositionInfo {
+  mode: PositionMode;
+  anchor: PanelAnchor;
+  /** The padlock: `true` = the header never drags, in every mode. */
+  locked: boolean;
+}
+
 /** One provider's key presence, from `list_key_status` / `set_api_key` /
  * `remove_api_key`. Presence only — key material never crosses back toward
  * the webview in any form. */
@@ -155,6 +182,7 @@ export interface SettingsInfo {
     configured: boolean;
     vision: boolean;
   };
+  position: PositionInfo;
 }
 
 /** Progress phases emitted on the `ask://status` event, in order.

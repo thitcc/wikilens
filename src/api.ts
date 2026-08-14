@@ -16,6 +16,7 @@ import type {
   KeyStatus,
   Mode,
   ModelList,
+  PositionChoice,
   ProviderInfo,
   SettingsInfo,
   ShownInfo,
@@ -149,6 +150,19 @@ export function removeApiKey(providerId: string): Promise<KeyStatus[]> {
  * with the fresh settings. */
 export function setMode(mode: Mode): Promise<SettingsInfo> {
   return invoke<SettingsInfo>("set_mode", { mode });
+}
+
+/** Persist a Position stepper pick (an anchor, or `"manual"`) and move the
+ * panel to it live. Picking `"manual"` with nothing stored keeps the panel
+ * where it is. Resolves with the fresh settings. */
+export function setPanelPosition(choice: PositionChoice): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_panel_position", { choice });
+}
+
+/** Flip the Position padlock: locked = the header never drags, in every mode
+ * (the stepper keeps working). Resolves with the fresh settings. */
+export function setPositionLocked(locked: boolean): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_position_locked", { locked });
 }
 
 /** The rejection value `ask` settles with after `cancelAsk` wins — mirrors

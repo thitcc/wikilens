@@ -13,7 +13,9 @@ use crate::error::AppError;
 use crate::history::{HistoryEntry, HistoryStore, NewEntry};
 use crate::keys::{DpapiKeyStore, KeyStore};
 use crate::models::{self, ModelInfo, ModelSource};
-use crate::settings::{HotkeyRole, Mode, SettingsStore};
+use crate::settings::{
+    HotkeyRole, Mode, PanelAnchor, PanelPosition, PositionMode, SettingsStore,
+};
 use crate::target::{self, AskTargets, LlmTarget};
 use crate::state::AppState;
 use crate::wiki::games::GameWiki;
@@ -110,6 +112,21 @@ pub struct DefaultModeInfo {
     pub vision: bool,
 }
 
+/// The overlay placement as the frontend sees it — the stepper's value plus
+/// the padlock. Also the `settings://position` event payload (a drag-initiated
+/// mode flip reaches the UI through it). The stored manual coordinates
+/// deliberately stay Rust-side: nothing frontend-side needs them, so they
+/// never cross IPC (pinned in `config_guardrails.rs`).
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PositionInfo {
+    pub mode: PositionMode,
+    /// The remembered anchor — the stepper's value while anchored, and what a
+    /// Manual → anchored step restores.
+    pub anchor: PanelAnchor,
+    pub locked: bool,
+}
+
 /// Extensible settings envelope — future config-panel tenants join here.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -118,6 +135,7 @@ pub struct SettingsInfo {
     /// The persisted model-source choice; `None` (→ JSON null) = never chosen.
     pub mode: Option<Mode>,
     pub default_mode: DefaultModeInfo,
+    pub position: PositionInfo,
 }
 
 fn hotkey_info(settings: &SettingsStore, role: HotkeyRole) -> HotkeyInfo {
@@ -142,6 +160,17 @@ pub(crate) fn settings_info(settings: &SettingsStore, default_mode: DefaultModeI
         },
         mode: settings.mode(),
         default_mode,
+        position: position_info(settings),
+    }
+}
+
+/// The IPC view of the stored placement — coordinates stripped.
+pub(crate) fn position_info(settings: &SettingsStore) -> PositionInfo {
+    let position = settings.panel_position();
+    PositionInfo {
+        mode: position.mode,
+        anchor: position.anchor,
+        locked: position.locked,
     }
 }
 
@@ -548,6 +577,75 @@ pub fn remove_api_key(
 #[tauri::command]
 pub fn set_mode(settings: State<'_, SettingsStore>, mode: Mode) -> Result<SettingsInfo, String> {
     settings.set_mode(mode).map_err(String::from)?;
+    Ok(settings_info(&settings, sense_default_mode()))
+}
+
+/// The Position stepper's wire value: one of the five anchors, or Manual.
+/// Deserialize-only — `SettingsInfo` reports the state as `PositionInfo`.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PositionChoice {
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottomLeft,
+    Center,
+    Manual,
+}
+
+impl PositionChoice {
+    fn anchor(self) -> Option<PanelAnchor> {
+        match self {
+            PositionChoice::TopRight => Some(PanelAnchor::TopRight),
+            PositionChoice::TopLeft => Some(PanelAnchor::TopLeft),
+            PositionChoice::BottomRight => Some(PanelAnchor::BottomRight),
+            PositionChoice::BottomLeft => Some(PanelAnchor::BottomLeft),
+            PositionChoice::Center => Some(PanelAnchor::Center),
+            PositionChoice::Manual => None,
+        }
+    }
+}
+
+/// Persist a Position stepper pick and move the panel to it live. Each pick
+/// composes the whole `PanelPosition`, keeping the *other* mode's memory: an
+/// anchor pick leaves the manual spot stored, a Manual pick leaves the anchor
+/// stored — stepping between them restores each. The first Manual pick with
+/// nothing stored snapshots the window's current position ("stay where you
+/// are; drag from here").
+#[tauri::command]
+pub fn set_panel_position(
+    app: AppHandle,
+    settings: State<'_, SettingsStore>,
+    choice: PositionChoice,
+) -> Result<SettingsInfo, String> {
+    let current = settings.panel_position();
+    let next = match choice.anchor() {
+        Some(anchor) => PanelPosition {
+            mode: PositionMode::Anchored,
+            anchor,
+            ..current
+        },
+        None => PanelPosition {
+            mode: PositionMode::Manual,
+            manual: current.manual.or_else(|| window::overlay_outer_position(&app)),
+            ..current
+        },
+    };
+    settings.set_panel_position(next).map_err(String::from)?;
+    window::apply_layout(&app);
+    Ok(settings_info(&settings, sense_default_mode()))
+}
+
+/// Flip the Position padlock. Locked = the header never drags, in every mode
+/// (the frontend drops the drag region; the `Moved` handler snaps foreign
+/// moves back). The stepper keeps working — the lock pins the *gesture*, not
+/// the setting.
+#[tauri::command]
+pub fn set_position_locked(
+    settings: State<'_, SettingsStore>,
+    locked: bool,
+) -> Result<SettingsInfo, String> {
+    settings.set_position_locked(locked).map_err(String::from)?;
     Ok(settings_info(&settings, sense_default_mode()))
 }
 

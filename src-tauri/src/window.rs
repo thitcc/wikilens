@@ -229,6 +229,25 @@ pub fn show_overlay_if_hidden(app: &AppHandle) {
     }
 }
 
+/// The overlay's current outer position (physical virtual-screen px) — the
+/// first Manual pick's "stay where you are" snapshot (`set_panel_position`).
+pub fn overlay_outer_position(app: &AppHandle) -> Option<(i32, i32)> {
+    let win = overlay_window(app)?;
+    win.outer_position().ok().map(|p| (p.x, p.y))
+}
+
+/// Re-apply the stored placement to the live window — the `set_panel_position`
+/// command routes here so a Position pick moves the panel immediately. Fine
+/// while hidden (the next show re-derives anyway).
+pub fn apply_layout(app: &AppHandle) {
+    let Some(win) = overlay_window(app) else {
+        return;
+    };
+    if let Err(e) = position_top_right(&win) {
+        eprintln!("[wikilens] failed to lay out overlay: {e}");
+    }
+}
+
 /// Hide the overlay and notify the frontend. Every hide path routes through
 /// here (`Esc` via the `hide_overlay` command, the hotkey toggle, the tray,
 /// Alt+F4, the capture flow) so `overlay://hidden` always fires — the
