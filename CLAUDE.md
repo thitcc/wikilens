@@ -327,7 +327,10 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   every height report — without the guard a streaming answer would read as a
   drag and flip the mode to Manual. A real drag flips effective placement via
   the `DragTracker` override on the first foreign Moved (the debounced
-  persist lags ~500ms, and waits out a still-held mouse button); while
+  persist lags ~500ms, waits out a still-held mouse button, and re-checks
+  its generation inside the settings write lock at write time — a Position
+  pick bumps the generation before composing, so a mid-flight settle can
+  never revert a pick or the padlock); while
   locked, a foreign Moved snaps back instead. The settle **clamps the drop
   fully onto the monitor showing the largest share of the panel** (never
   biased to the primary) before persisting — load-bearing, not cosmetic: the

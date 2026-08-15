@@ -3,11 +3,11 @@ title: Draggable overlay with anchored and manual position modes
 type: plan
 status: done
 created: 2026-08-14
-updated: 2026-08-14
+updated: 2026-08-15
 tags: [overlay, frontend, rust, tauri]
 related:
   - "[[2026-08-04_panel-corner-pick]]"
-commit: [920fccc, 02b63ba, 40641eb, 9afcad4, 1ad622f]
+commit: [920fccc, 02b63ba, 40641eb, 9afcad4, 1ad622f, 4fe8039, 4afbb50, 8c95e0f, 46f86b4, 6ee4cc4, c5c05a4, 3d5869a]
 ---
 
 # Draggable overlay with anchored and manual position modes
@@ -163,3 +163,19 @@ mode where the panel stays exactly where it was dragged, across sessions.
   drag surface was reverted on feedback: the WikiLens row and above only
   (`.drag-strip` band over the top apron + panel top padding, grab cursor
   across it), never the side glass or aprons.
+- 2026-08-15 — round 4, from ultrareview on PR #73: the drag-settle task's
+  read-compose-write ran outside the settings lock, with its last generation
+  check before the OS calls — a settle in its ~5-30ms tail could revert a
+  Position pick (forcing the stepper back to Manual, the panel jumping on
+  the next layout) or clobber a padlock toggle with its stale `..current`
+  spread. The settle now composes inside the store's write lock
+  (`SettingsStore::update_panel_position`, the `fetch_update` shape) with
+  the generation re-checked in the closure, and a pick bumps the generation
+  before its own read (`window::invalidate_drag_settles`) — either ordering
+  now composes correctly, proof walked in the plan review. Declined the
+  reviewer's clear-the-override-on-padlock suggestion: it would snap the
+  panel back to the pre-drag spot; with both writers atomic under one lock,
+  locking mid-settle keeps the dragged spot and the toggle ("the lock pins
+  the gesture, not the setting"). Accepted residuals are in the fix commit
+  body. The frontmatter `commit:` list also backfilled rounds 2–3's fix
+  hashes, which had drifted out of it.
