@@ -623,6 +623,10 @@ pub fn set_panel_position(
     settings: State<'_, SettingsStore>,
     choice: PositionChoice,
 ) -> Result<SettingsInfo, String> {
+    // Before reading the store: a pending drag settle re-checks the
+    // generation under the store's write lock, so bumping here means it can
+    // never write between our read and our write below.
+    window::invalidate_drag_settles(&app);
     let current = settings.panel_position();
     let next = match choice.anchor() {
         Some(anchor) => PanelPosition {
@@ -637,8 +641,9 @@ pub fn set_panel_position(
         },
     };
     settings.set_panel_position(next).map_err(String::from)?;
-    // The store is authoritative now — a pending drag persist must not
-    // overwrite this pick half a second later.
+    // The store is authoritative now — drop the drag override (the settle
+    // was invalidated up top; clear's own bump is a harmless second
+    // invalidation).
     window::clear_drag_override(&app);
     window::apply_layout(&app);
     Ok(settings_info(&settings, sense_default_mode()))

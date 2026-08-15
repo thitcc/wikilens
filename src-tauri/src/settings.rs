@@ -444,6 +444,29 @@ impl SettingsStore {
         Ok(())
     }
 
+    /// Compose-and-store a placement under the write lock — the
+    /// `fetch_update` shape: the closure sees the current value and declines
+    /// with `None` (`Ok(false)`, nothing persisted). The closure runs WHILE
+    /// the write lock is held: keep it to atomic loads and pure composition —
+    /// never call back into this store, never touch the window (an
+    /// `apply_rect` path can re-enter the Moved handler synchronously, whose
+    /// read would deadlock).
+    pub fn update_panel_position(
+        &self,
+        f: impl FnOnce(PanelPosition) -> Option<PanelPosition>,
+    ) -> Result<bool, AppError> {
+        self.writable()?;
+        let mut guard = self.write();
+        let mut next = *guard;
+        let Some(position) = f(next.position) else {
+            return Ok(false);
+        };
+        next.position = position;
+        self.persist(&next)?;
+        *guard = next;
+        Ok(true)
+    }
+
     /// Flip the padlock alone — single-purpose like `set_mode`, so the
     /// frontend never re-sends a placement to toggle it.
     pub fn set_position_locked(&self, locked: bool) -> Result<(), AppError> {
@@ -717,6 +740,58 @@ mod tests {
         assert!(raw.contains("\"locked\": true"), "raw file was: {raw}");
     }
 
+    #[test]
+    fn update_panel_position_commits_and_composes_from_stored_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        // The deterministic Race-B shape: the padlock flips first, then the
+        // settle composes — the closure must see the flipped value and spread
+        // it, never a stale pre-flip read.
+        store.set_position_locked(true).unwrap();
+        // Captured OUTSIDE the closure — reading the store from inside it
+        // would be the very same-thread deadlock the method's doc forbids.
+        let stored = store.panel_position();
+        let spot = ManualSpot {
+            x: 120,
+            y: 640,
+            edge: ManualEdge::Top,
+        };
+        let updated = store
+            .update_panel_position(|current| {
+                assert_eq!(current, stored);
+                Some(PanelPosition {
+                    mode: PositionMode::Manual,
+                    manual: Some(spot),
+                    ..current
+                })
+            })
+            .unwrap();
+        assert!(updated);
+
+        let position = store.panel_position();
+        assert_eq!(position.mode, PositionMode::Manual);
+        assert_eq!(position.manual, Some(spot));
+        assert!(position.locked, "the earlier padlock flip must survive");
+
+        let reloaded = SettingsStore::load(path);
+        assert_eq!(reloaded.panel_position(), position);
+    }
+
+    #[test]
+    fn update_panel_position_none_declines_without_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        let before = store.panel_position();
+        let updated = store.update_panel_position(|_| None).unwrap();
+        assert!(!updated);
+        assert_eq!(store.panel_position(), before);
+        assert!(!path.exists(), "a decline must not create the file");
+    }
+
     /// The IPC encodings (serde derives) must match the file encodings
     /// (`as_str`) byte for byte — the round-trip tests pin the file half.
     #[test]
@@ -947,6 +1022,11 @@ mod tests {
         ));
         assert!(matches!(
             store.set_position_locked(true),
+            Err(AppError::Settings(_))
+        ));
+        // `writable()` gates BEFORE the closure runs — the panic proves it.
+        assert!(matches!(
+            store.update_panel_position(|_| panic!("must not run")),
             Err(AppError::Settings(_))
         ));
         assert!(path.is_dir(), "store path must not have been touched");

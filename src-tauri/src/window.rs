@@ -86,7 +86,9 @@ fn overlay_window_height(monitor_height: u32, scale: f64, desired: Option<u32>) 
 /// (flipping effective placement to Manual before the debounced persist can
 /// run, so a mid-drag height report can't snap the window back), cleared
 /// when a Position pick makes the store authoritative again. `generation`
-/// coalesces the debounce tasks.
+/// coalesces the debounce tasks — and lets a Position pick invalidate a
+/// settle that already passed its early checks: the settle re-checks it
+/// inside the settings store's write lock at write time.
 #[derive(Default)]
 pub struct DragTracker {
     applied: Mutex<Option<(i32, i32)>>,
@@ -433,6 +435,18 @@ pub fn clear_drag_override(app: &AppHandle) {
     }
 }
 
+/// A Position pick is about to compose the next placement from the store:
+/// invalidate any pending drag settle FIRST, so one that already passed its
+/// early checks can't write between the pick's read and its write (the
+/// settle re-checks the generation inside the store's write lock). Bump
+/// only — the drag override, if any, stays until the pick commits, so a
+/// persist error never yanks the panel.
+pub fn invalidate_drag_settles(app: &AppHandle) {
+    if let Some(tracker) = app.try_state::<DragTracker>() {
+        tracker.bump();
+    }
+}
+
 /// Whether a mouse button is still held — the settle task's "is the drag
 /// really over?" probe. Physical buttons on purpose (swap-agnostic: either
 /// held postpones the settle; a rare right-button hold delaying it is
@@ -523,14 +537,22 @@ pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
         let Some(spot) = settle_manual_spot(&app) else {
             return;
         };
-        let current = settings.panel_position();
-        let next = PanelPosition {
-            mode: PositionMode::Manual,
-            manual: Some(spot),
-            ..current
-        };
-        match settings.set_panel_position(next) {
-            Ok(()) => {
+        // The definitive supersession check lives INSIDE the store's write
+        // lock: a Position pick bumps the generation before composing, so a
+        // settle that passed the checks above can no longer write over it.
+        // The closure stays pure (an atomic load + compose) — see the
+        // `update_panel_position` doc for why it must not touch the window.
+        match settings.update_panel_position(|current| {
+            if tracker.generation() != generation {
+                return None; // superseded while we were off in OS calls
+            }
+            Some(PanelPosition {
+                mode: PositionMode::Manual,
+                manual: Some(spot),
+                ..current
+            })
+        }) {
+            Ok(true) => {
                 // The store now equals the override — release it so layout
                 // returns to the stored-Manual path (same output, but the
                 // locked snap-back and monitor-fallback branches live again).
@@ -541,6 +563,10 @@ pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
                     crate::commands::position_info(&settings),
                 );
             }
+            // Superseded: the newer owner (drag or pick) releases the
+            // override itself — `release_drag(generation)` would no-op here
+            // anyway (generations never revisit an old value).
+            Ok(false) => {}
             // Keep the session override: the panel stays where dragged and
             // the stepper shows the stale value until a successful save —
             // never yank the window back over a disk error.
@@ -980,6 +1006,20 @@ mod tests {
     #[test]
     fn the_window_never_exceeds_the_monitor() {
         assert_eq!(overlay_window_height(100, 1.0, None), 100);
+    }
+
+    #[test]
+    fn a_bump_invalidates_the_settle_but_keeps_the_override() {
+        // The property `invalidate_drag_settles` relies on: a bump makes any
+        // in-flight settle's generation stale (its guarded write declines)
+        // WITHOUT dropping the drag override — the panel stays where dragged
+        // until the pick actually commits.
+        let tracker = DragTracker::default();
+        let generation = tracker.set_drag((120, 640));
+        tracker.bump();
+        assert_ne!(tracker.generation(), generation);
+        tracker.release_drag(generation);
+        assert_eq!(tracker.drag(), Some((120, 640)));
     }
 
     // ---- overlay_rect ------------------------------------------------------
