@@ -16,6 +16,8 @@ import type {
   KeyStatus,
   Mode,
   ModelList,
+  PositionChoice,
+  PositionInfo,
   ProviderInfo,
   SettingsInfo,
   ShownInfo,
@@ -149,6 +151,30 @@ export function removeApiKey(providerId: string): Promise<KeyStatus[]> {
  * with the fresh settings. */
 export function setMode(mode: Mode): Promise<SettingsInfo> {
   return invoke<SettingsInfo>("set_mode", { mode });
+}
+
+/** Persist a Position stepper pick (an anchor, or `"manual"`) and move the
+ * panel to it live. Picking `"manual"` with nothing stored keeps the panel
+ * where it is. Resolves with the fresh settings. */
+export function setPanelPosition(choice: PositionChoice): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_panel_position", { choice });
+}
+
+/** Flip the Position padlock: locked = the header never drags, in every mode
+ * (the stepper keeps working). Resolves with the fresh settings. */
+export function setPositionLocked(locked: boolean): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_position_locked", { locked });
+}
+
+/** Rust changed the stored placement itself — a header drag settled into
+ * Manual (`settings://position`). Payload mirrors `SettingsInfo.position`;
+ * the dragged coordinates never ride along. */
+export function onPanelPositionChanged(
+  cb: (position: PositionInfo) => void,
+): Promise<UnlistenFn> {
+  return listen<PositionInfo>("settings://position", (event) =>
+    cb(event.payload),
+  );
 }
 
 /** The rejection value `ask` settles with after `cancelAsk` wins — mirrors

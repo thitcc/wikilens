@@ -464,16 +464,21 @@ updated in the same PR as any admission.
 
 ### Admitted inventory
 
-- **A-01 · panel-summon** — the panel's 12px slide-in from the right with a
-  fade on summon (120ms ease-out; a pre-summon hold keeps the panel in the
-  keyframe's "from" state while hidden, and `overlay://shown` arms the
-  entrance frame-synced — double rAF, timer backstop — so the resuming
+- **A-01 · panel-summon** — the panel's 12px slide-in from its anchored edge
+  with a fade on summon (120ms ease-out; a pre-summon hold keeps the panel
+  in the keyframe's "from" state while hidden, and `overlay://shown` arms
+  the entrance frame-synced — double rAF, timer backstop — so the resuming
   webview can't burn the 120ms clock before it presents a frame; dropped on
-  `animationend` and on hide — hiding stays instant). Rust force-disables
-  DWM's own window transitions (`DWMWA_TRANSITIONS_FORCEDISABLED`,
-  `window.rs`) so the OS's one-time first-show fade + rise can't layer over
-  the entrance — without it the first summon after launch moves bottom-up.
-  Its question: "the panel came from the right edge."
+  `animationend` and on hide — hiding stays instant). Placement-aware since
+  the Position setting (proof sheet 2026-08-14): right anchors slide from
+  the right, left anchors from the left, and Center/Manual — which have no
+  edge to come from — rise 8px instead; the `data-anchor-h` /
+  `data-position-mode` root attributes swap only the keyframe name, so the
+  arm/replay machinery is shared. Rust force-disables DWM's own window
+  transitions (`DWMWA_TRANSITIONS_FORCEDISABLED`, `window.rs`) so the OS's
+  one-time first-show fade + rise can't layer over the entrance — without
+  it the first summon after launch moves bottom-up. Its question: "the
+  panel came from its edge" (Center/Manual: "the panel came to hand").
 - **A-02 · hover-release** — quiet chips light instantly on hover and open
   (the on-path is always a hard cut), and release with a 120ms fade of veil
   and ink — on pointer-leave and on menu-close alike. Its question: "the

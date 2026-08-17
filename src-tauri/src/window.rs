@@ -1,21 +1,34 @@
-//! Overlay window control: toggle/show/hide and top-right float placement.
+//! Overlay window control: toggle/show/hide and anchored/manual placement.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+
+use crate::settings::{
+    ManualEdge, ManualSpot, PanelAnchor, PanelPosition, PositionMode, SettingsStore,
+};
 
 /// Window label from `tauri.conf.json`.
 pub const OVERLAY_LABEL: &str = "overlay";
 /// Logical panel width in CSS pixels. Physical width is scaled per-monitor.
 pub const PANEL_WIDTH: u32 = 420;
-/// Gap between the panel and the screen's top/right edges (CSS `--panel-gap`).
+/// Gap between the panel and the screen edges it anchors to (the visual gap;
+/// the window overhangs the screen by `apron − gap` on anchored edges so the
+/// panel keeps it).
 pub const PANEL_GAP: u32 = 12;
-/// Extra window room left/bottom so the CSS drop shadow (`--shadow-panel:
-/// 0 12px 32px`) renders instead of clipping at the window edge. Must match
-/// `--shadow-room-left` / `--shadow-room-bottom` in styles.css.
-pub const SHADOW_ROOM_LEFT: u32 = 32;
-pub const SHADOW_ROOM_BOTTOM: u32 = 44;
+/// Shadow apron: extra window room on every side so the CSS drop shadow
+/// (`--shadow-panel: 0 12px 32px`) renders instead of clipping at the window
+/// edge. Symmetric because a draggable window has no screen edge to hide a
+/// clipped shadow behind (the debug window's rationale) — bottom carries the
+/// shadow's downward offset, top only its upward blur reach. Must match
+/// `--shadow-room-*` in styles.css.
+pub const APRON_TOP: u32 = 20;
+pub const APRON_RIGHT: u32 = 32;
+pub const APRON_BOTTOM: u32 = 44;
+pub const APRON_LEFT: u32 = 32;
 /// Maximum panel height as a fraction of the monitor height (design
 /// exploration 1a). The window is sized for the frontend's reported panel
 /// height clamped to this cap — no report yet, or a menu-open sentinel,
@@ -58,7 +71,75 @@ fn overlay_window_height(monitor_height: u32, scale: f64, desired: Option<u32>) 
     let to_phys = |logical: u32| (logical as f64 * scale).ceil() as u32;
     let cap = (monitor_height as f64 * PANEL_HEIGHT_FRAC).round() as u32;
     let panel = desired.map_or(cap, |d| to_phys(d).min(cap));
-    (panel + to_phys(PANEL_GAP + SHADOW_ROOM_BOTTOM)).min(monitor_height)
+    (panel + to_phys(APRON_TOP + APRON_BOTTOM)).min(monitor_height)
+}
+
+/// Drag bookkeeping for the overlay, managed in `lib.rs` beside
+/// `OverlayHeight`.
+///
+/// `applied` is the last outer position `apply_rect` handed the OS, recorded
+/// BEFORE `set_position` because WM_MOVE can dispatch synchronously inside
+/// the call — a `Moved` matching it is our own echo. The guard is
+/// load-bearing: bottom/center anchors move `y` on every height report, so
+/// without it a streaming answer would read as a drag and flip the mode to
+/// Manual. `drag` is the in-flight override: set on the FIRST foreign Moved
+/// (flipping effective placement to Manual before the debounced persist can
+/// run, so a mid-drag height report can't snap the window back), cleared
+/// when a Position pick makes the store authoritative again. `generation`
+/// coalesces the debounce tasks — and lets a Position pick invalidate a
+/// settle that already passed its early checks: the settle re-checks it
+/// inside the settings store's write lock at write time.
+#[derive(Default)]
+pub struct DragTracker {
+    applied: Mutex<Option<(i32, i32)>>,
+    drag: Mutex<Option<(i32, i32)>>,
+    generation: AtomicU64,
+}
+
+impl DragTracker {
+    fn set_applied(&self, pos: (i32, i32)) {
+        *self.applied.lock().unwrap_or_else(PoisonError::into_inner) = Some(pos);
+    }
+
+    fn is_applied(&self, pos: (i32, i32)) -> bool {
+        *self.applied.lock().unwrap_or_else(PoisonError::into_inner) == Some(pos)
+    }
+
+    fn drag(&self) -> Option<(i32, i32)> {
+        *self.drag.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Record a drag position; returns the new generation for the debounce.
+    fn set_drag(&self, pos: (i32, i32)) -> u64 {
+        *self.drag.lock().unwrap_or_else(PoisonError::into_inner) = Some(pos);
+        self.generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    /// Invalidate pending debounce tasks without recording a drag.
+    fn bump(&self) -> u64 {
+        self.generation.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
+    }
+
+    fn clear(&self) {
+        *self.drag.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        self.generation.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Release the override once its position is safely in the store — but
+    /// only if no newer drag arrived meanwhile (checked under the drag lock,
+    /// which `set_drag` also takes). Without this the override lingers for
+    /// the session and `layout_overlay` never leaves the size-only path: the
+    /// locked snap-back and the unplugged-monitor fallback would go inert.
+    fn release_drag(&self, generation: u64) {
+        let mut drag = self.drag.lock().unwrap_or_else(PoisonError::into_inner);
+        if self.generation.load(Ordering::SeqCst) == generation {
+            *drag = None;
+        }
+    }
 }
 
 /// Event emitted after the panel is shown so the frontend can focus the input.
@@ -88,6 +169,17 @@ pub struct ShownInfo {
 /// `C` fired the toggle; re-summon selected the draft, so the next keystroke
 /// replaced the whole question). Kept for any accidental hide.
 const EVENT_HIDDEN: &str = "overlay://hidden";
+
+/// Event emitted to the overlay webview when Rust itself changes the stored
+/// placement (a drag settled into Manual) — the stepper and the root data
+/// attributes track the flip with the menu closed. Payload: `PositionInfo`
+/// (mode/anchor/locked, never coordinates; pinned with `SettingsInfo`).
+pub const EVENT_POSITION: &str = "settings://position";
+
+/// Debounce before persisting a drag (or snapping a locked window back):
+/// `Moved` fires per-frame during a drag, and writing settings — or calling
+/// `set_position` — inside the OS move loop would churn or fight it.
+const DRAG_SETTLE: Duration = Duration::from_millis(500);
 
 fn overlay_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(OVERLAY_LABEL)
@@ -206,7 +298,7 @@ pub fn show_overlay(app: &AppHandle) {
     // Sample first: `set_focus()` below makes the overlay the foreground
     // window, so anything later would read WikiLens itself.
     let detected_game = detect_game_under_overlay();
-    if let Err(e) = position_top_right(&win) {
+    if let Err(e) = layout_overlay(&win) {
         eprintln!("[wikilens] failed to position overlay: {e}");
     }
     let _ = win.show();
@@ -229,6 +321,260 @@ pub fn show_overlay_if_hidden(app: &AppHandle) {
     }
 }
 
+/// Settle the overlay's current rect into a Manual spot — the first Manual
+/// pick's "stay where you are" (`set_panel_position`) and the drag-settle
+/// persist both use it, so the two paths can't disagree on the edge rule.
+///
+/// Settling first snaps the panel fully onto the monitor showing the largest
+/// share of it (zero overlap → the nearest one), so a stored spot can never
+/// rest off-screen or straddle monitors. That containment is load-bearing,
+/// not cosmetic: `layout_overlay` re-validates the spot on every height
+/// report, and an off-screen spot failing `manual_host` there teleported the
+/// panel to the remembered anchor the next time a menu opened. A clamped
+/// spot always passes the strip check (pinned by test), so the mid-session
+/// fallback is unreachable by construction — it survives only for the
+/// monitor-unplugged restore.
+pub fn settle_manual_spot(app: &AppHandle) -> Option<ManualSpot> {
+    let win = overlay_window(app)?;
+    let pos = win.outer_position().ok()?;
+    let size = win.outer_size().ok()?;
+    let rect = Rect {
+        x: pos.x,
+        y: pos.y,
+        w: size.width,
+        h: size.height,
+    };
+    // The live window's own scale sized the aprons actually on screen — the
+    // right lens for carving the panel box out of the live rect.
+    let scale = win.scale_factor().ok()?;
+    let monitors: Vec<Rect> = win
+        .available_monitors()
+        .ok()?
+        .iter()
+        .map(|m| Rect {
+            x: m.position().x,
+            y: m.position().y,
+            w: m.size().width,
+            h: m.size().height,
+        })
+        .collect();
+    let panel = panel_box(rect, scale);
+    if let Some(i) = best_host(panel, &monitors).or_else(|| nearest_host(panel, &monitors)) {
+        let clamped = clamp_panel_into(rect, monitors[i], scale);
+        if clamped != rect {
+            // Visible on purpose: the drop pops fully onto its monitor. The
+            // echo Moved is filtered by the applied guard; on failure the
+            // clamped spot still persists and the next layout call converges
+            // the window onto it.
+            if let Err(e) = apply_rect(&win, clamped) {
+                eprintln!("[wikilens] couldn't snap the drop on-screen: {e}");
+            }
+        }
+        return Some(manual_spot_from_rect(clamped, monitors[i]));
+    }
+    // No monitor info at all — the pre-clamp behavior: snapshot as-is
+    // against whatever monitor the OS attributes the window to.
+    let monitor = match win.current_monitor().ok()? {
+        Some(m) => m,
+        None => win.primary_monitor().ok()??,
+    };
+    Some(manual_spot_from_rect(
+        rect,
+        Rect {
+            x: monitor.position().x,
+            y: monitor.position().y,
+            w: monitor.size().width,
+            h: monitor.size().height,
+        },
+    ))
+}
+
+/// Which vertical edge a dropped window pins — pure math. Bottom when the
+/// drop's vertical center sits in the monitor's lower half ("I put it near
+/// the bottom"): its bottom edge becomes the invariant and menus/growth
+/// open upward, matching the bottom anchors the drop visually resembles —
+/// a low drop's menus would otherwise clip at the screen edge. The
+/// midpoint rule is symmetric in the panel's height, so a tall and a short
+/// panel dropped at the same visual place pin the same way.
+fn manual_spot_from_rect(window: Rect, monitor: Rect) -> ManualSpot {
+    let window_center = window.y + window.h as i32 / 2;
+    let monitor_center = monitor.y + monitor.h as i32 / 2;
+    if window_center <= monitor_center {
+        ManualSpot {
+            x: window.x,
+            y: window.y,
+            edge: ManualEdge::Top,
+        }
+    } else {
+        ManualSpot {
+            x: window.x,
+            y: window.y + window.h as i32,
+            edge: ManualEdge::Bottom,
+        }
+    }
+}
+
+/// Re-apply the stored placement to the live window — the `set_panel_position`
+/// command routes here so a Position pick moves the panel immediately. Fine
+/// while hidden (the next show re-derives anyway).
+pub fn apply_layout(app: &AppHandle) {
+    let Some(win) = overlay_window(app) else {
+        return;
+    };
+    if let Err(e) = layout_overlay(&win) {
+        eprintln!("[wikilens] failed to lay out overlay: {e}");
+    }
+}
+
+/// A Position pick makes the store authoritative again: drop the drag
+/// override and invalidate any pending debounce task (a stale drag persist
+/// firing after an anchor pick would overwrite it).
+pub fn clear_drag_override(app: &AppHandle) {
+    if let Some(tracker) = app.try_state::<DragTracker>() {
+        tracker.clear();
+    }
+}
+
+/// A Position pick is about to compose the next placement from the store:
+/// invalidate any pending drag settle FIRST, so one that already passed its
+/// early checks can't write between the pick's read and its write (the
+/// settle re-checks the generation inside the store's write lock). Bump
+/// only — the drag override, if any, stays until the pick commits, so a
+/// persist error never yanks the panel.
+pub fn invalidate_drag_settles(app: &AppHandle) {
+    if let Some(tracker) = app.try_state::<DragTracker>() {
+        tracker.bump();
+    }
+}
+
+/// Whether a mouse button is still held — the settle task's "is the drag
+/// really over?" probe. Physical buttons on purpose (swap-agnostic: either
+/// held postpones the settle; a rare right-button hold delaying it is
+/// harmless), and `GetAsyncKeyState` because the task runs off the input
+/// thread, where `GetKeyState`'s per-thread queue state is meaningless.
+#[cfg(windows)]
+fn mouse_button_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
+    };
+    // High bit set (negative SHORT) = currently down.
+    unsafe { GetAsyncKeyState(VK_LBUTTON as i32) < 0 || GetAsyncKeyState(VK_RBUTTON as i32) < 0 }
+}
+
+#[cfg(not(windows))]
+fn mouse_button_down() -> bool {
+    false
+}
+
+/// The overlay moved (`WindowEvent::Moved`, routed from lib.rs). Our own
+/// `apply_rect` writes are filtered by the applied-target guard; anything
+/// else while visible is a user drag — or, with the padlock on, a foreign/OS
+/// move to undo.
+pub fn on_overlay_moved(app: &AppHandle, pos: (i32, i32)) {
+    let Some(tracker) = app.try_state::<DragTracker>() else {
+        return;
+    };
+    if tracker.is_applied(pos) {
+        return;
+    }
+    let Some(win) = overlay_window(app) else {
+        return;
+    };
+    if !win.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Some(settings) = app.try_state::<SettingsStore>() else {
+        return;
+    };
+
+    if settings.panel_position().locked {
+        // Locked never flips the mode: snap back to the stored placement
+        // once the move settles. Defense in depth — the header offers no
+        // drag region while locked, so only foreign/OS moves land here.
+        let generation = tracker.bump();
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(DRAG_SETTLE).await;
+            let Some(tracker) = app.try_state::<DragTracker>() else {
+                return;
+            };
+            if tracker.generation() == generation {
+                apply_layout(&app);
+            }
+        });
+        return;
+    }
+
+    // Effective placement flips to Manual NOW (the override) — the store
+    // catches up after the settle, and the anchor memory rides along
+    // untouched, so stepping back to it still restores.
+    let generation = tracker.set_drag(pos);
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(DRAG_SETTLE).await;
+        let Some(tracker) = app.try_state::<DragTracker>() else {
+            return;
+        };
+        let Some(settings) = app.try_state::<SettingsStore>() else {
+            return;
+        };
+        if tracker.generation() != generation {
+            return; // superseded by more drag, or by a Position pick
+        }
+        // A still hand can outlast the debounce mid-drag: wait out the held
+        // button, or the settle clamp below would yank the window out from
+        // under the cursor. Superseded the moment the drag resumes.
+        while mouse_button_down() {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            if tracker.generation() != generation {
+                return;
+            }
+        }
+        // Settle the LIVE rect (== the drag end) rather than the raw Moved
+        // position: the same edge rule as the Manual pick, the drop snapped
+        // fully onto its best monitor, and a low drop stores its bottom
+        // edge so menus and growth open upward there.
+        let Some(spot) = settle_manual_spot(&app) else {
+            return;
+        };
+        // The definitive supersession check lives INSIDE the store's write
+        // lock: a Position pick bumps the generation before composing, so a
+        // settle that passed the checks above can no longer write over it.
+        // The closure stays pure (an atomic load + compose) — see the
+        // `update_panel_position` doc for why it must not touch the window.
+        match settings.update_panel_position(|current| {
+            if tracker.generation() != generation {
+                return None; // superseded while we were off in OS calls
+            }
+            Some(PanelPosition {
+                mode: PositionMode::Manual,
+                manual: Some(spot),
+                ..current
+            })
+        }) {
+            Ok(true) => {
+                // The store now equals the override — release it so layout
+                // returns to the stored-Manual path (same output, but the
+                // locked snap-back and monitor-fallback branches live again).
+                tracker.release_drag(generation);
+                let _ = app.emit_to(
+                    OVERLAY_LABEL,
+                    EVENT_POSITION,
+                    crate::commands::position_info(&settings),
+                );
+            }
+            // Superseded: the newer owner (drag or pick) releases the
+            // override itself — `release_drag(generation)` would no-op here
+            // anyway (generations never revisit an old value).
+            Ok(false) => {}
+            // Keep the session override: the panel stays where dragged and
+            // the stepper shows the stale value until a successful save —
+            // never yank the window back over a disk error.
+            Err(e) => eprintln!("[wikilens] couldn't persist the dragged position: {e}"),
+        }
+    });
+}
+
 /// Hide the overlay and notify the frontend. Every hide path routes through
 /// here (`Esc` via the `hide_overlay` command, the hotkey toggle, the tray,
 /// Alt+F4, the capture flow) so `overlay://hidden` always fires — the
@@ -240,16 +586,307 @@ pub fn hide_overlay(app: &AppHandle) {
     }
 }
 
-/// Size the window around the floating panel (the reported panel height
-/// capped at 70% of the monitor, gap at top/right, shadow apron at
-/// left/bottom) and pin it to the top-right corner of whichever monitor
-/// currently hosts it. The CSS margins in styles.css carve the same
-/// gap/apron regions out of the webview, so the two must agree. The one
-/// sizer: `set_overlay_height` routes through here too.
+/// One physical rect (a monitor, the window, the header strip) for the pure
+/// placement math.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Rect {
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+}
+
+/// Where the layout math is told to put the window.
+enum Placement {
+    Anchor(PanelAnchor),
+    /// The stored manual spot (`x` + the pinned edge's `y`, physical px).
+    Manual(ManualSpot),
+}
+
+/// How much of the panel's top strip must sit on a monitor for a stored
+/// manual spot to count as grabbable (logical px): roughly the header's
+/// height, and enough width to catch with a cursor.
+const HEADER_GRAB_HEIGHT: u32 = 40;
+const MIN_GRAB_WIDTH: u32 = 100;
+
+/// The window rect for a placement on one monitor — pure math, physical px.
 ///
-/// Works in physical pixels throughout and adds the monitor's own offset, which
-/// is what makes placement correct on multi-monitor and high-DPI setups.
-pub fn position_top_right(win: &WebviewWindow) -> tauri::Result<()> {
+/// Anchored: the *panel* (the glass box inside the aprons) keeps `PANEL_GAP`
+/// from the anchored screen edges by letting the outer apron hang off-screen
+/// (`apron − gap` overhang) — the on-screen dead zone at an anchored corner
+/// stays what it was before the symmetric apron. Center accepts the panel
+/// riding 12 logical px above true center (the (bottom − top) apron
+/// asymmetry, halved) — the offset is uniform across hug/cap heights, so
+/// nothing jumps as the panel grows.
+///
+/// Growth (the height report changing the window height) falls out of
+/// recomputing per call: top anchors keep the top edge (grow down), bottom
+/// anchors keep the bottom edge (grow up), center keeps the window center.
+/// Manual pins whichever edge the drop chose (`ManualEdge`) and clamps the
+/// height to the room on the open side of it, floored so a pathological
+/// spot can't collapse the window.
+fn overlay_rect(monitor: Rect, scale: f64, placement: Placement, desired: Option<u32>) -> Rect {
+    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
+    let win_w = to_phys(APRON_LEFT + PANEL_WIDTH + APRON_RIGHT);
+    let win_h = overlay_window_height(monitor.h, scale, desired);
+    match placement {
+        Placement::Anchor(anchor) => {
+            let x = match anchor {
+                PanelAnchor::TopRight | PanelAnchor::BottomRight => {
+                    monitor.x + monitor.w as i32 - win_w as i32
+                        + to_phys(APRON_RIGHT - PANEL_GAP) as i32
+                }
+                PanelAnchor::TopLeft | PanelAnchor::BottomLeft => {
+                    monitor.x - to_phys(APRON_LEFT - PANEL_GAP) as i32
+                }
+                PanelAnchor::Center => monitor.x + (monitor.w as i32 - win_w as i32) / 2,
+            };
+            let y = match anchor {
+                PanelAnchor::TopRight | PanelAnchor::TopLeft => {
+                    monitor.y - to_phys(APRON_TOP - PANEL_GAP) as i32
+                }
+                PanelAnchor::BottomRight | PanelAnchor::BottomLeft => {
+                    monitor.y + monitor.h as i32 - win_h as i32
+                        + to_phys(APRON_BOTTOM - PANEL_GAP) as i32
+                }
+                PanelAnchor::Center => monitor.y + (monitor.h as i32 - win_h as i32) / 2,
+            };
+            Rect {
+                x,
+                y,
+                w: win_w,
+                h: win_h,
+            }
+        }
+        Placement::Manual(spot) => {
+            // The panel may reach the monitor's edge — only the apron hangs
+            // off past it.
+            let floor = to_phys(MIN_PANEL_HEIGHT + APRON_TOP + APRON_BOTTOM);
+            match spot.edge {
+                ManualEdge::Top => {
+                    let room_below = (monitor.y + monitor.h as i32 + to_phys(APRON_BOTTOM) as i32
+                        - spot.y)
+                        .max(0) as u32;
+                    Rect {
+                        x: spot.x,
+                        y: spot.y,
+                        w: win_w,
+                        h: win_h.min(room_below).max(floor),
+                    }
+                }
+                ManualEdge::Bottom => {
+                    // `spot.y` is the window's BOTTOM; the cap expansion and
+                    // content growth open upward, the bottom-anchor way.
+                    let room_above =
+                        (spot.y - monitor.y + to_phys(APRON_TOP) as i32).max(0) as u32;
+                    let h = win_h.min(room_above).max(floor);
+                    Rect {
+                        x: spot.x,
+                        y: spot.y - h as i32,
+                        w: win_w,
+                        h,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The monitor a stored manual spot lays out on: the one showing the largest
+/// slice of the panel's header strip, provided at least `min_grab_w` of the
+/// strip — at its full height — is visible there. `None` (monitor unplugged
+/// or rearranged) sends the caller back to the remembered anchor for this
+/// show, deliberately WITHOUT rewriting settings: docking changes are often
+/// transient, and the spot restores when the monitor returns.
+fn manual_host(strip: Rect, min_grab_w: u32, monitors: &[Rect]) -> Option<usize> {
+    let mut best: Option<(usize, u64)> = None;
+    for (i, m) in monitors.iter().enumerate() {
+        let w = overlap(strip.x, strip.w, m.x, m.w);
+        let h = overlap(strip.y, strip.h, m.y, m.h);
+        if w >= min_grab_w && h == strip.h {
+            let area = u64::from(w) * u64::from(h);
+            if best.is_none_or(|(_, b)| area > b) {
+                best = Some((i, area));
+            }
+        }
+    }
+    best.map(|(i, _)| i)
+}
+
+/// Length of the overlap of `[a, a+aw)` and `[b, b+bw)`.
+fn overlap(a: i32, aw: u32, b: i32, bw: u32) -> u32 {
+    let lo = a.max(b);
+    let hi = (a + aw as i32).min(b + bw as i32);
+    (hi - lo).max(0) as u32
+}
+
+/// The glass box inside a window rect: the aprons carved off, at the scale
+/// the window was laid out at. The settle clamp reasons about this box, not
+/// the window — the aprons are invisible and deliberately overhang edges.
+fn panel_box(window: Rect, scale: f64) -> Rect {
+    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
+    Rect {
+        x: window.x + to_phys(APRON_LEFT) as i32,
+        y: window.y + to_phys(APRON_TOP) as i32,
+        w: window.w.saturating_sub(to_phys(APRON_LEFT) + to_phys(APRON_RIGHT)),
+        h: window.h.saturating_sub(to_phys(APRON_TOP) + to_phys(APRON_BOTTOM)),
+    }
+}
+
+/// The monitor showing the largest share of the panel — the "60% onto the
+/// second monitor pops it fully there" rule, and never a bias toward the
+/// primary. `None` when no monitor shows any of it.
+fn best_host(panel: Rect, monitors: &[Rect]) -> Option<usize> {
+    let mut best: Option<(usize, u64)> = None;
+    for (i, m) in monitors.iter().enumerate() {
+        let area = u64::from(overlap(panel.x, panel.w, m.x, m.w))
+            * u64::from(overlap(panel.y, panel.h, m.y, m.h));
+        if area > 0 && best.is_none_or(|(_, b)| area > b) {
+            best = Some((i, area));
+        }
+    }
+    best.map(|(i, _)| i)
+}
+
+/// Zero-overlap fallback (a drop thrown into a virtual-desktop dead zone):
+/// the monitor the panel's center is nearest to, by L1 distance to the rect.
+fn nearest_host(panel: Rect, monitors: &[Rect]) -> Option<usize> {
+    let cx = panel.x + panel.w as i32 / 2;
+    let cy = panel.y + panel.h as i32 / 2;
+    monitors
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, m)| {
+            let dx = (m.x - cx).max(cx - (m.x + m.w as i32 - 1)).max(0) as i64;
+            let dy = (m.y - cy).max(cy - (m.y + m.h as i32 - 1)).max(0) as i64;
+            dx + dy
+        })
+        .map(|(i, _)| i)
+}
+
+/// Move a window rect the least distance that puts its panel box fully
+/// inside the monitor. Flush edges are allowed (the drop keeps the player's
+/// intent; only the apron overhangs), and `min` runs before `max` so a
+/// monitor smaller than the panel pins the panel's top-left edge instead of
+/// panicking the way `i32::clamp` would on min > max.
+fn clamp_panel_into(window: Rect, monitor: Rect, scale: f64) -> Rect {
+    let panel = panel_box(window, scale);
+    let px = panel
+        .x
+        .min(monitor.x + monitor.w as i32 - panel.w as i32)
+        .max(monitor.x);
+    let py = panel
+        .y
+        .min(monitor.y + monitor.h as i32 - panel.h as i32)
+        .max(monitor.y);
+    Rect {
+        x: window.x + (px - panel.x),
+        y: window.y + (py - panel.y),
+        w: window.w,
+        h: window.h,
+    }
+}
+
+/// Lay the overlay out from the stored placement — the one sizer AND
+/// positioner. `show_overlay` and `set_overlay_height` both route here, so a
+/// height report never moves an edge the placement pins, and an anchored
+/// panel always snaps back to its corner. The CSS margins in styles.css carve
+/// the same apron regions out of the webview, so the two must agree.
+///
+/// Works in physical pixels throughout and adds the monitor's own offset,
+/// which is what makes placement correct on multi-monitor and high-DPI
+/// setups.
+pub fn layout_overlay(win: &WebviewWindow) -> tauri::Result<()> {
+    let app = win.app_handle();
+    let position = app
+        .try_state::<SettingsStore>()
+        .map(|s| s.panel_position())
+        .unwrap_or_default();
+    let desired = app.try_state::<OverlayHeight>().and_then(|s| s.desired());
+
+    // An in-flight drag owns the position: follow it as Manual, but apply
+    // SIZE only — a set_position here would fight the OS move loop, and the
+    // drag's own Moved stream keeps the override current. Mid-drag the live
+    // top is the reference (the edge is decided at settle time).
+    if let Some((x, y)) = app.try_state::<DragTracker>().and_then(|t| t.drag()) {
+        let monitor = match win.current_monitor()? {
+            Some(m) => m,
+            None => match win.primary_monitor()? {
+                Some(m) => m,
+                None => return Ok(()),
+            },
+        };
+        let rect = overlay_rect(
+            Rect {
+                x: monitor.position().x,
+                y: monitor.position().y,
+                w: monitor.size().width,
+                h: monitor.size().height,
+            },
+            monitor.scale_factor(),
+            Placement::Manual(ManualSpot {
+                x,
+                y,
+                edge: ManualEdge::Top,
+            }),
+            desired,
+        );
+        let size = PhysicalSize::new(rect.w, rect.h);
+        if win.outer_size()? != size {
+            win.set_size(size)?;
+        }
+        return Ok(());
+    }
+
+    // Manual: lay out on the monitor hosting the stored spot, provided the
+    // panel is still grabbable there.
+    if position.mode == PositionMode::Manual {
+        if let Some(spot) = position.manual {
+            // The window's current scale approximates the strip's own — fine
+            // for a visibility probe (mixed-DPI drift is a few px). For a
+            // top-pinned spot the probe is the header strip; for a
+            // bottom-pinned one, the panel's bottom strip (its top floats
+            // with content, but the height clamp keeps everything between
+            // the pinned bottom and the monitor top).
+            let scale = win.scale_factor()?;
+            let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
+            let strip_y = match spot.edge {
+                ManualEdge::Top => spot.y + to_phys(APRON_TOP) as i32,
+                ManualEdge::Bottom => {
+                    spot.y - to_phys(APRON_BOTTOM) as i32 - to_phys(HEADER_GRAB_HEIGHT) as i32
+                }
+            };
+            let strip = Rect {
+                x: spot.x + to_phys(APRON_LEFT) as i32,
+                y: strip_y,
+                w: to_phys(PANEL_WIDTH),
+                h: to_phys(HEADER_GRAB_HEIGHT),
+            };
+            let monitors = win.available_monitors()?;
+            let rects: Vec<Rect> = monitors
+                .iter()
+                .map(|m| Rect {
+                    x: m.position().x,
+                    y: m.position().y,
+                    w: m.size().width,
+                    h: m.size().height,
+                })
+                .collect();
+            if let Some(i) = manual_host(strip, to_phys(MIN_GRAB_WIDTH), &rects) {
+                let rect = overlay_rect(
+                    rects[i],
+                    monitors[i].scale_factor(),
+                    Placement::Manual(spot),
+                    desired,
+                );
+                return apply_rect(win, rect);
+            }
+            eprintln!("[wikilens] stored manual spot is off every monitor; anchoring this show");
+        }
+        // Manual with nothing stored (or an unreachable spot) lays out from
+        // the remembered anchor.
+    }
+
     let monitor = match win.current_monitor()? {
         Some(m) => m,
         None => match win.primary_monitor()? {
@@ -257,42 +894,72 @@ pub fn position_top_right(win: &WebviewWindow) -> tauri::Result<()> {
             None => return Ok(()), // No monitor info; leave the window where it is.
         },
     };
+    let rect = overlay_rect(
+        Rect {
+            x: monitor.position().x,
+            y: monitor.position().y,
+            w: monitor.size().width,
+            h: monitor.size().height,
+        },
+        monitor.scale_factor(),
+        Placement::Anchor(position.anchor),
+        desired,
+    );
+    apply_rect(win, rect)
+}
 
-    let origin = monitor.position(); // physical top-left of this monitor
-    let size = monitor.size(); // physical monitor resolution
-    let scale = monitor.scale_factor();
-    let to_phys = |logical: u32| (logical as f64 * scale).round() as u32;
-
-    let win_w = to_phys(SHADOW_ROOM_LEFT + PANEL_WIDTH + PANEL_GAP);
-    let desired = win
-        .app_handle()
-        .try_state::<OverlayHeight>()
-        .and_then(|s| s.desired());
-    let win_h = overlay_window_height(size.height, scale, desired);
-    win.set_size(PhysicalSize::new(win_w, win_h))?;
-
-    let x = origin.x + size.width as i32 - win_w as i32;
-    let y = origin.y;
-    let target_size = PhysicalSize::new(win_w, win_h);
-    let target_pos = PhysicalPosition::new(x, y);
-    // Skip the OS round trip when the geometry is already right — an answer
-    // streaming past the cap re-reports growing logical values that all
-    // clamp to the same physical size. Deduping HERE (against the real
-    // window) instead of at the store means a report after a failed resize
-    // still retries.
+/// Apply a computed rect, skipping the OS round trip when the geometry is
+/// already right — an answer streaming past the cap re-reports growing
+/// logical values that all clamp to the same physical size. Deduping HERE
+/// (against the real window) instead of at the store means a report after a
+/// failed resize still retries.
+fn apply_rect(win: &WebviewWindow, rect: Rect) -> tauri::Result<()> {
+    // Record BEFORE the OS call: WM_MOVE can dispatch synchronously inside
+    // it, and the Moved handler must already know this position is ours.
+    if let Some(tracker) = win.app_handle().try_state::<DragTracker>() {
+        tracker.set_applied((rect.x, rect.y));
+    }
+    let target_size = PhysicalSize::new(rect.w, rect.h);
+    let target_pos = PhysicalPosition::new(rect.x, rect.y);
     if win.outer_size()? == target_size && win.outer_position()? == target_pos {
         return Ok(());
     }
+    // One SetWindowPos lands position and size in the same frame. The split
+    // set_size → set_position pair let a bottom-pinned expansion paint one
+    // frame grown downward past its pinned edge before the position caught
+    // up — a visible panel wobble on every menu open/close there.
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+        };
+        let hwnd = win.hwnd()?.0;
+        let ok = unsafe {
+            SetWindowPos(
+                hwnd as _,
+                std::ptr::null_mut(),
+                rect.x,
+                rect.y,
+                rect.w as i32,
+                rect.h as i32,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+        };
+        if ok != 0 {
+            return Ok(());
+        }
+        // A refused SetWindowPos falls through to the split calls.
+    }
     win.set_size(target_size)?;
     win.set_position(target_pos)?;
-
     Ok(())
 }
 
 /// Store the frontend's height report and resize the window in place through
-/// `position_top_right` (the one sizer — top-anchored, so height never moves
-/// the panel; it no-ops against the window's real geometry, so repeated
-/// reports are cheap). Fine while hidden: the next show re-derives anyway.
+/// `layout_overlay` (the one sizer — each placement pins its own edge, so a
+/// height report never moves the panel; it no-ops against the window's real
+/// geometry, so repeated reports are cheap). Fine while hidden: the next show
+/// re-derives anyway.
 /// A NaN degrades safely (`as u32` saturates to 0 → "no report" → the cap).
 pub fn set_overlay_height(app: &AppHandle, height: f64) {
     let Some(state) = app.try_state::<OverlayHeight>() else {
@@ -302,7 +969,7 @@ pub fn set_overlay_height(app: &AppHandle, height: f64) {
     let Some(win) = overlay_window(app) else {
         return;
     };
-    if let Err(e) = position_top_right(&win) {
+    if let Err(e) = layout_overlay(&win) {
         eprintln!("[wikilens] failed to resize overlay: {e}");
     }
 }
@@ -313,31 +980,494 @@ mod tests {
 
     #[test]
     fn no_report_sizes_for_the_cap() {
-        // 1080 * 0.70 = 756 panel + 56 chrome — today's exact pre-hug size.
-        assert_eq!(overlay_window_height(1080, 1.0, None), 812);
+        // 1080 * 0.70 = 756 panel + 64 apron chrome (top 20 + bottom 44).
+        assert_eq!(overlay_window_height(1080, 1.0, None), 820);
     }
 
     #[test]
     fn a_short_report_hugs_the_panel() {
-        assert_eq!(overlay_window_height(1080, 1.0, Some(220)), 276);
+        assert_eq!(overlay_window_height(1080, 1.0, Some(220)), 284);
     }
 
     #[test]
     fn a_huge_report_clamps_to_the_cap() {
         // The menu-open sentinel path: the frontend never learns the cap.
-        assert_eq!(overlay_window_height(1080, 1.0, Some(100_000)), 812);
+        assert_eq!(overlay_window_height(1080, 1.0, Some(100_000)), 820);
     }
 
     #[test]
     fn dpi_scales_the_logical_report_with_ceil() {
-        // ceil(401 * 1.5) = 602 panel + ceil(56 * 1.5) = 84 chrome. `round`
+        // ceil(401 * 1.5) = 602 panel + ceil(64 * 1.5) = 96 chrome. `round`
         // would grant 601 physical px for a 401px request — a fraction short,
         // re-creating 1px of .content overflow and a report ping-pong.
-        assert_eq!(overlay_window_height(2160, 1.5, Some(401)), 686);
+        assert_eq!(overlay_window_height(2160, 1.5, Some(401)), 698);
     }
 
     #[test]
     fn the_window_never_exceeds_the_monitor() {
         assert_eq!(overlay_window_height(100, 1.0, None), 100);
+    }
+
+    #[test]
+    fn a_bump_invalidates_the_settle_but_keeps_the_override() {
+        // The property `invalidate_drag_settles` relies on: a bump makes any
+        // in-flight settle's generation stale (its guarded write declines)
+        // WITHOUT dropping the drag override — the panel stays where dragged
+        // until the pick actually commits.
+        let tracker = DragTracker::default();
+        let generation = tracker.set_drag((120, 640));
+        tracker.bump();
+        assert_ne!(tracker.generation(), generation);
+        tracker.release_drag(generation);
+        assert_eq!(tracker.drag(), Some((120, 640)));
+    }
+
+    // ---- overlay_rect ------------------------------------------------------
+
+    const FHD: Rect = Rect {
+        x: 0,
+        y: 0,
+        w: 1920,
+        h: 1080,
+    };
+
+    fn anchored(monitor: Rect, scale: f64, anchor: PanelAnchor, desired: Option<u32>) -> Rect {
+        overlay_rect(monitor, scale, Placement::Anchor(anchor), desired)
+    }
+
+    /// Every anchor at scale 1.0: window 484×820 (panel 420 + 32/32 aprons;
+    /// cap 756 + 64 chrome). The ±20 x / −8 top / +32 bottom offsets are the
+    /// aprons hanging off-screen so the panel keeps its 12px visual gap.
+    #[test]
+    fn anchors_place_exactly_at_scale_1() {
+        for (anchor, x, y) in [
+            (PanelAnchor::TopRight, 1920 - 484 + 20, -8),
+            (PanelAnchor::TopLeft, -20, -8),
+            (PanelAnchor::BottomRight, 1920 - 484 + 20, 1080 - 820 + 32),
+            (PanelAnchor::BottomLeft, -20, 1080 - 820 + 32),
+            (PanelAnchor::Center, (1920 - 484) / 2, (1080 - 820) / 2),
+        ] {
+            assert_eq!(
+                anchored(FHD, 1.0, anchor, None),
+                Rect {
+                    x,
+                    y,
+                    w: 484,
+                    h: 820
+                },
+                "{anchor:?}"
+            );
+        }
+    }
+
+    /// A 150% monitor with a virtual-desktop offset: every term scales and the
+    /// monitor origin rides along. Window 726×1608 (round(484·1.5); 1512 cap +
+    /// ceil(96) chrome).
+    #[test]
+    fn anchors_scale_and_offset_with_the_monitor() {
+        let mon = Rect {
+            x: 2560,
+            y: -200,
+            w: 3840,
+            h: 2160,
+        };
+        for (anchor, x, y) in [
+            (PanelAnchor::TopRight, 2560 + 3840 - 726 + 30, -200 - 12),
+            (PanelAnchor::BottomLeft, 2560 - 30, -200 + 2160 - 1608 + 48),
+            (PanelAnchor::Center, 2560 + (3840 - 726) / 2, -200 + (2160 - 1608) / 2),
+        ] {
+            assert_eq!(
+                anchored(mon, 1.5, anchor, None),
+                Rect {
+                    x,
+                    y,
+                    w: 726,
+                    h: 1608
+                },
+                "{anchor:?}"
+            );
+        }
+    }
+
+    /// Growth invariants: the edge a placement pins must not move when the
+    /// height report changes — bottom anchors keep the bottom edge, center
+    /// keeps the center, top anchors keep the top.
+    #[test]
+    fn growth_direction_pins_the_anchored_edge() {
+        let tall = anchored(FHD, 1.0, PanelAnchor::BottomRight, None);
+        let short = anchored(FHD, 1.0, PanelAnchor::BottomRight, Some(220));
+        assert_eq!(tall.y + tall.h as i32, short.y + short.h as i32);
+
+        let tall = anchored(FHD, 1.0, PanelAnchor::Center, None);
+        let short = anchored(FHD, 1.0, PanelAnchor::Center, Some(220));
+        assert_eq!(
+            tall.y + tall.h as i32 / 2,
+            short.y + short.h as i32 / 2,
+            "center must stay centered as the panel grows"
+        );
+
+        let tall = anchored(FHD, 1.0, PanelAnchor::TopLeft, None);
+        let short = anchored(FHD, 1.0, PanelAnchor::TopLeft, Some(220));
+        assert_eq!(tall.y, short.y);
+    }
+
+    fn manual_top(x: i32, y: i32) -> Placement {
+        Placement::Manual(ManualSpot {
+            x,
+            y,
+            edge: ManualEdge::Top,
+        })
+    }
+
+    fn manual_bottom(x: i32, y: i32) -> Placement {
+        Placement::Manual(ManualSpot {
+            x,
+            y,
+            edge: ManualEdge::Bottom,
+        })
+    }
+
+    #[test]
+    fn manual_top_keeps_the_spot_and_clamps_to_the_room_below() {
+        // Plenty of room: the stored spot and the capped height, untouched.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_top(100, 200), None),
+            Rect {
+                x: 100,
+                y: 200,
+                w: 484,
+                h: 820
+            }
+        );
+        // Near the bottom: the height gives way (panel may reach the monitor
+        // edge; only the apron hangs off) down to the floor.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_top(100, 1000), None).h,
+            184, // floor: MIN_PANEL_HEIGHT 120 + 64 chrome
+        );
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_top(100, 900), Some(220)).h,
+            224, // room below (1080 + 44 − 900) wins over the 284 report
+        );
+    }
+
+    #[test]
+    fn manual_bottom_pins_the_bottom_edge_and_opens_upward() {
+        // y is the window's BOTTOM. Cap expansion extends upward from it.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_bottom(100, 1000), None),
+            Rect {
+                x: 100,
+                y: 1000 - 820,
+                w: 484,
+                h: 820
+            }
+        );
+        // Growth invariance: two heights, same bottom edge (the low-drop
+        // twin of the bottom anchors' rule).
+        let tall = overlay_rect(FHD, 1.0, manual_bottom(100, 1000), None);
+        let short = overlay_rect(FHD, 1.0, manual_bottom(100, 1000), Some(220));
+        assert_eq!(tall.y + tall.h as i32, short.y + short.h as i32);
+        // Near the monitor top the height gives way to the room above.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_bottom(100, 300), None).h,
+            320, // 300 − (0 − 20) — the top apron may overhang
+        );
+        // The menu-open sentinel (the frontend reports unbounded): the
+        // window extends upward to the cap — the exact geometry a low drop
+        // clipped before bottom-lean existed.
+        assert_eq!(
+            overlay_rect(FHD, 1.0, manual_bottom(100, 1000), Some(100_000)),
+            Rect {
+                x: 100,
+                y: 180,
+                w: 484,
+                h: 820
+            }
+        );
+    }
+
+    #[test]
+    fn a_drop_pins_the_edge_its_center_is_nearer_to() {
+        // Center 350 of 540: upper half → the top edge is the invariant.
+        assert_eq!(
+            manual_spot_from_rect(
+                Rect {
+                    x: 100,
+                    y: 200,
+                    w: 484,
+                    h: 300
+                },
+                FHD,
+            ),
+            ManualSpot {
+                x: 100,
+                y: 200,
+                edge: ManualEdge::Top
+            }
+        );
+        // Center 950: lower half — the bottom edge (y + window height)
+        // becomes the invariant.
+        assert_eq!(
+            manual_spot_from_rect(
+                Rect {
+                    x: 100,
+                    y: 800,
+                    w: 484,
+                    h: 300
+                },
+                FHD,
+            ),
+            ManualSpot {
+                x: 100,
+                y: 1100,
+                edge: ManualEdge::Bottom
+            }
+        );
+        // The rule is height-symmetric: a TALL panel dropped high (center
+        // 490) stays top-pinned even though a cap window wouldn't fit
+        // below it — where it pins depends on where it sits, not on how
+        // much it happened to contain at drop time.
+        assert_eq!(
+            manual_spot_from_rect(
+                Rect {
+                    x: 100,
+                    y: 100,
+                    w: 484,
+                    h: 780
+                },
+                FHD,
+            )
+            .edge,
+            ManualEdge::Top
+        );
+    }
+
+    // ---- manual_host -------------------------------------------------------
+
+    /// The header strip a stored spot needs visible: built like
+    /// `layout_overlay` builds it at scale 1.0.
+    fn strip_at(x: i32, y: i32) -> Rect {
+        Rect {
+            x: x + APRON_LEFT as i32,
+            y: y + APRON_TOP as i32,
+            w: PANEL_WIDTH,
+            h: HEADER_GRAB_HEIGHT,
+        }
+    }
+
+    #[test]
+    fn a_spot_on_a_monitor_finds_its_host() {
+        assert_eq!(manual_host(strip_at(100, 200), MIN_GRAB_WIDTH, &[FHD]), Some(0));
+    }
+
+    #[test]
+    fn a_spot_off_every_monitor_finds_none() {
+        // The monitor that hosted the spot was unplugged.
+        assert_eq!(
+            manual_host(strip_at(2500, 200), MIN_GRAB_WIDTH, &[FHD]),
+            None
+        );
+        assert_eq!(manual_host(strip_at(100, 200), MIN_GRAB_WIDTH, &[]), None);
+    }
+
+    #[test]
+    fn a_header_above_the_screen_top_is_not_grabbable() {
+        // Wide overlap, but the strip pokes above the monitor — the header
+        // can't be caught with the cursor, so the anchor takes this show.
+        assert_eq!(
+            manual_host(strip_at(100, -30), MIN_GRAB_WIDTH, &[FHD]),
+            None
+        );
+    }
+
+    #[test]
+    fn a_straddling_spot_prefers_the_monitor_showing_more_header() {
+        let right_of_fhd = Rect {
+            x: 1920,
+            y: 0,
+            w: 1920,
+            h: 1080,
+        };
+        // Panel at x=1600: strip spans 1632..2052 — 288px on the first
+        // monitor, 132px on the second. Both beat MIN_GRAB_WIDTH; the first
+        // shows more.
+        assert_eq!(
+            manual_host(strip_at(1600, 200), MIN_GRAB_WIDTH, &[FHD, right_of_fhd]),
+            Some(0)
+        );
+        // Panel at x=1850: 38px left / 382px right — only the second
+        // clears the minimum.
+        assert_eq!(
+            manual_host(strip_at(1850, 200), MIN_GRAB_WIDTH, &[FHD, right_of_fhd]),
+            Some(1)
+        );
+    }
+
+    // ---- the settle clamp --------------------------------------------------
+
+    const RIGHT_OF_FHD: Rect = Rect {
+        x: 1920,
+        y: 0,
+        w: 1920,
+        h: 1080,
+    };
+
+    #[test]
+    fn best_host_picks_the_monitor_showing_more_panel() {
+        // ~60% of the panel's width on the second monitor → it wins (the
+        // user's rule: majority pops it fully there, never the primary).
+        let panel = Rect {
+            x: 1920 - 168,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(best_host(panel, &[FHD, RIGHT_OF_FHD]), Some(1));
+        // Fully on the first → the first, area or not.
+        let panel = Rect {
+            x: 100,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(best_host(panel, &[FHD, RIGHT_OF_FHD]), Some(0));
+        // Above every monitor: no host at all.
+        let panel = Rect {
+            x: 100,
+            y: -900,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(best_host(panel, &[FHD, RIGHT_OF_FHD]), None);
+    }
+
+    #[test]
+    fn nearest_host_catches_a_zero_overlap_throw() {
+        // Fully left of the first monitor: nearest by distance, not primary.
+        let panel = Rect {
+            x: -600,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(nearest_host(panel, &[FHD, RIGHT_OF_FHD]), Some(0));
+        // Fully right of the second: the second.
+        let panel = Rect {
+            x: 4000,
+            y: 200,
+            w: 420,
+            h: 300,
+        };
+        assert_eq!(nearest_host(panel, &[FHD, RIGHT_OF_FHD]), Some(1));
+        assert_eq!(nearest_host(panel, &[]), None);
+    }
+
+    #[test]
+    fn clamp_pulls_an_offscreen_drop_flush_inside() {
+        // Half off the bottom-right: the PANEL comes back flush to both
+        // edges — the window sits past them by exactly the aprons.
+        let window = Rect {
+            x: 1700,
+            y: 900,
+            w: 484,
+            h: 484,
+        };
+        assert_eq!(
+            clamp_panel_into(window, FHD, 1.0),
+            Rect {
+                x: 1500 - 32, // panel x 1500 = 1920 − 420
+                y: 660 - 20,  // panel y 660 = 1080 − 420 (panel h = 484 − 64)
+                w: 484,
+                h: 484,
+            }
+        );
+        // A window already inside is untouched…
+        let window = Rect {
+            x: 100,
+            y: 100,
+            w: 484,
+            h: 484,
+        };
+        assert_eq!(clamp_panel_into(window, FHD, 1.0), window);
+        // …and so is an anchored-style apron overhang (panel flush, apron
+        // hanging past the edge — the legal maximum).
+        let window = Rect {
+            x: -32,
+            y: -20,
+            w: 484,
+            h: 820,
+        };
+        assert_eq!(clamp_panel_into(window, FHD, 1.0), window);
+    }
+
+    #[test]
+    fn clamp_survives_a_monitor_smaller_than_the_panel() {
+        // min before max: the panel's top-left edge pins to the monitor's —
+        // i32::clamp would panic on min > max here.
+        let tiny = Rect {
+            x: 0,
+            y: 0,
+            w: 300,
+            h: 200,
+        };
+        let window = Rect {
+            x: 500,
+            y: 500,
+            w: 484,
+            h: 484,
+        };
+        let clamped = clamp_panel_into(window, tiny, 1.0);
+        assert_eq!((clamped.x + 32, clamped.y + 20), (0, 0));
+    }
+
+    /// The teleport regression: a drop half off the screen used to persist
+    /// unclamped, fail `manual_host` on the next height report (opening
+    /// Settings fires one), and snap the panel to the remembered anchor. A
+    /// spot built from a clamped rect must always find its host — the
+    /// mid-session fallback stays unreachable.
+    #[test]
+    fn a_clamped_drop_always_passes_the_strip_check() {
+        for window in [
+            Rect {
+                x: 1700,
+                y: 900,
+                w: 484,
+                h: 484,
+            }, // off the bottom-right corner
+            Rect {
+                x: -300,
+                y: -100,
+                w: 484,
+                h: 484,
+            }, // off the top-left corner
+            Rect {
+                x: 900,
+                y: 950,
+                w: 484,
+                h: 484,
+            }, // off the bottom only
+        ] {
+            let clamped = clamp_panel_into(window, FHD, 1.0);
+            let spot = manual_spot_from_rect(clamped, FHD);
+            // The strip exactly as `layout_overlay` builds it at scale 1.0.
+            let strip_y = match spot.edge {
+                ManualEdge::Top => spot.y + APRON_TOP as i32,
+                ManualEdge::Bottom => {
+                    spot.y - APRON_BOTTOM as i32 - HEADER_GRAB_HEIGHT as i32
+                }
+            };
+            let strip = Rect {
+                x: spot.x + APRON_LEFT as i32,
+                y: strip_y,
+                w: PANEL_WIDTH,
+                h: HEADER_GRAB_HEIGHT,
+            };
+            assert_eq!(
+                manual_host(strip, MIN_GRAB_WIDTH, &[FHD]),
+                Some(0),
+                "{window:?}"
+            );
+        }
     }
 }

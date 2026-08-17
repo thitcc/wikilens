@@ -117,7 +117,7 @@ pub fn sink(app: &AppHandle) -> Option<DebugSink> {
 }
 
 /// Pin to the top-left corner of the window's monitor, mirroring
-/// `window::position_top_right`'s DPI discipline (physical pixels, monitor
+/// `window::layout_overlay`'s DPI discipline (physical pixels, monitor
 /// origin). No extra gap: the transparent apron already keeps the glass off
 /// the corner — one geometry system, not two.
 fn position_top_left(win: &WebviewWindow) -> tauri::Result<()> {

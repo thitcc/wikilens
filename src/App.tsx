@@ -20,6 +20,7 @@ import {
   onCaptureHotkey,
   onOverlayHidden,
   onOverlayShown,
+  onPanelPositionChanged,
   PANEL_HEIGHT_UNBOUNDED,
   setOverlayHeight,
   showOverlay,
@@ -299,6 +300,39 @@ function App() {
     }
   }, [theme]);
 
+  // The stored placement reaches CSS the same way (root data attributes,
+  // styles.css `:root[data-anchor-v=…]`): the vertical facet keeps the panel
+  // on its pinned edge while the window is cap-expanded (and flips the menus
+  // with it), the horizontal one steers the entrance motion. Manual carries
+  // the vertical facet of its pinned edge — a low drop is bottom-pinned and
+  // borrows the bottom-anchor CSS wholesale — and never a horizontal one.
+  // No settings yet = no attributes = the top-right default.
+  useEffect(() => {
+    const root = document.documentElement;
+    const position = settings?.position;
+    if (!position) {
+      delete root.dataset.anchorV;
+      delete root.dataset.anchorH;
+      delete root.dataset.positionMode;
+      return;
+    }
+    if (position.mode === "manual") {
+      delete root.dataset.anchorH;
+      if (position.manualEdge === "bottom") {
+        root.dataset.anchorV = "bottom";
+      } else {
+        delete root.dataset.anchorV;
+      }
+    } else {
+      const anchor = position.anchor;
+      root.dataset.anchorV =
+        anchor === "center" ? "center" : anchor.startsWith("bottom") ? "bottom" : "top";
+      root.dataset.anchorH =
+        anchor === "center" ? "center" : anchor.endsWith("left") ? "left" : "right";
+    }
+    root.dataset.positionMode = position.mode;
+  }, [settings]);
+
   // Load the supported games once; default the selection to the first game.
   useEffect(() => {
     let active = true;
@@ -538,6 +572,12 @@ function App() {
     void onCaptureAttached((info) => {
       setAttachment(info);
       setError(null);
+    }).then(register);
+    // A drag settled into Manual Rust-side — patch the placement in place so
+    // the root data attributes and the stepper's next open track it with the
+    // menu closed (settings state is otherwise fed only by onSaved).
+    void onPanelPositionChanged((position) => {
+      setSettings((prev) => (prev ? { ...prev, position } : prev));
     }).then(register);
     void onCaptureError((message) => setError(message)).then(register);
     // The global Ctrl+Shift+C hotkey funnels into the same request as the
@@ -901,6 +941,15 @@ function App() {
       ? games.find((g) => g.id === detectedGame)
       : undefined;
 
+  // The drag surface while unlocked: the WikiLens row and everything above
+  // it, nothing else. The header drags deep (its inert spans drag, its chips
+  // still click); the strip is an invisible child overhanging the panel top,
+  // covering the top apron + the panel's own top padding at full window
+  // width. Bare attribute on the strip: it has no children, so its target is
+  // always itself. Both disappear while the padlock is on; silently inert
+  // without the start-dragging permission in capabilities/default.json.
+  const dragUnlocked = settings !== null && !settings.position.locked;
+
   return (
     <div
       ref={panelRef}
@@ -913,7 +962,15 @@ function App() {
         if (e.animationName === "panel-summon") setSummoning(false);
       }}
     >
-      <header className="panel-header">
+      {dragUnlocked && (
+        <div className="drag-strip" data-tauri-drag-region="" aria-hidden="true" />
+      )}
+      <header
+        className={
+          "panel-header" + (dragUnlocked ? " panel-header--draggable" : "")
+        }
+        {...(dragUnlocked ? { "data-tauri-drag-region": "deep" } : {})}
+      >
         {/* The gear rides with the brand (the game chip owns the right edge).
             Disabled until get_settings resolves — the popover needs data. */}
         <span className="brand-cluster">

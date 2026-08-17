@@ -25,4 +25,8 @@ afterEach(() => {
   // cleanup() never touches it) — without this a micrographics test leaks
   // its attribute into the next test in the same file.
   delete document.documentElement.dataset.theme;
+  // Same story for the placement attributes App mirrors from settings.
+  delete document.documentElement.dataset.anchorV;
+  delete document.documentElement.dataset.anchorH;
+  delete document.documentElement.dataset.positionMode;
 });

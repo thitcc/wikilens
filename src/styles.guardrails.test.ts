@@ -48,6 +48,8 @@ const INVARIANT_TOKENS = [
   "--pad-box",
   // Float geometry (window.rs twins)
   "--panel-gap",
+  "--shadow-room-top",
+  "--shadow-room-right",
   "--shadow-room-left",
   "--shadow-room-bottom",
   // Menu geometry (menuPlacement.ts twin)

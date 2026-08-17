@@ -11,7 +11,10 @@ a screen region and attaches it to the prompt as an image (vision-capable models
 only). Both shortcuts are configurable from the header gear's **Settings**
 panel (persisted to `settings.json` in the app-data dir), whose **Answers**
 stepper picks which model answers — **Built In** or **Custom API** — with
-provider keys pasted on lines shown while Custom API answers. Works over
+provider keys pasted on lines shown while Custom API answers, and whose
+**Position** stepper docks the panel to any corner or the center — or
+**Manual**, keeping it wherever a header drag left it (a padlock pins the
+gesture). Works over
 **borderless/windowed** games only —
 exclusive fullscreen covers the overlay.
 Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
@@ -59,14 +62,14 @@ wikilens/
         ├── main.rs               # thin entry → wikilens_lib::run()
         ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state + first-launch mode auto-sense
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
-        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys + the persisted mode choice; loaded in setup before registration
+        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys, the persisted mode choice + the panel placement (anchor/Manual memories, padlock); loaded in setup before registration
         ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); read by the key commands and at ask/model-list time
         ├── history.rs            # HistoryStore: history.json (app-data), answered asks newest-first (cap 50) — recorded best-effort at the ask success tail; the webview can only list/clear
-        ├── window.rs             # toggle/show/hide, top-right float, height-follows-panel (DPI-aware)
+        ├── window.rs             # toggle/show/hide, anchored/Manual placement (layout_overlay + DragTracker), height-follows-panel (DPI-aware)
         ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode / list_history / clear_history
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode / set_panel_position / set_position_locked / list_history / clear_history
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
@@ -188,6 +191,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
     by id.
   - `capture://error` — `string`; user-readable capture failure (e.g. the
     selection was too small).
+  - `settings://position` — `PositionInfo` (`{mode, anchor, locked,
+    manualEdge}`, the dragged coordinates never cross IPC — pinned with
+    `SettingsInfo`); fired
+    only when Rust itself changes the stored placement (a header drag settled
+    into Manual), so the root data attributes and the Position stepper track
+    the flip with the menu closed. Picks made *from* the UI don't fire it —
+    they already return fresh `SettingsInfo`.
   - `debug://…` — the debug-window family (`ask-started`, `phase`,
     `candidates`, `usage`, `pages`, `finished`), emitted by `debug.rs` through
     the sink `debug_window.rs` injects, targeted at the debug webview only
@@ -287,16 +297,52 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - `transparent: true` needs `background: transparent` on `html, body`, or the
   window renders as a black rectangle — in `styles.css` for the overlay AND in
   `src/debug/styles.css` for the debug window (each bundle has its own sheet).
-- Position with **monitor offset + scale factor** (see `window::position_top_right`)
-  — required for correct placement on multi-monitor / high-DPI setups.
+- Position with **monitor offset + scale factor** (see `window::layout_overlay`
+  — the one sizer AND positioner; both `show_overlay` and `set_overlay_height`
+  route through it) — required for correct placement on multi-monitor /
+  high-DPI setups. Placement comes from **Settings → Position** (five anchors
+  + Manual, persisted in `settings.json` with independent anchor/manual
+  memories and a padlock); each placement pins its own edge as the height
+  changes (bottom anchors grow upward, center stays centered). A Manual drop
+  picks its own pinned edge (`ManualEdge`) by its vertical **midpoint**:
+  upper half of the monitor pins the top; lower half pins the drop's bottom
+  edge — menus/growth then open upward via the same `data-anchor-v` facet
+  the bottom anchors use (a low drop's menus would otherwise clip at the
+  screen bottom). A Manual spot on no connected monitor falls back to the
+  anchor for that show without rewriting settings.
 - Panel geometry is **split across two runtimes**: `window.rs` constants
-  (`PANEL_GAP`, `SHADOW_ROOM_*`, `PANEL_HEIGHT_FRAC`) size the window; the
-  CSS margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css`
-  must match, or the shadow clips and the panel drifts off its gap. The
-  window **follows the panel's measured height** (ResizeObserver →
-  `set_overlay_height`; clamped to the 70% cap, held while a menu is open):
-  transparent window area still eats mouse input (not click-through) — an
-  idle panel's dead zone stole the game's clicks.
+  (`PANEL_GAP`, `APRON_*`, `PANEL_HEIGHT_FRAC`) size the window; the CSS
+  margins / `--panel-gap` / `--shadow-room-*` tokens in `styles.css` must
+  match, or the shadow clips and the panel drifts off its gap. The apron is
+  **symmetric** (20/32/44/32 — a draggable window has no screen edge to hide
+  a clipped shadow behind); anchors keep the 12px visual gap by overhanging
+  the screen edge, so corner dead zones don't grow. The window **follows the
+  panel's measured height** (ResizeObserver → `set_overlay_height`; clamped
+  to the 70% cap, held while a menu is open): transparent window area still
+  eats mouse input (not click-through) — an idle panel's dead zone stole the
+  game's clicks.
+- The `WindowEvent::Moved` handler's **applied-target guard is load-bearing**:
+  `apply_rect` records its target *before* the OS call (WM_MOVE can
+  dispatch synchronously inside it), and bottom/center anchors move `y` on
+  every height report — without the guard a streaming answer would read as a
+  drag and flip the mode to Manual. A real drag flips effective placement via
+  the `DragTracker` override on the first foreign Moved (the debounced
+  persist lags ~500ms, waits out a still-held mouse button, and re-checks
+  its generation inside the settings write lock at write time — a Position
+  pick bumps the generation before composing, so a mid-flight settle can
+  never revert a pick or the padlock); while
+  locked, a foreign Moved snaps back instead. The settle **clamps the drop
+  fully onto the monitor showing the largest share of the panel** (never
+  biased to the primary) before persisting — load-bearing, not cosmetic: the
+  layout re-validates the stored spot on every height report, and an
+  off-screen spot failing that check teleported the panel to the remembered
+  anchor when a menu opened. A clamped spot always passes (pin-tested), so
+  the anchor fallback fires only for the monitor-unplugged restore. The drag
+  surface (unlocked only) is **the WikiLens row and above, nothing else**:
+  the header (`deep`) plus the `.drag-strip` band overhanging the panel top
+  (top apron + panel top padding, full window width, bare attribute) — the
+  bare glass and the side aprons were drag handles for one round and got
+  reverted on device feedback.
 - **Exclusive-fullscreen** games cover the overlay. Expected, not a bug.
 - **Sample the foreground window at the top of `show_overlay`, before
   `show()`/`set_focus()`** — after `set_focus()` the overlay *is* the

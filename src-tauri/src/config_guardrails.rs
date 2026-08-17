@@ -332,7 +332,7 @@ fn settings_info_serializes_exactly_the_known_fields() {
         .collect();
     assert_eq!(
         top,
-        BTreeSet::from(["hotkeys", "mode", "defaultMode"]),
+        BTreeSet::from(["hotkeys", "mode", "defaultMode", "position"]),
         "new SettingsInfo IPC field — review it for key material, then update this pin"
     );
     assert!(value["mode"].is_null(), "never-chosen mode must cross as null");
@@ -343,6 +343,26 @@ fn settings_info_serializes_exactly_the_known_fields() {
         .map(String::as_str)
         .collect();
     assert_eq!(nested, BTreeSet::from(["configured", "vision"]));
+    // `position` doubles as the `settings://position` event payload
+    // (`PositionInfo`). The stored manual *coordinates* are the sensitive bit
+    // — they say where on screen the player keeps the panel — and must stay
+    // Rust-side: mode, anchor, and the padlock only.
+    let position: BTreeSet<&str> = value["position"]
+        .as_object()
+        .expect("position serializes to an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        position,
+        BTreeSet::from(["mode", "anchor", "locked", "manualEdge"]),
+        "new PositionInfo IPC field — coordinates must never cross; update this pin deliberately"
+    );
+    assert_eq!(value["position"]["mode"], "anchored");
+    assert_eq!(value["position"]["anchor"], "top-right");
+    assert_eq!(value["position"]["locked"], false);
+    // The edge is the ONLY Manual fact that crosses — never x/y.
+    assert!(value["position"]["manualEdge"].is_null());
 }
 
 /// `overlay://shown` became a payload-carrying IPC surface when foreground

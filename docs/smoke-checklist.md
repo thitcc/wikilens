@@ -63,6 +63,60 @@ Copy the boxes into the release notes/log and tick them as you go.
       the 70% cap with no 1px grow/shrink jitter (the DPI report ping-pong
       guard).
 
+### 3b. Position: anchors, drag, padlock
+
+- [ ] Settings → **Position**: each of the five anchors places the panel with
+      the same 12px visual gap it has top-right today — on the primary AND
+      the >100% scale monitor (the apron overhang math is per-monitor).
+- [ ] On a **bottom** anchor: open a menu — the panel must not jump (it stays
+      pinned to the bottom edge while the window expands), and the game/model
+      menus open **upward**. Stream a long answer: the panel grows upward,
+      bottom edge glued.
+- [ ] On **Center**: stream a long answer — the panel grows symmetrically
+      around its center, no walk toward either edge.
+- [ ] Entrance motion follows the placement: right anchors slide from the
+      right, left anchors from the left, Center and Manual rise — and the
+      first summon after launch plays the same motion as later ones.
+- [ ] Drag the panel by the WikiLens row and by the band above it (up to the
+      window's top edge) — the grab hand shows across that whole band. The
+      glass below the header, the section gaps, and the apron at the sides
+      must NOT drag. The chips riding the header still click — gear, history,
+      game chip, the suggestion chip — buttons/text inputs everywhere keep
+      working, answer text still selects, and a double-click on the header
+      does **not** maximize.
+- [ ] Drag while anchored: the Settings stepper reads **Manual** on its next
+      open (the auto-flip), and the remembered anchor is still one step away
+      — stepping back to it snaps the panel home; stepping to Manual again
+      returns to the dragged spot.
+- [ ] Drag mid-stream: the panel must NOT snap back while the answer grows
+      (the applied-target guard) — the window only resizes under the cursor.
+- [ ] Drag the panel near the screen **bottom** and open Settings/game
+      menus: they open **upward** and nothing clips at the screen edge (the
+      low drop pins its bottom edge — the bottom-anchor behavior); stream
+      an answer there and the panel grows upward. A **high** drop keeps
+      menus opening downward.
+- [ ] Drop the panel partway **off any screen edge**: on release it snaps
+      fully back on-screen. Then open Settings there and let an answer
+      stream: the panel must not move at all (the teleport-to-anchor
+      regression — an off-screen spot used to fail validation on the next
+      height report).
+- [ ] With two monitors, drop the panel straddling the seam with the bigger
+      share (~60%) on the second monitor: it pops fully onto the second
+      monitor, not back to the primary — and it lives there freely
+      afterwards.
+- [ ] Quit (tray) and relaunch on Manual: the panel summons at the dragged
+      spot. Drag it to the second monitor, restart: same. Unplug that
+      monitor, summon: the panel falls back to the remembered anchor —
+      re-plug and it returns to the dragged spot (settings were not
+      rewritten).
+- [ ] **Padlock** (Position heading's right rail): locked = the header
+      offers no drag (arrow cursor, drag does nothing) in every mode,
+      Manual included; the stepper still switches placements. Unlock
+      restores the drag. The lock survives a restart.
+- [ ] Capture (Ctrl+Shift+C) while Manual on the second monitor: the
+      snapshot freezes the monitor under the cursor as always, and the
+      capture flow's re-show restores the dragged position.
+
 ### 4. Transparency
 
 - [ ] No black rectangle behind the glass panel (transparency regression).

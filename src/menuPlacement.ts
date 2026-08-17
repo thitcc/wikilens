@@ -20,7 +20,8 @@ export const MENU_FIXED_HEIGHT = 460;
 export const MENU_MIN_HEIGHT = 120;
 
 const DROP_GAP = 6; // .menu--down `top: calc(100% + var(--space-6))`
-const SHADOW_APRON = 44; // --shadow-room-bottom / window.rs SHADOW_ROOM_BOTTOM
+const SHADOW_APRON = 44; // --shadow-room-bottom / window.rs APRON_BOTTOM
+const APRON_TOP = 20; // --shadow-room-top / window.rs APRON_TOP
 const MENU_CLEARANCE = 52; // --menu-clearance (upward anchor above the footer)
 const PANEL_PAD = 14; // --space-14 (top inset of an upward menu in the panel)
 
@@ -39,7 +40,10 @@ export function menuViewportHeight(
   innerHeight: number,
   screenHeight: number,
 ): number {
-  return Math.max(innerHeight, Math.round(screenHeight * 0.7) + 12 + SHADOW_APRON);
+  return Math.max(
+    innerHeight,
+    Math.round(screenHeight * 0.7) + APRON_TOP + SHADOW_APRON,
+  );
 }
 
 /** Where the model menu opens and how tall it is. Prefers dropping below the
@@ -54,7 +58,8 @@ export function menuViewportHeight(
  * windows), up wins regardless, where the base `.menu` panel-relative
  * `max-height` clamps the inline height inside the viewport. */
 export function modelMenuPlacement(input: {
-  /** `.panel` rect top — the 12px `--panel-gap` in practice. */
+  /** `.panel` rect top — the 20px `--shadow-room-top` for top anchors;
+   * larger when a bottom/center anchor floats the panel down the window. */
   panelTop: number;
   /** `.panel` rect height (content-hugging). */
   panelHeight: number;
@@ -64,7 +69,13 @@ export function modelMenuPlacement(input: {
 }): MenuPlacement {
   const panelBottom = input.panelTop + input.panelHeight;
   const roomBelow = input.viewportHeight - SHADOW_APRON - panelBottom - DROP_GAP;
-  const roomAbove = input.panelHeight - MENU_CLEARANCE - PANEL_PAD;
+  // Room above the upward anchor (--menu-clearance over the panel bottom) up
+  // to the window's top apron. For a top-anchored panel (panelTop ==
+  // APRON_TOP) this reduces to the old panel-interior formula; a
+  // bottom-anchored panel adds the free window space above it, matching the
+  // viewport cap :root[data-anchor-v="bottom"] .menu gets in styles.css.
+  const roomAbove =
+    input.panelTop - APRON_TOP + input.panelHeight - MENU_CLEARANCE - PANEL_PAD;
   const direction =
     roomBelow >= roomAbove && roomBelow >= MENU_MIN_HEIGHT ? "down" : "up";
   const room = direction === "down" ? roomBelow : roomAbove;
