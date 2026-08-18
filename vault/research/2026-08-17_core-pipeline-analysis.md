@@ -23,8 +23,9 @@ Deep analysis of the ask pipeline (hotkey → wiki search → RAG → streamed
 answer), prompted by two lived complaints: asks feel **slow**, and some answers
 are **not true**. Analyzed at `27eb27d` (2026-08-17). All file:line citations
 were spot-verified against source; live numbers come from a fresh probe run
-(method in the appendix). A pt-BR visual companion sits next to this doc
-(`2026-08-17_core-pipeline-analysis.html`).
+(method in the appendix). A pt-BR visual companion page was delivered
+alongside this doc as an uncommitted local preview at the repo root
+(kept out of the repo by request).
 
 ## Summary
 
@@ -399,5 +400,6 @@ Retrieval spot-checks reproduced live (same probe):
 ## Status log
 
 - 2026-08-17 — created; analysis of `27eb27d` via three parallel code/vault
-  surveys + live probe; delivered with the pt-BR visual companion
-  (`2026-08-17_core-pipeline-analysis.html`, also published as an artifact).
+  surveys + live probe. The pt-BR visual companion page is delivered as an
+  uncommitted local preview at the repo root (kept out of the repo by
+  request).
