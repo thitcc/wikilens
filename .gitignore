@@ -31,12 +31,12 @@ src-tauri/target
 *.sln
 *.sw?
 
-# Obsidian: track the config JSON (app / appearance / community-plugins / …) so the
-# vault is reproducible, but ignore per-machine UI state and third-party plugin code.
-vault/.obsidian/workspace.json
-vault/.obsidian/workspace-mobile.json
-vault/.obsidian/cache
-vault/.obsidian/plugins/
+# Obsidian + Claudian: the whole `.obsidian/` and `.claudian/` trees are
+# per-machine state (UI layout, themes, hotkeys, plugin code, Claudian sessions
+# and settings) and never committed — open `vault/` as the Obsidian vault and
+# let the apps regenerate them. The vault docs themselves stay tracked.
+vault/.obsidian/
+vault/.claudian/
 
 # Codex skill adapters are generated locally from .claude/ by the sync-agents
 # skill (node .claude/skills/sync-agents/generate.mjs) — never committed.
