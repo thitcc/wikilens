@@ -124,6 +124,7 @@ async function runQuestion(q, goldResolved, round) {
   const toSearch = rw.queries.filter((rq) => !ciEq(rq, query)).slice(0, REWRITE_SEARCH_LIMIT);
   rec.candidatesSearched = toSearch;
   const rewriteHits = [];
+  let hitsByCandidate = [];
   let candMs = 0;
   const candErrors = [];
   if (toSearch.length > 0) {
@@ -131,11 +132,12 @@ async function runQuestion(q, goldResolved, round) {
     const results = await Promise.all(toSearch.map((rq) => searchFull(wiki, rq)));
     candMs = Date.now() - t0;
     for (const r of results) { if (r.error) candErrors.push(r.error); rewriteHits.push(...(r.titles ?? [])); }
-    rec.rewriteHitsByCandidate = results.map((r) => r.titles ?? []); // per-candidate, for merge-policy what-ifs
+    hitsByCandidate = results.map((r) => r.titles ?? []); // commands.rs candidate_hits — empty on failure keeps the seat
+    rec.rewriteHitsByCandidate = hitsByCandidate; // per-candidate, for merge-policy what-ifs
   }
   rec.candMs = candMs; rec.candErrors = candErrors; rec.rewriteHits = rewriteHits;
 
-  let merged = mergeHits(raw.titles, rewriteHits, SEARCH_LIMIT);
+  let merged = mergeHits(raw.titles, hitsByCandidate, SEARCH_LIMIT);
   rec.mergedBeforeLadder = merged;
 
   // Zero-hit ladder (commands.rs): suggestion → simplify → title index.

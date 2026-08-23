@@ -27,6 +27,7 @@ export const REWRITE_TIMEOUT_MS = 4000; // llm.rs REWRITE_TIMEOUT
 export const MAX_PAGE_CHARS = 8000; // fetch.rs MAX_PAGE_CHARS
 export const PARSE_TIMEOUT_MS = 12000; // fetch.rs PARSE_TIMEOUT
 export const ANSWER_MAX_TOKENS = 1024; // llm.rs MAX_TOKENS
+export const CONSENSUS_COPY_THRESHOLD = 3; // commands.rs CONSENSUS_COPY_THRESHOLD
 
 // search.rs STOPWORDS — exact list
 const STOPWORDS = new Set([
@@ -100,20 +101,28 @@ export async function searchFull(wiki, query) {
   }
 }
 
-// commands.rs merge_hits + push_unique — exact mirror
-export function mergeHits(raw, rewrite, limit) {
+// commands.rs merge_hits + push_unique — exact mirror of the gc-rr policy:
+// genuine consensus (a candidate list near-copying the raw list — >= CONSENSUS_COPY_THRESHOLD
+// shared titles — is a paraphrase echo and does not count), then round-robin
+// (cand1, cand2, raw) for the open seats. `candidates` is a per-candidate list
+// of hit lists, rewrite order; empty lists hold their position.
+export function mergeHits(raw, candidates, limit) {
   const out = [];
   const pushUnique = (title, cap) => {
     if (out.length < cap && !out.some((e) => ciEq(e, title))) out.push(title);
   };
-  for (const t of rewrite) {
-    const canonical = raw.find((r) => ciEq(r, t));
-    if (canonical !== undefined) pushUnique(canonical, limit);
+  const isEcho = (cand) => cand.filter((t) => raw.some((r) => ciEq(r, t))).length >= CONSENSUS_COPY_THRESHOLD;
+  for (const cand of candidates.filter((c) => c.length > 0 && !isEcho(c))) {
+    for (const t of cand) {
+      const canonical = raw.find((r) => ciEq(r, t));
+      if (canonical !== undefined) pushUnique(canonical, limit);
+    }
   }
-  const reserve = raw.length > 0 && !out.some((e) => ciEq(e, raw[0]));
-  const rewriteCap = reserve ? Math.max(0, limit - 1) : limit;
-  for (const t of rewrite) pushUnique(t, rewriteCap);
-  for (const t of raw) pushUnique(t, limit);
+  const lists = [...candidates, raw];
+  const longest = Math.max(0, ...lists.map((l) => l.length));
+  for (let i = 0; i < longest; i++) {
+    for (const list of lists) if (i < list.length) pushUnique(list[i], limit);
+  }
   return out;
 }
 

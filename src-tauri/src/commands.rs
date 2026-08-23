@@ -1057,7 +1057,7 @@ async fn run_ask(
     let (raw_titles, suggestion) = raw_result?;
 
     // Search the top rewrite candidates (concurrent, bounded) and merge with the raw
-    // hits: consensus (in both) first, then entity hits, then keyword hits.
+    // hits: genuine consensus first, then round-robin over (cand1, cand2, raw).
     // Candidates that merely echo the raw query would return the exact same hits —
     // drop them *before* the take() so a surviving second candidate still gets
     // searched. Dropped duplicates already counted as rewrite success for the
@@ -1075,15 +1075,15 @@ async fn run_ask(
         .take(REWRITE_SEARCH_LIMIT)
         .collect();
     let mut retries: Vec<(&str, String)> = Vec::new();
-    let mut rewrite_hits: Vec<String> = Vec::new();
+    let mut candidate_hits: Vec<Vec<String>> = Vec::new();
     if !to_search.is_empty() {
         // Emitted only when candidate searches actually run — the skip/empty
         // paths (rewrite off, reasoning skip, breaker, all-duplicate) must
         // never flash this status.
         let _ = app.emit("ask://status", "understanding");
         let cand_timer = std::time::Instant::now();
-        // join_all preserves input order, so zipping back keeps `rewrite_hits`
-        // in candidate order — the merge below ranks by list order.
+        // join_all preserves input order, so zipping back keeps `candidate_hits`
+        // in candidate order — the merge below round-robins by list position.
         let results = futures_util::future::join_all(
             to_search
                 .iter()
@@ -1095,15 +1095,17 @@ async fn run_ask(
             if !hits.is_empty() {
                 retries.push(("rewrite", (*rq).clone()));
             }
-            rewrite_hits.extend(hits);
+            // Empty on failure — keeps the other candidate in its round-robin seat.
+            candidate_hits.push(hits);
         }
+        let total: usize = candidate_hits.iter().map(Vec::len).sum();
         report.phase(
             "cand search",
             cand_timer.elapsed(),
-            format!("{} queries -> {} hits", to_search.len(), rewrite_hits.len()),
+            format!("{} queries -> {} hits", to_search.len(), total),
         );
     }
-    let mut titles = merge_hits(&raw_titles, &rewrite_hits, search::DEFAULT_SEARCH_LIMIT as usize);
+    let mut titles = merge_hits(&raw_titles, &candidate_hits, search::DEFAULT_SEARCH_LIMIT as usize);
 
     // Deterministic net — only when raw + rewrite both came up empty. Cheapest first,
     // each firing only while still empty (MediaWiki etiquette): the wiki's own "did
@@ -1314,36 +1316,59 @@ const REWRITE_SEARCH_LIMIT: usize = 2;
 /// can't match a short entity title anyway — skip the (multi-second) allpages walk.
 const TITLE_INDEX_MAX_WORDS: usize = 4;
 
-/// Merge the raw-search and rewrite-search hit lists into the final ≤`limit` titles,
-/// ranked: consensus (a title in *both* lists — the strongest signal) first, then
-/// rewrite-only hits (the targeted entity), then raw-only hits (keyword match).
-/// Case-insensitive dedup, order-preserving; consensus keeps the raw/canonical casing.
+/// How many of a candidate's titles may also appear in the raw list before its
+/// agreement stops counting as consensus. A candidate that paraphrases the
+/// question tends to return the raw search's own titles — echo, not evidence
+/// (the pseudo-consensus eviction class,
+/// vault/research/2026-08-22_retrieval-eval-round-2.md). ≥2 tied ≥3 exactly on
+/// the recorded datasets; 3 keeps more two-title agreements countable.
+const CONSENSUS_COPY_THRESHOLD: usize = 3;
+
+/// Merge the raw-search and per-candidate rewrite-search hit lists into the final
+/// ≤`limit` titles (the gc-rr policy, vault/2026-08-23_merge-genuine-consensus-
+/// round-robin.md). Two phases:
 ///
-/// Guarantee: raw's top hit is always *included* (a slot is reserved for it, so a
-/// confident-but-wrong rewrite can't flood the cap and silently evict the correct
-/// page). Inclusion, not rank — every merged page is fetched and handed to the
-/// model, and pinning raw[0] to #1 would undo the entity-injection win.
-fn merge_hits(raw: &[String], rewrite: &[String], limit: usize) -> Vec<String> {
+/// 1) *Genuine consensus* — a title in the raw list and in a candidate list that
+///    is NOT a near-copy of the raw list (< `CONSENSUS_COPY_THRESHOLD` shared
+///    titles). A paraphrase candidate echoing the raw hits manufactures fake
+///    agreement; its overlap doesn't count. Consensus keeps raw's canonical casing.
+/// 2) *Round-robin* — the open seats cycle over (cand1, cand2, raw) index-major,
+///    so every list seats its best hits before any list floods the cap.
+///
+/// `candidates` is in rewrite order (bare entity first); an empty list (failed or
+/// skipped search) keeps its position and contributes nothing. Case-insensitive
+/// dedup throughout. Unlike the 2026-07-10 reserved-slot rule, raw's top hit is
+/// no longer guaranteed a seat — raw takes its turn at round-robin position 0
+/// instead; the eval suite, not a structural reserve, is the safety net.
+fn merge_hits(raw: &[String], candidates: &[Vec<String>], limit: usize) -> Vec<String> {
+    let is_echo = |cand: &[String]| {
+        cand.iter()
+            .filter(|t| raw.iter().any(|r| r.eq_ignore_ascii_case(t)))
+            .count()
+            >= CONSENSUS_COPY_THRESHOLD
+    };
     let mut out: Vec<String> = Vec::new();
-    // 1) consensus — titles in both lists, using the raw (canonical) casing.
-    for t in rewrite {
-        if let Some(canonical) = raw.iter().find(|r| r.eq_ignore_ascii_case(t)) {
-            push_unique(&mut out, canonical, limit);
+    // 1) genuine consensus — raw (canonical) casing, non-echo candidates only.
+    for cand in candidates.iter().filter(|c| !c.is_empty() && !is_echo(c)) {
+        for t in cand {
+            if let Some(canonical) = raw.iter().find(|r| r.eq_ignore_ascii_case(t)) {
+                push_unique(&mut out, canonical, limit);
+            }
         }
     }
-    // 2) remaining rewrite hits — capped one short of `limit` while raw[0] still
-    //    needs its reserved slot (consensus already admitted it iff any rewrite
-    //    hit case-matches it).
-    let reserve = raw
-        .first()
-        .is_some_and(|r0| !out.iter().any(|e| e.eq_ignore_ascii_case(r0)));
-    let rewrite_cap = if reserve { limit.saturating_sub(1) } else { limit };
-    for t in rewrite {
-        push_unique(&mut out, t, rewrite_cap);
-    }
-    // 3) remaining raw hits — raw[0] first, filling its reserved slot.
-    for t in raw {
-        push_unique(&mut out, t, limit);
+    // 2) remaining seats: round-robin over (cand1, cand2, raw), index-major.
+    let lists: Vec<&[String]> = candidates
+        .iter()
+        .map(Vec::as_slice)
+        .chain(std::iter::once(raw))
+        .collect();
+    let longest = lists.iter().map(|l| l.len()).max().unwrap_or(0);
+    for i in 0..longest {
+        for list in &lists {
+            if let Some(t) = list.get(i) {
+                push_unique(&mut out, t, limit);
+            }
+        }
     }
     out
 }
@@ -1393,106 +1418,115 @@ mod history_model_tests {
 mod merge_tests {
     use super::*;
 
+    fn ss(titles: &[&str]) -> Vec<String> {
+        titles.iter().map(|t| t.to_string()).collect()
+    }
+
     #[test]
-    fn ranks_consensus_then_rewrite_then_raw() {
-        let raw = vec![
-            "Trinity".to_string(),
-            "Sirius & Orion".to_string(),
-            "Mag".to_string(),
-        ];
-        let rewrite = vec!["Sirius & Orion".to_string(), "Wisp".to_string()];
-        // Consensus (Sirius & Orion) first, then rewrite-only (Wisp), then raw-only.
+    fn genuine_consensus_first_then_round_robin() {
+        // Consensus (Sirius & Orion) seats first, then raw and the candidate
+        // take turns — raw's turn at index 0 lands Trinity before Wisp.
+        let raw = ss(&["Trinity", "Sirius & Orion", "Mag"]);
+        let cands = vec![ss(&["Sirius & Orion", "Wisp"])];
         assert_eq!(
-            merge_hits(&raw, &rewrite, 4),
-            vec![
-                "Sirius & Orion".to_string(),
-                "Wisp".to_string(),
-                "Trinity".to_string(),
-                "Mag".to_string(),
-            ]
+            merge_hits(&raw, &cands, 4),
+            ss(&["Sirius & Orion", "Trinity", "Wisp", "Mag"])
         );
     }
 
     #[test]
     fn injects_the_entity_when_raw_is_junk() {
-        let raw = vec!["Version History".to_string()];
-        let rewrite = vec!["Wine".to_string()];
-        assert_eq!(
-            merge_hits(&raw, &rewrite, 4),
-            vec!["Wine".to_string(), "Version History".to_string()]
-        );
+        let raw = ss(&["Version History"]);
+        let cands = vec![ss(&["Wine"])];
+        assert_eq!(merge_hits(&raw, &cands, 4), ss(&["Wine", "Version History"]));
     }
 
     #[test]
     fn dedupes_case_insensitively_keeps_canonical_and_truncates() {
-        let raw = vec!["Wood".to_string(), "Stone".to_string()];
-        let rewrite = vec!["wood".to_string(), "Clay".to_string()];
+        let raw = ss(&["Wood", "Stone"]);
+        let cands = vec![ss(&["wood", "Clay"])];
         // "wood"/"Wood" collapse to the raw casing (consensus); limit caps the rest.
-        assert_eq!(
-            merge_hits(&raw, &rewrite, 2),
-            vec!["Wood".to_string(), "Clay".to_string()]
-        );
+        assert_eq!(merge_hits(&raw, &cands, 2), ss(&["Wood", "Clay"]));
     }
 
     #[test]
     fn handles_empty_inputs() {
-        let raw = vec!["A".to_string()];
-        assert_eq!(merge_hits(&raw, &[], 4), vec!["A".to_string()]);
-        assert_eq!(merge_hits(&[], &raw, 4), vec!["A".to_string()]);
+        let raw = ss(&["A"]);
+        assert_eq!(merge_hits(&raw, &[], 4), ss(&["A"]));
+        assert_eq!(merge_hits(&[], &[ss(&["A"])], 4), ss(&["A"]));
         assert!(merge_hits(&[], &[], 4).is_empty());
+        // An empty candidate list is harmless.
+        assert_eq!(merge_hits(&raw, &[vec![]], 4), ss(&["A"]));
     }
 
     #[test]
-    fn raw_first_survives_a_rewrite_flood() {
-        // A confident-but-wrong rewrite floods the cap; raw's top hit must
-        // still be included (last is fine — inclusion matters, not rank).
-        let raw = vec!["R1".to_string(), "R2".to_string()];
-        let rewrite = vec![
-            "A".to_string(),
-            "B".to_string(),
-            "C".to_string(),
-            "D".to_string(),
-            "E".to_string(),
-        ];
+    fn round_robin_shares_the_cap_between_all_three_lists() {
+        // Neither candidate agrees with raw: each list seats its best in turn,
+        // so a flooding first candidate can't starve the second (or raw).
+        let raw = ss(&["R1", "R2"]);
+        let cands = vec![ss(&["A", "B", "C", "D"]), ss(&["E", "F", "G", "H"])];
+        assert_eq!(merge_hits(&raw, &cands, 4), ss(&["A", "E", "R1", "B"]));
+    }
+
+    #[test]
+    fn pseudo_consensus_echo_does_not_count() {
+        // cand2 near-copies the raw list (≥ CONSENSUS_COPY_THRESHOLD shared
+        // titles) — its "agreement" is the same search twice, not evidence, so
+        // the entity candidate's hit is not crowded out (the S4/E1 class).
+        let raw = ss(&["R1", "R2", "R3", "R4"]);
+        let cands = vec![ss(&["E1"]), ss(&["R1", "R2", "R3", "R4"])];
+        assert_eq!(merge_hits(&raw, &cands, 4), ss(&["E1", "R1", "R2", "R3"]));
+    }
+
+    #[test]
+    fn limit_one_seats_the_lead_candidate() {
+        // cand1 is the bare-entity candidate — at limit 1 its top hit wins.
+        let raw = ss(&["R1"]);
+        let cands = vec![ss(&["A"])];
+        assert_eq!(merge_hits(&raw, &cands, 1), ss(&["A"]));
+    }
+
+    #[test]
+    fn copy_threshold_is_three_shared_titles() {
+        let raw = ss(&["R1", "R2", "R3", "R4"]);
+        // Overlap 3 → echo: no consensus, X leads via the round-robin.
         assert_eq!(
-            merge_hits(&raw, &rewrite, 4),
-            vec![
-                "A".to_string(),
-                "B".to_string(),
-                "C".to_string(),
-                "R1".to_string(),
-            ]
+            merge_hits(&raw, &[ss(&["X", "R1", "R2", "R3"])], 4),
+            ss(&["X", "R1", "R2", "R3"])
+        );
+        // Overlap 2 → genuine: the shared titles seat first as consensus.
+        assert_eq!(
+            merge_hits(&raw, &[ss(&["X", "R1", "R2"])], 4),
+            ss(&["R1", "R2", "X", "R3"])
         );
     }
 
     #[test]
-    fn consensus_on_raw_first_frees_the_reserved_slot() {
-        // raw[0] already entered via consensus — rewrite-only hits may fill
-        // every remaining slot, no slot held back.
-        let raw = vec!["R1".to_string(), "R2".to_string()];
-        let rewrite = vec![
-            "R1".to_string(),
-            "A".to_string(),
-            "B".to_string(),
-            "C".to_string(),
-        ];
-        assert_eq!(
-            merge_hits(&raw, &rewrite, 4),
-            vec![
-                "R1".to_string(),
-                "A".to_string(),
-                "B".to_string(),
-                "C".to_string(),
-            ]
-        );
+    fn raw_top_hit_is_no_longer_guaranteed_a_seat() {
+        // The 2026-07-10 reserved slot is repealed: genuine consensus plus the
+        // candidates' top hits can seat four titles without raw[0].
+        let raw = ss(&["R0", "R1", "R2", "R3"]);
+        let cands = vec![ss(&["X", "R1", "R2"]), ss(&["Y"])];
+        assert_eq!(merge_hits(&raw, &cands, 4), ss(&["R1", "R2", "X", "Y"]));
     }
 
     #[test]
-    fn limit_one_still_keeps_raw_first() {
-        // The saturating_sub edge: limit 1 leaves zero rewrite-only slots.
-        let raw = vec!["R1".to_string()];
-        let rewrite = vec!["A".to_string()];
-        assert_eq!(merge_hits(&raw, &rewrite, 1), vec!["R1".to_string()]);
+    fn third_rank_candidate_hit_can_lose_its_seat() {
+        // The acknowledged trade (the one replay loss, S15 "Gold" — see the
+        // round-2 research addendum): a candidate's rank-3 hit yields its seat
+        // to the other lists' turns.
+        let raw = ss(&["R1", "R2", "R3", "R4"]);
+        let cands = vec![ss(&["A", "B", "G"])];
+        assert_eq!(merge_hits(&raw, &cands, 4), ss(&["A", "R1", "B", "R2"]));
+    }
+
+    #[test]
+    fn failed_first_candidate_keeps_the_second_in_its_turn() {
+        // A failed search collapses to an empty list but holds its position,
+        // so the second candidate still round-robins from index 0.
+        let raw = ss(&["R1"]);
+        let cands = vec![vec![], ss(&["P"])];
+        assert_eq!(merge_hits(&raw, &cands, 4), ss(&["P", "R1"]));
     }
 }
 
