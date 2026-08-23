@@ -16,8 +16,8 @@ round-2 results live in `vault/2026-08-22_retrieval-eval-suite.md` and
 | File | Role |
 | --- | --- |
 | `questions.json` | The fixture: wikis (endpoint, engine family, `builtin` flag) + questions (id, game, style, source, gold titles, optional `trunc` / `fact`). Pinned against the Rust game registry by `config_guardrails.rs`. |
-| `lib.mjs`, `html.mjs` | Node mirrors of the Rust pipeline: `preprocess_query`, `simplify_query`, `build_search_params`, `merge_hits`, `parse_rewrite_queries`, the rewrite request, `fetch_rendered_page` + `truncate_text`, `build_user_message` + the answer request, `html::to_plaintext`. |
-| `lib.test.mjs`, `html.test.mjs` | Parity tests against the crate's own test vectors and insta snapshots — run by `npm run test:node` (CI). A mirror that drifts fails the build. |
+| `lib.mjs`, `html.mjs`, `titles.mjs` | Node mirrors of the Rust pipeline: `preprocess_query`, `simplify_query`, `build_search_params`, `merge_hits`, `parse_rewrite_queries`, the rewrite request, `fetch_rendered_page` + `truncate_text`, `build_user_message` + the answer request, `html::to_plaintext`, the title index (`allpages` walk + Jaro-Winkler `best_match`). |
+| `lib.test.mjs`, `html.test.mjs`, `titles.test.mjs` | Parity tests against the crate's own test vectors and insta snapshots — run by `npm run test:node` (CI). A mirror that drifts fails the build. |
 | `run-retrieval.mjs` | The runner: N rounds, per-leg counterfactuals, zero-hit ladder, JSONL per round. |
 | `run-answer.mjs` | Answer-level eval on a retrieval run: fetch the merged pages like `fetch.rs`, call the Default-mode answer model with the production prompt, check the expected fact against the context actually sent, judge the answer. |
 | `aggregate.mjs` | Summaries: overall / per leg / per wiki / per engine / per style / per source / stability / skip-gate counterfactual / timings → `summary.json` + console digest. |
@@ -66,10 +66,11 @@ context sent), `factBeyondCap` (in a fetched page's full text but past the
 8000-char cut — the R10 class), `judge.label` ∈ correct | partial | wrong |
 abstain, `answer.stopReason` (`max_tokens` = cut answer).
 
-## Known non-mirrors
+## Mirror fidelity notes
 
-- The **title-index** rung of the zero-hit ladder (`titles.rs`) is not
-  mirrored — a zero-hit after suggestion + simplify is recorded as such.
+- The **title index** (`titles.rs`, last ladder rung) is mirrored in
+  `titles.mjs` and fetched once per wiki per run (production: once per
+  session); its allpages walk is paced at 150 ms here.
 - The **wikitext fallback** (`fetch_pages_wikitext`) is not mirrored — a failed
   `action=parse` marks the answer record `degraded` and skips the page.
 - The answer call is non-streaming (same model, prompt, cap and content; only

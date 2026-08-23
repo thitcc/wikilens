@@ -5,8 +5,9 @@
 //
 // Per question (mirrors commands.rs run_ask up to the fetch phase):
 //   preprocess → join(raw search ‖ LLM rewrite) → ≤2 candidate searches →
-//   merge_hits → zero-hit ladder (suggestion, simplify; the title index is
-//   NOT mirrored) — then the eval judges three pipelines for the price of one:
+//   merge_hits → zero-hit ladder (suggestion, simplify, title index — the
+//   latter fetched once per wiki per run) — then the eval judges three
+//   pipelines for the price of one:
 //   raw-only (gold in raw top-4), rewrite-only (gold in any candidate hit),
 //   and the real merge (gold rank). Titles are redirect-resolved before
 //   judging. Sequential per question, paced (MediaWiki etiquette); raw search
@@ -22,6 +23,19 @@ import {
   preprocessQuery, simplifyQuery, searchFull, mergeHits, rewriteQuery, resolveTitles,
   loadDefaultTarget, loadFixture, sleep, appendJsonl, ciEq, SEARCH_LIMIT, REWRITE_SEARCH_LIMIT,
 } from './lib.mjs';
+
+import { TitleIndex, fetchAllTitles } from './titles.mjs';
+
+const TITLE_INDEX_MAX_WORDS = 4; // commands.rs TITLE_INDEX_MAX_WORDS
+const TITLE_INDEX_ON = !['0', 'false', 'off', 'no'].includes(String(process.env.WIKILENS_TITLE_INDEX ?? '1').trim().toLowerCase());
+const titleIndexCache = new Map(); // wiki id -> TitleIndex | null (failed)
+async function getTitleIndex(wiki) {
+  if (titleIndexCache.has(wiki.id)) return titleIndexCache.get(wiki.id);
+  let index = null;
+  try { index = new TitleIndex(await fetchAllTitles(wiki, 150), wiki.search_namespace != null); } catch { index = null; }
+  titleIndexCache.set(wiki.id, index);
+  return index;
+}
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.out) { console.error('usage: --out <dir> [--rounds N] [--only ids] [--game id] [--source s] [--no-rewrite] [--pace ms]'); process.exit(2); }
@@ -123,7 +137,7 @@ async function runQuestion(q, goldResolved, round) {
   let merged = mergeHits(raw.titles, rewriteHits, SEARCH_LIMIT);
   rec.mergedBeforeLadder = merged;
 
-  // Zero-hit ladder (commands.rs): suggestion → simplify → [title index: not mirrored].
+  // Zero-hit ladder (commands.rs): suggestion → simplify → title index.
   const ladder = [];
   if (merged.length === 0) {
     const sugg = raw.suggestion ?? '';
@@ -145,7 +159,20 @@ async function runQuestion(q, goldResolved, round) {
       merged = r.titles;
     }
   }
-  if (merged.length === 0) ladder.push({ stage: 'title-index', query, titles: null, note: 'not mirrored' });
+  // commands.rs — the title index fires only while still empty, only for ≤4-word
+  // queries, and only when WIKILENS_TITLE_INDEX isn't "0". Fetched once per
+  // wiki per run (production: once per session).
+  if (merged.length === 0 && TITLE_INDEX_ON && rec.queryWords <= TITLE_INDEX_MAX_WORDS) {
+    const t0 = Date.now();
+    const index = await getTitleIndex(wiki);
+    if (!index) {
+      ladder.push({ stage: 'title-index', query, titles: null, note: 'index unavailable', ms: Date.now() - t0 });
+    } else {
+      const matched = index.bestMatch(query);
+      ladder.push({ stage: 'title-index', query, titles: matched ? [matched] : [], note: matched ? null : '(no match)', ms: Date.now() - t0, indexSize: index.titles.length });
+      if (matched) merged = [matched];
+    }
+  }
   rec.ladder = ladder;
   rec.merged = merged;
 
