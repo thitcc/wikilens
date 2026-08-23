@@ -3,7 +3,7 @@ title: Retrieval eval round 2 — 221 questions × 3 rounds, answer-level judge
 type: research
 status: done
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-23
 tags: [rag, wiki, llm, testing]
 related:
   - "[[2026-08-22_retrieval-eval-suite]]"
@@ -13,7 +13,7 @@ related:
   - "[[2026-07-15_rewrite-bare-entity-candidate]]"
   - "[[2026-07-04_golden-query-retrieval-tests]]"
   - "[[2026-07-04_rendered-html-extraction]]"
-commit: [7364a07, be5efa5, bbd6421]
+commit: [7364a07, be5efa5, bbd6421, 1b2a250]
 ---
 
 # Retrieval eval round 2 — 221 questions × 3 rounds, answer-level judge
@@ -141,7 +141,10 @@ incl. the harness' 300 ms pauses) 2924 / 5822 ms · answer (non-streaming)
    slot for the entity candidate's top hit never loses (+2/−0; +4/−0 over
    three rounds); reserving entity + raw top hits and round-robining the
    rest recovers most evictions (+7/−3 on the per-candidate round, +26/−2
-   on the flood cases) — table in the addendum.
+   on the flood cases); keeping the consensus step but counting it only
+   when the candidate list is not a near-copy of the raw list, plus the
+   same round-robin, beats both — +7/−1 and +28/−0 (see the addendum,
+   added 2026-08-23).
 2. **The rewrite is still the column, unevenly.** 83% → 49% without it;
    it fixes 92% of typos (the title index almost never gets to play). But
    on Fandom's UnifiedSearch the raw search already scores 81% and the
@@ -219,6 +222,7 @@ records, biased toward the flood case where both candidates returned 4 hits).
 | policy | r2policy (221) | vs prod | r2 (561, flood-biased) | vs prod |
 | --- | --- | --- | --- | --- |
 | production (`merge_hits`) | 84.6% | — | 84.8% | — |
+| **gc-rr (genuine consensus + round-robin; copy = ≥3 shared titles)** | **87.3%** | **+7 / −1** | **89.8%** | **+28 / −0** |
 | entity-first (cand1[0] reserved, then production) | 85.5% | +2 / −0 | 85.6% | +4 / −0 |
 | consensus-guard (consensus vs cand1 only) | 85.1% | +3 / −2 | 85.4% | +8 / −5 |
 | entity+raw-first (cand1[0] + raw[0] reserved, round-robin rest) | 86.4% | +7 / −3 | 89.1% | +26 / −2 |
@@ -230,6 +234,16 @@ records, biased toward the flood case where both candidates returned 4 hits).
 Reading: a reserved slot for the bare-entity candidate's top hit is a free
 win (never loses); reserving both that and the raw top hit and
 round-robining the rest recovers most evictions (interleave gains a little
-more but drops rewrite-only hits such as "Abigail gifts"). The per-question
-gain/loss lists are in the replay output — the implementation PR should
-diff them, not the headline.
+more but drops rewrite-only hits such as "Abigail gifts").
+
+**Added 2026-08-23 (commit 1b2a250): gc-rr wins on both datasets.** It keeps
+the consensus step but counts only a candidate list that is not a near-copy
+of the raw list (< 3 shared titles — the paraphrase echo behind the
+pseudo-consensus evictions), then round-robins cand1/cand2/raw for the open
+seats. Best of the ten policies on both datasets, and the genuine consensus
+keeps the agreements the reserved-slot rules were dropping (S9 Mermaid's
+Pendant, Ypalword-2 Junkyard). A ≥2 copy threshold ties it exactly. The one
+loss (S15) is a third-rank candidate hit whose seat goes to the round-robin.
+This is the rule the implementation PR should port to `merge_hits`. The
+per-question gain/loss lists are in the replay output — the implementation
+PR should diff them, not the headline.
