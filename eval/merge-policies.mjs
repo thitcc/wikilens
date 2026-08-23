@@ -18,6 +18,10 @@
 //   raw-first    raw[0] then round-robin over (cand1, cand2, raw[1..])
 //   entity+raw-first  cand1[0] and raw[0] reserved, then round-robin over the rest
 //   consensus-guard   production, but consensus counts only agreement with cand1
+//   gc-rr / gc-rr-2   genuine consensus (a candidate list that mostly duplicates
+//                the raw list is a paraphrase echo — its agreement doesn't
+//                count; copy threshold: ≥3 / ≥2 shared titles), then
+//                round-robin cand1, cand2, raw for the remaining seats
 // Records need `rewriteHitsByCandidate` (runs after 2026-08-22); older records
 // are split heuristically (one candidate → all hits; 8 hits → 4+4) and the
 // ambiguous remainder is reported, not guessed.
@@ -65,7 +69,23 @@ const POLICIES = {
     for (const t of raw) pushUnique(out, t, SEARCH_LIMIT);
     return out; },
   'raw-first': ({ raw, cands }) => { const out = []; if (raw[0]) pushUnique(out, raw[0], SEARCH_LIMIT); for (const t of roundRobin([...cands, raw.slice(1)])) pushUnique(out, t, SEARCH_LIMIT); return out; },
+  // Genuine consensus + round-robin: consensus only counts a candidate that is
+  // NOT a near-copy of the raw list (< copyAt shared titles), in raw's
+  // canonical casing; then cand1, cand2, raw take turns for the open seats, so
+  // one flooding line can't starve the others.
+  'gc-rr': gcRoundRobin(3),
+  'gc-rr-2': gcRoundRobin(2),
 };
+function gcRoundRobin(copyAt) {
+  return ({ raw, cands }) => {
+    const overlap = (l) => l.filter((t) => raw.some((r) => ciEq(r, t))).length;
+    const genuine = cands.filter((l) => l.length > 0 && overlap(l) < copyAt);
+    const out = [];
+    for (const t of genuine.flat()) { const c = raw.find((r) => ciEq(r, t)); if (c !== undefined) pushUnique(out, c, SEARCH_LIMIT); }
+    for (const t of roundRobin([...cands, raw], 3 * SEARCH_LIMIT)) pushUnique(out, t, SEARCH_LIMIT);
+    return out;
+  };
+}
 
 const tally = Object.fromEntries(Object.keys(POLICIES).map((k) => [k, { hit: 0, n: 0 }]));
 let judged = 0; let ambiguous = 0; let skipped = 0;
