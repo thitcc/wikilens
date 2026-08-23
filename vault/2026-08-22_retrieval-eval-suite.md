@@ -1,7 +1,7 @@
 ---
 title: Retrieval eval suite — durable fixture, 3-round stability, answer-level judge
 type: plan
-status: active
+status: done
 created: 2026-08-22
 updated: 2026-08-22
 tags: [rag, wiki, llm, testing]
@@ -11,7 +11,8 @@ related:
   - "[[2026-07-04_golden-query-retrieval-tests]]"
   - "[[2026-07-10_rewrite-circuit-breaker]]"
   - "[[2026-07-10_merge-raw-hit-guarantee]]"
-commit:
+  - "[[2026-08-22_retrieval-eval-round-2]]"
+commit: [7364a07, be5efa5, bbd6421]
 ---
 
 # Retrieval eval suite — durable fixture, 3-round stability, answer-level judge
@@ -40,8 +41,9 @@ nothing about whether the final answer is true.
   `html::to_plaintext` against the insta snapshots).
 - Non-goal: changing the pipeline. This measures; Tier 1–3 changes are gated
   on its numbers and land separately.
-- Non-goal: mirroring the title-index ladder rung and the wikitext fallback
-  (recorded as non-mirrored in the README; both are rare paths).
+- Non-goal: mirroring the wikitext fallback (recorded as non-mirrored in the
+  README; a rare path). The title-index rung was planned as a non-goal too,
+  then mirrored (`titles.mjs`) once the dry run produced zero-hits.
 
 ## Approach
 1. Branch `test/retrieval-eval-suite`; `eval/` at the repo root: `questions.json`
@@ -79,3 +81,6 @@ nothing about whether the final answer is true.
 
 ## Status log
 - 2026-08-22 — created; harness ported from the 2026-08-21 scratchpad run.
+- 2026-08-22 — harness + 40-question fixture committed (7364a07); branch stacked on PR #76 (merge commit) so the research wikilinks resolve.
+- 2026-08-22 — fixture grown to 221 (subagent drafts for 8 wikis + curated synthetic batch), title index mirrored, 87 facts verified; Grounded 2 golds corrected (be5efa5).
+- 2026-08-22 — 3 rounds run (`eval/out/r2`), answer eval on 87 facts, merge-policy replay round; aggregator + replay tool (bbd6421). Results: [[2026-08-22_retrieval-eval-round-2]]. Done.

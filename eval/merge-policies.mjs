@@ -16,6 +16,8 @@
 //                slot, then production order
 //   interleave   round-robin raw[0], cand1[0], cand2[0], raw[1], cand1[1], …
 //   raw-first    raw[0] then round-robin over (cand1, cand2, raw[1..])
+//   entity+raw-first  cand1[0] and raw[0] reserved, then round-robin over the rest
+//   consensus-guard   production, but consensus counts only agreement with cand1
 // Records need `rewriteHitsByCandidate` (runs after 2026-08-22); older records
 // are split heuristically (one candidate → all hits; 8 hits → 4+4) and the
 // ambiguous remainder is reported, not guessed.
@@ -53,6 +55,15 @@ const POLICIES = {
     return out;
   },
   interleave: ({ raw, cands }) => roundRobin([raw, ...cands]),
+  // cand1[0] and raw[0] both reserved, then round-robin over the remainders.
+  'entity+raw-first': ({ raw, cands }) => { const out = []; if (cands[0]?.[0]) pushUnique(out, cands[0][0], SEARCH_LIMIT); if (raw[0]) pushUnique(out, raw[0], SEARCH_LIMIT); for (const t of roundRobin([(cands[0] ?? []).slice(1), ...cands.slice(1), raw.slice(1)])) pushUnique(out, t, SEARCH_LIMIT); return out; },
+  // Production, but consensus only counts agreement with the entity candidate (cand1), so a paraphrase cand2 can't inflate it.
+  'consensus-guard': ({ raw, cands }) => { const out = []; const rewrite = cands.flat(); const c1 = cands[0] ?? [];
+    for (const t of c1) { const canonical = raw.find((r) => ciEq(r, t)); if (canonical !== undefined) pushUnique(out, canonical, SEARCH_LIMIT); }
+    const reserve = raw.length > 0 && !out.some((e) => ciEq(e, raw[0]));
+    for (const t of rewrite) pushUnique(out, t, reserve ? SEARCH_LIMIT - 1 : SEARCH_LIMIT);
+    for (const t of raw) pushUnique(out, t, SEARCH_LIMIT);
+    return out; },
   'raw-first': ({ raw, cands }) => { const out = []; if (raw[0]) pushUnique(out, raw[0], SEARCH_LIMIT); for (const t of roundRobin([...cands, raw.slice(1)])) pushUnique(out, t, SEARCH_LIMIT); return out; },
 };
 
