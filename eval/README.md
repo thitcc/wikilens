@@ -21,6 +21,7 @@ round-2 results live in `vault/2026-08-22_retrieval-eval-suite.md` and
 | `run-retrieval.mjs` | The runner: N rounds, per-leg counterfactuals, zero-hit ladder, JSONL per round. |
 | `run-answer.mjs` | Answer-level eval on a retrieval run: fetch the merged pages like `fetch.rs`, call the Default-mode answer model with the production prompt, check the expected fact against the context actually sent, judge the answer. |
 | `aggregate.mjs` | Summaries: overall / per leg / per wiki / per engine / per style / per source / stability / skip-gate counterfactual / timings → `summary.json` + console digest. |
+| `merge-policies.mjs` | Replays a run's recorded searches (raw + per-candidate rewrite hits) through alternative merge rules and scores each against the same gold — a fair what-if for R7-class changes (interleave, entity-first, no-consensus…). |
 | `gen-synthetic.mjs` | Drafts synthetic candidates from sampled page content (curator reviews, then `fixture-merge.mjs`). |
 | `fixture-merge.mjs` | Merges candidate files into the fixture and keeps its one-line-per-question layout. |
 | `check-facts.mjs` | Verifies every `fact.evidence` is a literal substring of its gold page (and reports whether it sits beyond the 8000-char cap). |
@@ -35,6 +36,8 @@ npm run eval:retrieval -- --out eval/out/2026-08-22 --rounds 3
 npm run eval:answer    -- --run eval/out/2026-08-22        # questions with `fact`
 npm run eval:aggregate -- --run eval/out/2026-08-22
 ```
+
+Then `node eval/merge-policies.mjs --run eval/out/2026-08-22` for the merge what-ifs.
 
 Flags: `--only S1,M2`, `--game stardew`, `--source hand|history|synthetic`,
 `--no-rewrite` (raw-only pipeline), `--pace 300` (ms between requests).
@@ -64,7 +67,9 @@ hit ∧ ¬rewrite; "evicted" = a leg had the gold but the merge dropped it (R7).
 Answer records: `factInContext` (the evidence string occurs in the truncated
 context sent), `factBeyondCap` (in a fetched page's full text but past the
 8000-char cut — the R10 class), `judge.label` ∈ correct | partial | wrong |
-abstain, `answer.stopReason` (`max_tokens` = cut answer).
+abstain, `answer.stopReason` (`max_tokens` = cut answer); the aggregator adds
+`declaredGap` — the answer text itself says the excerpts lack the fact (a
+programmatic cross-check on the judge's wrong/abstain split).
 
 ## Mirror fidelity notes
 

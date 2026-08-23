@@ -131,6 +131,7 @@ async function runQuestion(q, goldResolved, round) {
     const results = await Promise.all(toSearch.map((rq) => searchFull(wiki, rq)));
     candMs = Date.now() - t0;
     for (const r of results) { if (r.error) candErrors.push(r.error); rewriteHits.push(...(r.titles ?? [])); }
+    rec.rewriteHitsByCandidate = results.map((r) => r.titles ?? []); // per-candidate, for merge-policy what-ifs
   }
   rec.candMs = candMs; rec.candErrors = candErrors; rec.rewriteHits = rewriteHits;
 
@@ -183,6 +184,7 @@ async function runQuestion(q, goldResolved, round) {
   try { ({ map } = await resolveTitles(wiki, union)); } catch { /* judge on unresolved titles */ }
   const res = (t) => map.get(t) ?? t;
   rec.mergedResolved = merged.map(res);
+  rec.resolvedMap = Object.fromEntries([...map].filter(([k, v]) => k !== v)); // redirects/normalizations seen (for offline what-ifs)
 
   const inList = (list) => {
     for (const g of goldResolved) {

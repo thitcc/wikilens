@@ -146,6 +146,10 @@ const answersFile = join(RUN, 'answers.jsonl');
 if (existsSync(answersFile)) {
   const a = readJsonl(answersFile);
   const judged = a.filter((r) => r.judge?.label);
+  // "Declared gap": the answer itself says the excerpts lack the fact (honest, useless) —
+  // a programmatic cross-check on the judge's wrong/abstain split.
+  const GAP_RE = /don't have|do not have|doesn't (?:specify|mention|contain|include|cover)|don't (?:specify|mention|contain|include|cover)|not (?:in|included in|mentioned in|covered by|specified in) the (?:wiki )?excerpts|excerpts (?:don't|do not|provided don't)|couldn't find|can't find|no information|isn't (?:covered|mentioned|specified)|not specified|try searching/i;
+  for (const r of judged) r.declaredGap = GAP_RE.test(r.answer?.text ?? '');
   const byLabel = {};
   for (const r of judged) byLabel[r.judge.label] = (byLabel[r.judge.label] ?? 0) + 1;
   summary.answers = {
@@ -154,6 +158,10 @@ if (existsSync(answersFile)) {
     correctUngrounded: judged.filter((r) => r.judge.label === 'correct' && r.factInContext === false).length,
     correctGrounded: judged.filter((r) => r.judge.label === 'correct' && r.factInContext === true).length,
     wrongWithFactInContext: judged.filter((r) => r.judge.label === 'wrong' && r.factInContext === true).length,
+    declaredGap: judged.filter((r) => r.declaredGap).length,
+    declaredGapByLabel: Object.fromEntries(['correct', 'partial', 'wrong', 'abstain'].map((l) => [l, judged.filter((r) => r.declaredGap && r.judge.label === l).length])),
+    wrongNoGapDeclared: judged.filter((r) => r.judge.label === 'wrong' && !r.declaredGap).length,
+    byRetrieval: Object.fromEntries(['hit', 'wrong_nonzero'].map((s) => [s, Object.fromEntries(['correct', 'partial', 'wrong', 'abstain'].map((l) => [l, judged.filter((r) => r.retrievalStatus === s && r.judge.label === l).length]))])),
     abstainWithFactInContext: judged.filter((r) => r.judge.label === 'abstain' && r.factInContext === true).length,
     factBeyondCap: judged.filter((r) => r.factBeyondCap === true).length,
     stopMaxTokens: a.filter((r) => ['max_tokens', 'length'].includes(r.answer?.stopReason)).length,
@@ -161,7 +169,7 @@ if (existsSync(answersFile)) {
     timings: { fetchMs: { median: median(a.map((r) => r.fetchMs)), p90: p90(a.map((r) => r.fetchMs)) }, answerMs: { median: median(a.map((r) => r.answer?.ms)), p90: p90(a.map((r) => r.answer?.ms)) } },
     contextChars: { median: median(a.map((r) => r.contextChars)), p90: p90(a.map((r) => r.contextChars)) },
     outputTokens: { median: median(a.map((r) => r.answer?.usage?.output_tokens ?? r.answer?.usage?.completion_tokens)) },
-    rows: a.map((r) => ({ id: r.id, game: r.game, retrieval: r.retrievalStatus, label: r.judge?.label ?? null, factInContext: r.factInContext, factBeyondCap: r.factBeyondCap, stopReason: r.answer?.stopReason, judgeNote: r.judge?.note ?? null })),
+    rows: a.map((r) => ({ id: r.id, game: r.game, retrieval: r.retrievalStatus, label: r.judge?.label ?? null, declaredGap: r.declaredGap ?? null, factInContext: r.factInContext, factBeyondCap: r.factBeyondCap, stopReason: r.answer?.stopReason, judgeNote: r.judge?.note ?? null })),
   };
 }
 
