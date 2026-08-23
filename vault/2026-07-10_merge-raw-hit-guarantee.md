@@ -3,7 +3,7 @@ title: Guarantee the raw top hit survives the merge, and skip duplicate rewrite 
 type: plan
 status: done
 created: 2026-07-10
-updated: 2026-07-15
+updated: 2026-08-23
 tags: [rag, wiki, rust]
 related: ["[[2026-07-07_llm-query-rewrite-in-retrieval]]", "[[2026-07-10_ask-debug-instrumentation]]", "[[2026-07-10_rewrite-prompt-reword]]"]
 commit: 2990aef
@@ -80,3 +80,6 @@ a whole search round-trip and a merge slot on duplicate hits.
   unfiltered outcome. 4 existing merge tests pass unchanged + 3 new ones from
   the plan (`raw_first_survives_a_rewrite_flood`,
   `consensus_on_raw_first_frees_the_reserved_slot`, `limit_one_still_keeps_raw_first`).
+- 2026-08-23 — superseded: the reserved-slot rule is replaced by genuine
+  consensus + round-robin, see [[2026-08-23_merge-genuine-consensus-round-robin]];
+  raw[0] inclusion is no longer guaranteed.

@@ -7,21 +7,22 @@
 //   node eval/merge-policies.mjs --run eval/out/<run-name> [--round 1]
 //
 // Policies (all cap at 4 titles, case-insensitive dedupe):
-//   production   commands.rs merge_hits — consensus, then rewrite hits (cap 3
-//                while raw[0] is unplaced), then raw
+//   production   commands.rs merge_hits — gc-rr since 2026-08-23: genuine
+//                consensus (a near-copy-of-raw candidate is a paraphrase echo
+//                and doesn't count), then round-robin cand1/cand2/raw
+//   old-production  the pre-gc-rr rule — consensus, then rewrite hits (cap 3
+//                while raw[0] is unplaced), then raw; kept as the legacy baseline
 //   raw-only     the raw search alone
 //   rewrite-only the candidate hits alone, in candidate order
-//   no-consensus production without the consensus step
+//   no-consensus old-production without the consensus step
 //   entity-first cand1[0] (the bare-entity candidate's top hit) gets a reserved
-//                slot, then production order
+//                slot, then old-production order
 //   interleave   round-robin raw[0], cand1[0], cand2[0], raw[1], cand1[1], …
 //   raw-first    raw[0] then round-robin over (cand1, cand2, raw[1..])
 //   entity+raw-first  cand1[0] and raw[0] reserved, then round-robin over the rest
-//   consensus-guard   production, but consensus counts only agreement with cand1
-//   gc-rr / gc-rr-2   genuine consensus (a candidate list that mostly duplicates
-//                the raw list is a paraphrase echo — its agreement doesn't
-//                count; copy threshold: ≥3 / ≥2 shared titles), then
-//                round-robin cand1, cand2, raw for the remaining seats
+//   consensus-guard   old-production, but consensus counts only agreement with cand1
+//   gc-rr / gc-rr-2   the standalone gc-rr prototype (copy threshold ≥3 / ≥2) —
+//                gc-rr must always show +0 −0 vs production (identity tripwire)
 // Records need `rewriteHitsByCandidate` (runs after 2026-08-22); older records
 // are split heuristically (one candidate → all hits; 8 hits → 4+4) and the
 // ambiguous remainder is reported, not guessed.
@@ -42,8 +43,24 @@ function roundRobin(lists, cap = SEARCH_LIMIT) {
   for (let i = 0; i < max && out.length < cap; i++) for (const l of lists) if (i < l.length) pushUnique(out, l[i], cap);
   return out;
 }
+// The pre-gc-rr merge_hits (consensus → rewrite hits with the raw[0] reserved
+// slot → raw), kept verbatim so replays can still score the legacy baseline.
+function legacyMergeHits(raw, rewrite, limit) {
+  const out = [];
+  const push = (title, cap) => pushUnique(out, title, cap);
+  for (const t of rewrite) {
+    const canonical = raw.find((r) => ciEq(r, t));
+    if (canonical !== undefined) push(canonical, limit);
+  }
+  const reserve = raw.length > 0 && !out.some((e) => ciEq(e, raw[0]));
+  const rewriteCap = reserve ? Math.max(0, limit - 1) : limit;
+  for (const t of rewrite) push(t, rewriteCap);
+  for (const t of raw) push(t, limit);
+  return out;
+}
 const POLICIES = {
-  production: ({ raw, cands }) => mergeHits(raw, cands.flat(), SEARCH_LIMIT),
+  production: ({ raw, cands }) => mergeHits(raw, cands, SEARCH_LIMIT),
+  'old-production': ({ raw, cands }) => legacyMergeHits(raw, cands.flat(), SEARCH_LIMIT),
   'raw-only': ({ raw }) => dedupe(raw),
   'rewrite-only': ({ cands }) => dedupe(cands.flat()),
   'no-consensus': ({ raw, cands }) => {
@@ -55,7 +72,7 @@ const POLICIES = {
   },
   'entity-first': ({ raw, cands }) => {
     const out = []; if (cands[0]?.[0]) pushUnique(out, cands[0][0], SEARCH_LIMIT);
-    for (const t of mergeHits(raw, cands.flat(), SEARCH_LIMIT)) pushUnique(out, t, SEARCH_LIMIT);
+    for (const t of legacyMergeHits(raw, cands.flat(), SEARCH_LIMIT)) pushUnique(out, t, SEARCH_LIMIT);
     return out;
   },
   interleave: ({ raw, cands }) => roundRobin([raw, ...cands]),

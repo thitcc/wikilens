@@ -42,36 +42,61 @@ test('search params: srwhat=text only for multi-word queries, namespace when set
   assert.equal(single.get('srlimit'), '4');
 });
 
-test('merge: consensus then rewrite then raw (commands.rs)', () => {
+test('merge: genuine consensus first, then round-robin (commands.rs)', () => {
   const raw = ['Trinity', 'Sirius & Orion', 'Mag'];
-  const rewrite = ['Sirius & Orion', 'Wisp'];
-  assert.deepEqual(mergeHits(raw, rewrite, 4), ['Sirius & Orion', 'Wisp', 'Trinity', 'Mag']);
+  const cands = [['Sirius & Orion', 'Wisp']];
+  assert.deepEqual(mergeHits(raw, cands, 4), ['Sirius & Orion', 'Trinity', 'Wisp', 'Mag']);
 });
 
 test('merge: injects the entity when raw is junk (commands.rs)', () => {
-  assert.deepEqual(mergeHits(['Version History'], ['Wine'], 4), ['Wine', 'Version History']);
+  assert.deepEqual(mergeHits(['Version History'], [['Wine']], 4), ['Wine', 'Version History']);
 });
 
 test('merge: dedupes case-insensitively, keeps canonical, truncates (commands.rs)', () => {
-  assert.deepEqual(mergeHits(['Wood', 'Stone'], ['wood', 'Clay'], 2), ['Wood', 'Clay']);
+  assert.deepEqual(mergeHits(['Wood', 'Stone'], [['wood', 'Clay']], 2), ['Wood', 'Clay']);
 });
 
 test('merge: empty inputs (commands.rs)', () => {
   assert.deepEqual(mergeHits(['A'], [], 4), ['A']);
-  assert.deepEqual(mergeHits([], ['A'], 4), ['A']);
+  assert.deepEqual(mergeHits([], [['A']], 4), ['A']);
   assert.deepEqual(mergeHits([], [], 4), []);
+  assert.deepEqual(mergeHits(['A'], [[]], 4), ['A']);
 });
 
-test('merge: raw first survives a rewrite flood (commands.rs)', () => {
-  assert.deepEqual(mergeHits(['R1', 'R2'], ['A', 'B', 'C', 'D', 'E'], 4), ['A', 'B', 'C', 'R1']);
+test('merge: round-robin shares the cap between all three lists (commands.rs)', () => {
+  const cands = [['A', 'B', 'C', 'D'], ['E', 'F', 'G', 'H']];
+  assert.deepEqual(mergeHits(['R1', 'R2'], cands, 4), ['A', 'E', 'R1', 'B']);
 });
 
-test('merge: consensus on raw first frees the reserved slot (commands.rs)', () => {
-  assert.deepEqual(mergeHits(['R1', 'R2'], ['R1', 'A', 'B', 'C'], 4), ['R1', 'A', 'B', 'C']);
+test('merge: pseudo-consensus echo does not count (commands.rs)', () => {
+  const raw = ['R1', 'R2', 'R3', 'R4'];
+  const cands = [['E1'], ['R1', 'R2', 'R3', 'R4']];
+  assert.deepEqual(mergeHits(raw, cands, 4), ['E1', 'R1', 'R2', 'R3']);
 });
 
-test('merge: limit one still keeps raw first (commands.rs)', () => {
-  assert.deepEqual(mergeHits(['R1'], ['A'], 1), ['R1']);
+test('merge: limit one seats the lead candidate (commands.rs)', () => {
+  assert.deepEqual(mergeHits(['R1'], [['A']], 1), ['A']);
+});
+
+test('merge: copy threshold is three shared titles (commands.rs)', () => {
+  const raw = ['R1', 'R2', 'R3', 'R4'];
+  assert.deepEqual(mergeHits(raw, [['X', 'R1', 'R2', 'R3']], 4), ['X', 'R1', 'R2', 'R3']);
+  assert.deepEqual(mergeHits(raw, [['X', 'R1', 'R2']], 4), ['R1', 'R2', 'X', 'R3']);
+});
+
+test('merge: raw top hit is no longer guaranteed a seat (commands.rs)', () => {
+  const raw = ['R0', 'R1', 'R2', 'R3'];
+  const cands = [['X', 'R1', 'R2'], ['Y']];
+  assert.deepEqual(mergeHits(raw, cands, 4), ['R1', 'R2', 'X', 'Y']);
+});
+
+test('merge: a third-rank candidate hit can lose its seat (commands.rs)', () => {
+  const raw = ['R1', 'R2', 'R3', 'R4'];
+  assert.deepEqual(mergeHits(raw, [['A', 'B', 'G']], 4), ['A', 'R1', 'B', 'R2']);
+});
+
+test('merge: a failed first candidate keeps the second in its turn (commands.rs)', () => {
+  assert.deepEqual(mergeHits(['R1'], [[], ['P']], 4), ['P', 'R1']);
 });
 
 test('rewrite parser: outermost object, trimmed, ci-deduped, non-strings dropped (llm.rs)', () => {

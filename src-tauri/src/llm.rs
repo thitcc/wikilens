@@ -403,7 +403,8 @@ const REWRITE_TIMEOUT: Duration = Duration::from_secs(4);
 /// the page never uses (`vault/2026-07-15_rewrite-bare-entity-candidate.md`);
 /// candidate #2 is the wiki's own name for the paraphrased thing. Typos fixed,
 /// correct proper nouns kept (a candidate repeating a right name makes its
-/// page an in-both hit, `merge_hits`' strongest signal).
+/// page an in-both hit, `merge_hits`' strongest signal — counted only while
+/// the candidate's list isn't a near-copy of the raw list).
 /// Asks for at most 2 queries because only `REWRITE_SEARCH_LIMIT` are searched.
 /// Strict JSON out; `parse_rewrite_queries` tolerates fences/prose defensively.
 const REWRITE_SYSTEM_PROMPT: &str = "You convert a player's question into search queries for a specific game's wiki. A raw keyword search of the question runs in parallel — add what it would miss. Wiki search requires every query word to appear on a page, so action or intent words (get, farm, best, strategy) can exclude the very page that answers the question. Query 1 must be the bare subject entity: the thing the question is about, named the way the wiki would title its page — a proper noun or noun phrase with no action or intent words. Fix typos; keep proper nouns that are already correct — repeating a right name helps confirm its page. Query 2 (optional): the wiki's own name for what the question describes. Reply with ONLY a compact JSON object of the form {\"queries\":[\"...\"]}: 1 or 2 short keyword queries, bare entity first. No prose, no markdown, no code fences.";
