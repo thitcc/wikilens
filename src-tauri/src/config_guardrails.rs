@@ -497,3 +497,62 @@ async fn http_error_display_never_echoes_request_headers() {
     assert!(msg.starts_with("Network request failed:"), "variant wiring: {msg}");
     assert!(!msg.contains(SENTINEL), "reqwest error echoed a request header: {msg}");
 }
+
+// ── Retrieval eval fixture (eval/questions.json) ─────────────────────────────
+//
+// The Node eval harness mirrors this crate's retrieval phase and reads its
+// wikis from a JSON fixture. Pin the fixture to the real registry so a game
+// endpoint change (api_url, page_url, namespace) can't silently leave the
+// eval measuring a wiki the app no longer talks to — and keep the fixture's
+// own vocabularies closed (`eval/README.md`).
+
+fn eval_fixture() -> Value {
+    read_json(&manifest_dir().join("..").join("eval").join("questions.json"))
+}
+
+#[test]
+fn eval_fixture_builtin_wikis_match_the_game_registry() {
+    let fixture = eval_fixture();
+    let wikis = fixture["wikis"].as_object().expect("fixture.wikis is an object");
+    assert!(!wikis.is_empty(), "fixture lists no wikis");
+    for (key, w) in wikis {
+        assert_eq!(w["id"].as_str(), Some(key.as_str()), "wiki key {key} must equal its id");
+        if w["builtin"] != Value::Bool(true) {
+            continue; // user-added wiki (wikis.json shape) — no registry twin
+        }
+        let game = crate::wiki::games::find_game(key)
+            .unwrap_or_else(|| panic!("fixture wiki {key} is flagged builtin but not registered"));
+        assert_eq!(w["api_url"].as_str(), Some(game.api_url.as_str()), "{key}: api_url drifted");
+        assert_eq!(w["page_url"].as_str(), Some(game.page_url.as_str()), "{key}: page_url drifted");
+        let ns = w["search_namespace"].as_str().map(str::to_string);
+        assert_eq!(ns, game.search_namespace, "{key}: search_namespace drifted");
+        assert_eq!(w["name"].as_str(), Some(game.name.as_str()), "{key}: name drifted");
+    }
+}
+
+#[test]
+fn eval_fixture_questions_are_well_formed() {
+    const STYLES: &[&str] = &["entity", "stat", "howto", "negation", "typo", "control", "compare"];
+    const SOURCES: &[&str] = &["history", "hand", "synthetic"];
+    let fixture = eval_fixture();
+    let wikis = fixture["wikis"].as_object().expect("fixture.wikis is an object");
+    let questions = fixture["questions"].as_array().expect("fixture.questions is an array");
+    assert!(questions.len() >= 40, "fixture shrank below the original 40 questions");
+    let mut ids = BTreeSet::new();
+    for q in questions {
+        let id = q["id"].as_str().expect("question id is a string");
+        assert!(ids.insert(id.to_string()), "duplicate question id {id}");
+        let game = q["game"].as_str().expect("question game is a string");
+        assert!(wikis.contains_key(game), "{id}: unknown wiki {game}");
+        let style = q["style"].as_str().unwrap_or("");
+        assert!(STYLES.contains(&style), "{id}: style {style:?} outside the closed vocabulary");
+        let source = q["source"].as_str().unwrap_or("");
+        assert!(SOURCES.contains(&source), "{id}: source {source:?} outside the closed vocabulary");
+        assert!(!q["question"].as_str().unwrap_or("").trim().is_empty(), "{id}: empty question");
+        let gold = q["gold"].as_array().unwrap_or_else(|| panic!("{id}: gold is an array"));
+        assert!(!gold.is_empty(), "{id}: no gold title");
+        if let Some(fact) = q.get("fact") {
+            assert!(fact["expected"].is_string() && fact["evidence"].is_string(), "{id}: fact needs expected + evidence");
+        }
+    }
+}

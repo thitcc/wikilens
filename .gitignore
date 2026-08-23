@@ -53,3 +53,7 @@ vault/.obsidian/plugins/
 # never committed.
 .impeccable/critique/
 .impeccable/live/sessions/
+
+# Retrieval eval run output (eval/run-*.mjs): raw JSONL per round, answers,
+# judge verdicts — local measurement data; summaries go in the vault.
+eval/out/
