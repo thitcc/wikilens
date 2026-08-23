@@ -394,10 +394,11 @@
       It hits the model provider (a different host), so it overlaps the wiki search rather than adding latency.</li>
     </ul>
     <p>The top rewrite candidates are searched, then <code>merge_hits</code> combines everything —
-    <strong>consensus</strong> (pages found by both) first, then the rewrite's <strong>entity</strong> hits,
-    then the raw <strong>keyword</strong> hits, deduped to top 4. This lifts the real page to the front and
-    pushes junk out (that "wine" question now returns Wine · Wine Table · Preserves Jar). Off with
-    <code>WIKILENS_QUERY_REWRITE=0</code>.</p>
+    <strong>genuine consensus</strong> first (a page found by the raw search and by a candidate — but a
+    candidate whose hit list near-copies the raw list is a paraphrase echo and does not count), then the
+    remaining seats <strong>round-robin</strong> over candidate 1, candidate 2, and the raw hits, deduped
+    to top 4 — no single list can flood the cap (that "wine" question now returns Wine · Wine Table ·
+    Preserves Jar). Off with <code>WIKILENS_QUERY_REWRITE=0</code>.</p>
     <div class="callout warn">
       <span class="tag">The rewrite needs a fast, non-reasoning model</span>
       <p>A <em>reasoning</em> model (e.g. DeepSeek v4) "thinks out loud" into a <code>reasoning_content</code>

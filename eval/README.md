@@ -21,7 +21,7 @@ round-2 results live in `vault/2026-08-22_retrieval-eval-suite.md` and
 | `run-retrieval.mjs` | The runner: N rounds, per-leg counterfactuals, zero-hit ladder, JSONL per round. |
 | `run-answer.mjs` | Answer-level eval on a retrieval run: fetch the merged pages like `fetch.rs`, call the Default-mode answer model with the production prompt, check the expected fact against the context actually sent, judge the answer. |
 | `aggregate.mjs` | Summaries: overall / per leg / per wiki / per engine / per style / per source / stability / skip-gate counterfactual / timings → `summary.json` + console digest. |
-| `merge-policies.mjs` | Replays a run's recorded searches (raw + per-candidate rewrite hits) through alternative merge rules and scores each against the same gold — a fair what-if for R7-class changes (interleave, entity-first, no-consensus…). |
+| `merge-policies.mjs` | Replays a run's recorded searches (raw + per-candidate rewrite hits) through alternative merge rules and scores each against the same gold — a fair what-if for merge-rule changes. `production` is the shipped gc-rr rule; `old-production` keeps the pre-2026-08-23 reserved-slot rule as the legacy baseline, and `gc-rr` must always show +0 −0 vs production (identity tripwire). |
 | `gen-synthetic.mjs` | Drafts synthetic candidates from sampled page content (curator reviews, then `fixture-merge.mjs`). |
 | `fixture-merge.mjs` | Merges candidate files into the fixture and keeps its one-line-per-question layout. |
 | `check-facts.mjs` | Verifies every `fact.evidence` is a literal substring of its gold page (and reports whether it sits beyond the 8000-char cap). |
