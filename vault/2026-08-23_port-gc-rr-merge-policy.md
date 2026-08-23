@@ -88,9 +88,11 @@ lives in [[2026-08-23_merge-genuine-consensus-round-robin]].
 - 2026-08-23 — offline gate passed exactly: production 87.3% / 89.8%, gc-rr
   +0/−0 on both baselines, old-production the predicted inverse id lists.
 - 2026-08-23 — done. Live 3-round validation: 88.1% (196/193/195) vs the 84.0%
-  r2 baseline; per-id 23 up / 6 down; 13 of 16 replay-predicted ids flipped
-  (E1, Ywarframe-2 stayed — candidate luck); the 3 always-hit regressions
-  (W10, O2, G11) re-checked against records: the old rule misses those rounds
-  too. Stability 174/26/21 → 186/20/15; evictions per round ~12 → 5–6.
-  Answers: 54c/22p/6w/3a vs 57/21/7/2 — correct-on-hit 70.7% vs 73.0%, within
-  judge noise; G8 wrong→correct and A4 partial→correct are retrieval-driven.
+  r2 baseline; per-id 23 up / 6 down; 14 of 16 replay-predicted ids improved
+  (E1, Ywarframe-2 stayed — candidate luck; C7 only to 1/3); the 3 always-hit
+  regressions (W10, O2, G11) re-checked against records: the old rule misses
+  those rounds too. Stability 174/26/21 → 186/20/15; evictions per round ~12 → 5–6.
+  Answers (86 judged; S6 zero-hit that round, P14 hand re-judged partial after
+  an unparseable judge reply): 54c/23p/6w/3a vs 57/21/7/2 — correct-on-hit
+  69.7% vs 73.0%, within judge noise; G8 wrong→correct and A4 partial→correct
+  are retrieval-driven.
