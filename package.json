@@ -9,9 +9,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:node": "node --test \".claude/skills/**/*.test.mjs\"",
+    "test:node": "node --test \".claude/skills/**/*.test.mjs\" \"eval/*.test.mjs\"",
     "bump": "node .claude/skills/bump/bump.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "eval:retrieval": "node eval/run-retrieval.mjs",
+    "eval:answer": "node eval/run-answer.mjs",
+    "eval:aggregate": "node eval/aggregate.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

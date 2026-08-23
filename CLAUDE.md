@@ -26,6 +26,7 @@ wikilens/
 ├── index.html, capture.html, debug.html, vite.config.ts, tsconfig*.json   # Vite/TS config; three rollup inputs (overlay + region-select + debug pages)
 ├── vault/                        # planning vault: plans, decisions, notes (see §6)
 ├── docs/                         # dev guides: smoke checklist, release runbook, explainers
+├── eval/                         # retrieval eval suite: questions.json fixture + Node mirror of the ask pipeline (lib/html .mjs, parity-tested), run-retrieval / run-answer / aggregate (see eval/README.md; output in gitignored eval/out/)
 ├── src/                          # Frontend (React + TS; *.test.* files are colocated Vitest suites)
 │   ├── main.tsx                  # React entry
 │   ├── App.tsx                   # Layout + state: header/prompt/answer, events, ask flow, capture attachment chip
@@ -95,8 +96,15 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Frontend build: `npm run build` · Type-check: `npx tsc --noEmit` ·
   Tests: `npm test` (Vitest; `npm run test:watch` while developing)
 - Tooling tests: `npm run test:node` — unit tests for the Node scripts under
-  `.claude/skills/` (vault-lint, sync-agents), on Node's built-in runner.
-  Vitest's `include` is `src/**` only, so these need their own step
+  `.claude/skills/` (vault-lint, sync-agents) and the `eval/` mirror's parity
+  tests (against the Rust test vectors + insta snapshots), on Node's built-in
+  runner. Vitest's `include` is `src/**` only, so these need their own step
+- Retrieval eval (live, paced, uses the `.env` Default-mode model):
+  `npm run eval:retrieval -- --out eval/out/<name> --rounds 3` →
+  `npm run eval:answer -- --run eval/out/<name>` →
+  `npm run eval:aggregate -- --run eval/out/<name>`; method, flags and
+  non-mirrors in `eval/README.md`. Cadence: before/after any retrieval
+  change (Tier 1–3 of the core-pipeline analysis are gated on it)
 - Rust: `cd src-tauri && cargo check` · `cargo test` ·
   lint: `cargo clippy --all-targets -- -D warnings`
 - Live wiki/API suites: `cargo test -- --ignored` (from `src-tauri/`) — the
