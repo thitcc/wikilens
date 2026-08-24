@@ -36,12 +36,13 @@ pub enum AppError {
         body: String,
     },
 
-    /// Default mode can't run: its `WIKILENS_DEFAULT_*` env contract is
-    /// incomplete or invalid. The message is complete user-facing text built
-    /// by the resolver (`target::resolve_default_targets`) — var NAMES only,
-    /// never values.
+    /// Local mode can't run: no model picked yet, or the stored server
+    /// address is corrupt. The message is complete user-facing text built by
+    /// the resolver (`target::resolve_local_targets`) and points at the fix
+    /// (footer menu / Settings). The URL may appear — user-entered config,
+    /// not a secret.
     #[error("{0}")]
-    DefaultMode(String),
+    LocalMode(String),
 
     /// Screenshot capture failed (no monitor under the cursor, the OS refused
     /// the grab on a secure/DRM surface, a too-small selection, …). The message

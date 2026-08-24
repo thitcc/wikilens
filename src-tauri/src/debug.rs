@@ -422,8 +422,7 @@ pub(crate) fn debug_enabled() -> bool {
 
 /// Opt-IN flag check: set and not a falsey word. Deliberately not
 /// `commands::stage_enabled`, whose default-when-unset is ON — an opt-in flag
-/// must default OFF. Shared with `commands::default_mode_info`
-/// (`WIKILENS_DEFAULT_VISION`), which wants these exact semantics.
+/// must default OFF.
 pub(crate) fn is_truthy(value: &str) -> bool {
     !value.is_empty() && !matches!(value.to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no")
 }

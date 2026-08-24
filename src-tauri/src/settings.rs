@@ -36,31 +36,33 @@ pub struct Hotkeys {
     pub capture: Shortcut,
 }
 
-/// Which model-source mode the player chose in the config panel — `"default"`
-/// / `"custom"` on disk and on the wire
-/// (vault/2026-07-26_default-mode-and-byo-api-keys.md). The serde form (the
-/// `set_mode` command / `SettingsInfo`) and the `as_str` file form are pinned
-/// against each other by `mode_serde_matches_the_stored_wire_strings` and
-/// `set_mode_persists_and_reloads`, so the two encodings can't drift.
+/// Which model-source mode the player chose in the config panel — `"custom"`
+/// / `"local"` on disk and on the wire
+/// (vault/2026-08-24_replace-default-mode-with-local-ai.md). The serde form
+/// (the `set_mode` command / `SettingsInfo`) and the `as_str` file form are
+/// pinned against each other by `mode_serde_matches_the_stored_wire_strings`
+/// and `set_mode_persists_and_reloads`, so the two encodings can't drift.
+/// The removed `"default"` (Built In) survives on disk in old installs;
+/// `resolve_mode` degrades it to unchosen with a removal notice.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
-    Default,
     Custom,
+    Local,
 }
 
 impl Mode {
     fn as_str(self) -> &'static str {
         match self {
-            Mode::Default => "default",
             Mode::Custom => "custom",
+            Mode::Local => "local",
         }
     }
 
     fn parse(s: &str) -> Option<Mode> {
         match s {
-            "default" => Some(Mode::Default),
             "custom" => Some(Mode::Custom),
+            "local" => Some(Mode::Local),
             _ => None,
         }
     }
@@ -226,9 +228,10 @@ struct Persisted {
 #[serde(default)]
 struct SettingsFile {
     hotkeys: HotkeyEntries,
-    /// `"default"` | `"custom"`. Typed as the raw string so an unrecognized
-    /// value falls back alone (`resolve_mode`) instead of tripping the
-    /// whole-file corrupt path; omitted entirely until the user chooses.
+    /// `"custom"` | `"local"`. Typed as the raw string so an unrecognized
+    /// value (including the removed `"default"`) falls back alone
+    /// (`resolve_mode`) instead of tripping the whole-file corrupt path;
+    /// omitted entirely until the user chooses.
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<String>,
     position: PositionEntries,
@@ -624,11 +627,21 @@ impl SettingsStore {
 
 /// The stored mode, or `None` ("never chosen") when absent or unrecognized —
 /// like `resolve_field`, the file is not rewritten; the next save repairs it.
+/// A stored `"default"` is the removed Built In mode: it degrades the same
+/// way (both consumers treat `None` as Custom), with a notice naming the
+/// removal instead of the generic invalid-value line.
 fn resolve_mode(stored: Option<String>) -> Option<Mode> {
     let s = stored?;
     let mode = Mode::parse(&s);
     if mode.is_none() {
-        eprintln!("wikilens: stored mode {s:?} is invalid; treating it as unchosen");
+        if s == "default" {
+            eprintln!(
+                "wikilens: Default mode was removed — pick Custom API or Local AI \
+                 in Settings → Answers"
+            );
+        } else {
+            eprintln!("wikilens: stored mode {s:?} is invalid; treating it as unchosen");
+        }
     }
     mode
 }
@@ -735,13 +748,16 @@ mod tests {
     /// byte for byte — `set_mode_persists_and_reloads` pins the file half.
     #[test]
     fn mode_serde_matches_the_stored_wire_strings() {
-        assert_eq!(serde_json::to_value(Mode::Default).unwrap(), "default");
         assert_eq!(serde_json::to_value(Mode::Custom).unwrap(), "custom");
+        assert_eq!(serde_json::to_value(Mode::Local).unwrap(), "local");
         assert_eq!(
-            serde_json::from_value::<Mode>("custom".into()).unwrap(),
-            Mode::Custom
+            serde_json::from_value::<Mode>("local".into()).unwrap(),
+            Mode::Local
         );
         assert!(serde_json::from_value::<Mode>("banana".into()).is_err());
+        // The removed Built In wire string must not round-trip anymore — an
+        // old frontend build sending it gets a serde error, not a ghost mode.
+        assert!(serde_json::from_value::<Mode>("default".into()).is_err());
     }
 
     #[test]
@@ -759,6 +775,27 @@ mod tests {
         assert_eq!(store.shortcut(HotkeyRole::Capture), alt_q());
         // The file is not rewritten by load — repair happens on the next save.
         assert!(fs::read_to_string(&path).unwrap().contains("banana"));
+    }
+
+    /// The migration path for pre-0.2.0 installs: a stored `"default"` (the
+    /// removed Built In mode) degrades to unchosen — treated as Custom by
+    /// both consumers — without touching the rest of the file.
+    #[test]
+    fn stored_default_mode_degrades_to_unchosen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            r#"{ "hotkeys": { "capture": "Alt+KeyQ" }, "mode": "default" }"#,
+        )
+        .unwrap();
+
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.mode(), None);
+        assert_eq!(store.shortcut(HotkeyRole::Capture), alt_q());
+        // A later mode pick repairs the file to a live wire string.
+        store.set_mode(Mode::Local).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("\"mode\": \"local\""));
     }
 
     #[test]
@@ -959,11 +996,11 @@ mod tests {
         let path = dir.path().join("settings.json");
 
         let store = SettingsStore::load(path.clone());
-        store.set_mode(Mode::Default).unwrap();
+        store.set_mode(Mode::Local).unwrap();
         store.set_hotkey(HotkeyRole::Summon, alt_q()).unwrap();
 
         let reloaded = SettingsStore::load(path.clone());
-        assert_eq!(reloaded.mode(), Some(Mode::Default));
+        assert_eq!(reloaded.mode(), Some(Mode::Local));
         assert_eq!(reloaded.shortcut(HotkeyRole::Summon), alt_q());
 
         reloaded.set_mode(Mode::Custom).unwrap();

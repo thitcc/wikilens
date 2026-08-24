@@ -310,19 +310,16 @@ fn key_status_never_contains_stored_key_values() {
 }
 
 /// `SettingsInfo` is the settings envelope crossing IPC. Pin its exact field
-/// sets (top level + the nested `defaultMode`), and that a never-chosen mode
-/// crosses as an explicit null rather than an absent field.
+/// sets (top level + the nested `localMode`), and that a never-chosen mode
+/// crosses as an explicit null rather than an absent field. The local base
+/// URL crossing both ways is deliberate — user-entered config, not key
+/// material; the key itself contributes only the `hasKey` presence bool
+/// (the KeyStatus rule).
 #[test]
 fn settings_info_serializes_exactly_the_known_fields() {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = crate::settings::SettingsStore::load(dir.path().join("settings.json"));
-    let info = crate::commands::settings_info(
-        &store,
-        crate::commands::DefaultModeInfo {
-            configured: false,
-            vision: false,
-        },
-    );
+    let info = crate::commands::settings_info(&store, false);
     let value = serde_json::to_value(&info).expect("SettingsInfo serializes");
     let top: BTreeSet<&str> = value
         .as_object()
@@ -332,17 +329,27 @@ fn settings_info_serializes_exactly_the_known_fields() {
         .collect();
     assert_eq!(
         top,
-        BTreeSet::from(["hotkeys", "mode", "defaultMode", "position"]),
+        BTreeSet::from(["hotkeys", "mode", "localMode", "position"]),
         "new SettingsInfo IPC field — review it for key material, then update this pin"
     );
     assert!(value["mode"].is_null(), "never-chosen mode must cross as null");
-    let nested: BTreeSet<&str> = value["defaultMode"]
+    let nested: BTreeSet<&str> = value["localMode"]
         .as_object()
-        .expect("defaultMode serializes to an object")
+        .expect("localMode serializes to an object")
         .keys()
         .map(String::as_str)
         .collect();
-    assert_eq!(nested, BTreeSet::from(["configured", "vision"]));
+    assert_eq!(
+        nested,
+        BTreeSet::from(["baseUrl", "vision", "hasKey"]),
+        "new LocalModeInfo IPC field — review it for key material, then update this pin"
+    );
+    // An unset store reports the effective (baked Ollama) address, so the
+    // Settings field always shows where an ask would actually go.
+    assert_eq!(
+        value["localMode"]["baseUrl"],
+        crate::target::LOCAL_DEFAULT_BASE_URL
+    );
     // `position` doubles as the `settings://position` event payload
     // (`PositionInfo`). The stored manual *coordinates* are the sensitive bit
     // — they say where on screen the player keeps the panel — and must stay

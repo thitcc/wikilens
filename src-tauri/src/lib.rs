@@ -86,22 +86,11 @@ pub fn run() {
             // read the configured combos from the managed store. Stores live
             // here (not in AppState) because the path resolver needs the handle.
             let data_dir = app.path().app_data_dir()?;
-            let settings = settings::SettingsStore::load(data_dir.join("settings.json"));
-            // First-launch mode auto-sense: a complete WIKILENS_DEFAULT_* env
-            // selects Default once; the stored choice wins forever after.
-            // Best-effort — a read-only settings file must never abort
-            // startup (both sides then degrade to Custom).
-            if settings.mode().is_none() {
-                let mode = if target::sense_default_targets().is_ok() {
-                    settings::Mode::Default
-                } else {
-                    settings::Mode::Custom
-                };
-                if let Err(e) = settings.set_mode(mode) {
-                    eprintln!("wikilens: couldn't persist the auto-sensed mode: {e}");
-                }
-            }
-            app.manage(settings);
+            // No first-launch auto-sense: an unchosen mode is simply Custom
+            // (both consumers treat `None` that way), and probing localhost
+            // for a running server would be the same silent mode flip the
+            // keys-are-not-a-mode-choice ADR bans.
+            app.manage(settings::SettingsStore::load(data_dir.join("settings.json")));
             // User-added wikis, persisted in the app-data dir.
             app.manage(UserWikiStore::load(data_dir.join("wikis.json")));
             // Panel-entered API keys, DPAPI-encrypted per Windows user
@@ -184,6 +173,10 @@ pub fn run() {
             commands::set_api_key,
             commands::remove_api_key,
             commands::set_mode,
+            commands::set_local_base_url,
+            commands::set_local_vision,
+            commands::set_local_api_key,
+            commands::remove_local_api_key,
             commands::set_panel_position,
             commands::set_position_locked,
             commands::begin_capture,
