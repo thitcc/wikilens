@@ -195,17 +195,29 @@ impl Default for PanelPosition {
     }
 }
 
+/// The Local AI mode's stored configuration.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct LocalAi {
+    /// Normalized base URL (the command layer runs
+    /// `target::normalize_local_base_url` before storing); `None` = use the
+    /// baked `target::LOCAL_DEFAULT_BASE_URL`.
+    pub base_url: Option<String>,
+    /// The manual "reads images" toggle — local `/v1/models` payloads carry
+    /// no capability metadata, so the player declares it. Default off.
+    pub vision: bool,
+}
+
 /// Everything `persist` writes, mutated as one candidate (clone-mutate-
 /// persist-commit). One write lock held across persist serializes every
 /// mutation, so two concurrent mutators can never save each other's state
 /// stale.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Persisted {
     hotkeys: Hotkeys,
-    /// `None` = the user never chose; `lib.rs` auto-senses on first launch,
-    /// so this survives as `None` only when that persist failed.
+    /// `None` = the user never chose; both consumers treat that as Custom.
     mode: Option<Mode>,
     position: PanelPosition,
+    local: LocalAi,
 }
 
 /// On-disk shape. `#[serde(default)]` at every level: an absent file, an
@@ -220,7 +232,22 @@ struct SettingsFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<String>,
     position: PositionEntries,
+    local: LocalEntries,
     /// Top-level keys a future version wrote — preserved across saves.
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(default)]
+struct LocalEntries {
+    /// Omitted while unset (the baked Ollama default applies). Kept verbatim
+    /// at load — the resolver re-validates at use, and the Settings field
+    /// shows the stored value so a hand-mangled one is visible and fixable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_url: Option<String>,
+    vision: Option<bool>,
+    /// Same forward-compat preservation, one level down.
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -267,8 +294,9 @@ struct ManualPoint {
 }
 
 type JsonMap = serde_json::Map<String, serde_json::Value>;
-/// Unknown JSON preserved per nesting level: (top-level, hotkeys, position).
-type ExtraMaps = (JsonMap, JsonMap, JsonMap);
+/// Unknown JSON preserved per nesting level:
+/// (top-level, hotkeys, position, local).
+type ExtraMaps = (JsonMap, JsonMap, JsonMap, JsonMap);
 
 pub struct SettingsStore {
     path: PathBuf,
@@ -340,8 +368,21 @@ impl SettingsStore {
                 hotkeys,
                 mode: resolve_mode(file.mode),
                 position: resolve_position(&file.position),
+                local: LocalAi {
+                    base_url: file
+                        .local
+                        .base_url
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty()),
+                    vision: file.local.vision.unwrap_or(false),
+                },
             }),
-            extra: Mutex::new((file.extra, file.hotkeys.extra, file.position.extra)),
+            extra: Mutex::new((
+                file.extra,
+                file.hotkeys.extra,
+                file.position.extra,
+                file.local.extra,
+            )),
             suspended: AtomicBool::new(false),
             load_error,
         }
@@ -357,7 +398,7 @@ impl SettingsStore {
         }
     }
 
-    /// Copy out the live pair (`Persisted` is `Copy`; the lock is held only
+    /// Copy out the live pair (`Hotkeys` is `Copy`; the lock is held only
     /// for the read — never across a plugin call).
     pub fn hotkeys(&self) -> Hotkeys {
         self.read().hotkeys
@@ -399,7 +440,7 @@ impl SettingsStore {
     pub fn set_hotkey(&self, role: HotkeyRole, new: Shortcut) -> Result<(), AppError> {
         self.writable()?;
         let mut guard = self.write();
-        let mut next = *guard;
+        let mut next = guard.clone();
         match role {
             HotkeyRole::Summon => next.hotkeys.summon = new,
             HotkeyRole::Capture => next.hotkeys.capture = new,
@@ -419,7 +460,7 @@ impl SettingsStore {
     pub fn set_mode(&self, mode: Mode) -> Result<(), AppError> {
         self.writable()?;
         let mut guard = self.write();
-        let mut next = *guard;
+        let mut next = guard.clone();
         next.mode = Some(mode);
         self.persist(&next)?;
         *guard = next;
@@ -437,7 +478,7 @@ impl SettingsStore {
     pub fn set_panel_position(&self, position: PanelPosition) -> Result<(), AppError> {
         self.writable()?;
         let mut guard = self.write();
-        let mut next = *guard;
+        let mut next = guard.clone();
         next.position = position;
         self.persist(&next)?;
         *guard = next;
@@ -457,7 +498,7 @@ impl SettingsStore {
     ) -> Result<bool, AppError> {
         self.writable()?;
         let mut guard = self.write();
-        let mut next = *guard;
+        let mut next = guard.clone();
         let Some(position) = f(next.position) else {
             return Ok(false);
         };
@@ -467,12 +508,46 @@ impl SettingsStore {
         Ok(true)
     }
 
+    /// The Local AI config (a clone; the lock is held only for the read).
+    #[allow(dead_code)] // wired up by the backend cut; the attribute dies there
+    pub fn local(&self) -> LocalAi {
+        self.read().local.clone()
+    }
+
+    /// Store the Local AI base URL — already normalized by the command layer
+    /// (`target::normalize_local_base_url`); `None` clears back to the baked
+    /// default. Persist-then-commit, the `set_mode` shape.
+    #[allow(dead_code)]
+    pub fn set_local_base_url(&self, base_url: Option<String>) -> Result<(), AppError> {
+        self.writable()?;
+        let mut guard = self.write();
+        let mut next = guard.clone();
+        next.local.base_url = base_url;
+        self.persist(&next)?;
+        *guard = next;
+        Ok(())
+    }
+
+    /// Flip the Local AI "reads images" toggle alone — single-purpose like
+    /// `set_position_locked`, so the frontend never re-sends the URL to
+    /// toggle it.
+    #[allow(dead_code)]
+    pub fn set_local_vision(&self, vision: bool) -> Result<(), AppError> {
+        self.writable()?;
+        let mut guard = self.write();
+        let mut next = guard.clone();
+        next.local.vision = vision;
+        self.persist(&next)?;
+        *guard = next;
+        Ok(())
+    }
+
     /// Flip the padlock alone — single-purpose like `set_mode`, so the
     /// frontend never re-sends a placement to toggle it.
     pub fn set_position_locked(&self, locked: bool) -> Result<(), AppError> {
         self.writable()?;
         let mut guard = self.write();
-        let mut next = *guard;
+        let mut next = guard.clone();
         next.position.locked = locked;
         self.persist(&next)?;
         *guard = next;
@@ -502,7 +577,7 @@ impl SettingsStore {
             .parent()
             .ok_or_else(|| AppError::Settings("no data directory".to_string()))?;
         fs::create_dir_all(dir).map_err(|e| settings_err(&e))?;
-        let (file_extra, hotkeys_extra, position_extra) = {
+        let (file_extra, hotkeys_extra, position_extra, local_extra) = {
             let guard = self.extra.lock().unwrap_or_else(PoisonError::into_inner);
             guard.clone()
         };
@@ -523,6 +598,11 @@ impl SettingsStore {
                 }),
                 locked: Some(next.position.locked),
                 extra: position_extra,
+            },
+            local: LocalEntries {
+                base_url: next.local.base_url.clone(),
+                vision: Some(next.local.vision),
+                extra: local_extra,
             },
             extra: file_extra,
         };
@@ -1041,7 +1121,8 @@ mod tests {
             r#"{
                 "future_panel": { "layout": "wide" },
                 "hotkeys": { "summon": "Alt+KeyQ", "push_to_talk": "F13" },
-                "position": { "anchor": "center", "future_snap": "edges" }
+                "position": { "anchor": "center", "future_snap": "edges" },
+                "local": { "vision": true, "future_warmup": "eager" }
             }"#,
         )
         .unwrap();
@@ -1061,6 +1142,52 @@ mod tests {
         assert_eq!(saved["position"]["future_snap"], "edges");
         assert_eq!(saved["position"]["anchor"], "center");
         assert_eq!(saved["position"]["locked"], true);
+        assert_eq!(saved["local"]["future_warmup"], "eager");
+        assert_eq!(saved["local"]["vision"], true);
+    }
+
+    #[test]
+    fn local_config_defaults_and_persists_and_reloads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let store = SettingsStore::load(path.clone());
+        assert_eq!(store.local(), LocalAi::default(), "unset = default+off");
+
+        store
+            .set_local_base_url(Some("http://box.lan:8080/v1".to_string()))
+            .unwrap();
+        store.set_local_vision(true).unwrap();
+        assert_eq!(
+            store.local(),
+            LocalAi {
+                base_url: Some("http://box.lan:8080/v1".to_string()),
+                vision: true,
+            }
+        );
+
+        let reloaded = SettingsStore::load(path.clone());
+        assert_eq!(reloaded.local(), store.local());
+
+        // Clearing drops the key from the file entirely (skip_serializing_if),
+        // so an unset URL and a never-set URL are the same on disk.
+        store.set_local_base_url(None).unwrap();
+        assert_eq!(store.local().base_url, None);
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("base_url"), "raw file was: {raw}");
+        assert!(raw.contains("\"vision\": true"), "raw file was: {raw}");
+    }
+
+    /// A hand-edited blank/whitespace base_url loads as "unset" instead of
+    /// producing an empty-string base the resolver would have to special-case.
+    #[test]
+    fn blank_stored_base_url_loads_as_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, r#"{ "local": { "base_url": "   " } }"#).unwrap();
+        let store = SettingsStore::load(path);
+        assert_eq!(store.local().base_url, None);
+        assert!(!store.local().vision, "vision defaults off");
     }
 
     fn alt_p() -> Shortcut {
