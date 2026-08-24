@@ -147,6 +147,139 @@ pub(crate) fn sense_default_targets() -> Result<AskTargets, String> {
     resolve_default_targets(crate::providers::env_nonempty)
 }
 
+/// The footer chip's word and the only provider label Local mode ever shows.
+/// Renaming the tier = changing these two consts (+ the frontend's synthesized
+/// "Local" provider group).
+#[allow(dead_code)] // wired up by the backend cut; the attribute dies there
+pub const LOCAL_TARGET_NAME: &str = "Local";
+#[allow(dead_code)]
+pub const LOCAL_TARGET_DEBUG_ID: &str = "local";
+
+/// The base URL Local mode uses until the player stores their own — Ollama's
+/// OpenAI-compatible root on its default port. Because this fallback always
+/// exists, Local mode is never "not set up": a wrong server surfaces as a
+/// connection error, not a setup error.
+#[allow(dead_code)]
+pub const LOCAL_DEFAULT_BASE_URL: &str = "http://localhost:11434/v1";
+
+/// Normalize a pasted Local AI base URL. `Ok(None)` means the field was
+/// cleared — store nothing and fall back to [`LOCAL_DEFAULT_BASE_URL`].
+/// Rules: trim; a scheme-less paste gets `http://` (local servers are the
+/// common case — `localhost:11434` must just work); http(s) only; trailing
+/// slashes drop; a bare origin gets `/v1` appended (every supported runtime
+/// serves the OpenAI surface there); any other path is kept verbatim so
+/// `/api/v1`-style proxies stay expressible. Query/fragment are dropped —
+/// a base URL has neither. `Err` is complete user-facing copy; unlike the
+/// key paths, echoing is a non-issue (a URL is config, not a secret), but
+/// the copy leads with the fix anyway.
+#[allow(dead_code)]
+pub fn normalize_local_base_url(input: &str) -> Result<Option<String>, String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let with_scheme = if trimmed.contains("://") {
+        trimmed.to_string()
+    } else {
+        format!("http://{trimmed}")
+    };
+    let invalid = || {
+        String::from(
+            "That doesn't look like a server address — use something like \
+             http://localhost:11434.",
+        )
+    };
+    let url = reqwest::Url::parse(&with_scheme).map_err(|_| invalid())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(invalid());
+    }
+    let host = url.host_str().ok_or_else(invalid)?;
+    let mut base = format!("{}://{host}", url.scheme());
+    if let Some(port) = url.port() {
+        base.push_str(&format!(":{port}"));
+    }
+    let path = url.path().trim_end_matches('/');
+    if path.is_empty() {
+        base.push_str("/v1");
+    } else {
+        base.push_str(path);
+    }
+    Ok(Some(base))
+}
+
+/// The base URL Local mode actually uses: the stored one, or the baked
+/// Ollama default.
+#[allow(dead_code)]
+pub fn effective_local_base_url(stored: Option<&str>) -> String {
+    stored
+        .map(str::to_string)
+        .unwrap_or_else(|| LOCAL_DEFAULT_BASE_URL.to_string())
+}
+
+/// The two endpoints derived from a Local base URL. Tolerates a trailing
+/// slash so a hand-edited settings.json can't double it.
+#[allow(dead_code)]
+pub fn local_chat_endpoint(base: &str) -> String {
+    format!("{}/chat/completions", base.trim_end_matches('/'))
+}
+#[allow(dead_code)]
+pub fn local_models_endpoint(base: &str) -> String {
+    format!("{}/models", base.trim_end_matches('/'))
+}
+
+/// Pure Local-mode resolver: the stored base URL (settings), the stored key
+/// (empty = keyless server; llm.rs then omits the auth header entirely), and
+/// the model the request picked. Always the OpenAI-compatible protocol —
+/// every supported runtime (Ollama, LM Studio, llama.cpp, vLLM) speaks it, so
+/// there is no protocol picker to misconfigure. Answer and rewrite are the
+/// same target (identical `debug_id`s keep the debug table's rewrite-row
+/// suppression working); the `:thinking` id suffix is the only conclusive
+/// reasoning signal here, with the session breaker backstopping the rest.
+/// `Err` is complete user-facing copy.
+#[allow(dead_code)]
+pub fn resolve_local_targets(
+    stored_base_url: Option<&str>,
+    api_key: String,
+    model: &str,
+) -> Result<AskTargets, String> {
+    let model = model.trim();
+    if model.is_empty() {
+        return Err(String::from(
+            "Pick a model for Local AI from the footer menu first.",
+        ));
+    }
+    // The store only holds normalized values, but settings.json is a plain
+    // file — re-validate so a hand-edited entry fails with a pointer, not a
+    // confusing connection error against a mangled URL.
+    let base = match stored_base_url {
+        Some(stored) => normalize_local_base_url(stored)
+            .map_err(|_| {
+                String::from(
+                    "The Local AI server address in Settings isn't a valid URL — \
+                     fix it in Settings → Answers.",
+                )
+            })?
+            .unwrap_or_else(|| LOCAL_DEFAULT_BASE_URL.to_string()),
+        None => LOCAL_DEFAULT_BASE_URL.to_string(),
+    };
+    let endpoint = local_chat_endpoint(&base);
+    let rewrite_skip_reasoning = crate::models::reasoning_from_id(model) == Some(true);
+    let target = || LlmTarget {
+        kind: ProviderKind::OpenAiCompatible,
+        endpoint: endpoint.clone(),
+        api_key: api_key.clone(),
+        model: model.to_string(),
+        name: LOCAL_TARGET_NAME,
+        debug_id: LOCAL_TARGET_DEBUG_ID,
+        extra_headers: &[],
+    };
+    Ok(AskTargets {
+        answer: target(),
+        rewrite: target(),
+        rewrite_skip_reasoning,
+    })
+}
+
 /// Env vars WikiLens once read and no longer does — the vendor key vars died
 /// with the DPAPI store, the rewrite pins with "the picked model drives the
 /// rewrite". One stderr line per stale var at startup (the returning-dev
@@ -342,6 +475,130 @@ mod tests {
                 "{var} is not legacy"
             );
         }
+    }
+
+    #[test]
+    fn base_url_normalization_matrix() {
+        // (input, expected stored value)
+        for (input, expected) in [
+            // Scheme-less pastes get http:// — the local common case.
+            ("localhost:11434", "http://localhost:11434/v1"),
+            ("192.168.0.5:8080", "http://192.168.0.5:8080/v1"),
+            // Bare origins gain /v1; trailing slashes drop first.
+            ("http://localhost:11434", "http://localhost:11434/v1"),
+            ("http://localhost:11434/", "http://localhost:11434/v1"),
+            // An explicit path is kept verbatim (minus trailing slashes).
+            ("http://localhost:11434/v1", "http://localhost:11434/v1"),
+            ("http://localhost:11434/v1/", "http://localhost:11434/v1"),
+            ("https://box.lan/api/v1", "https://box.lan/api/v1"),
+            // Whitespace trims; https survives.
+            ("  https://box.lan:9090  ", "https://box.lan:9090/v1"),
+        ] {
+            assert_eq!(
+                normalize_local_base_url(input).expect(input).as_deref(),
+                Some(expected),
+                "for {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_base_url_input_clears_to_the_default() {
+        for input in ["", "   "] {
+            assert_eq!(normalize_local_base_url(input), Ok(None), "for {input:?}");
+        }
+        assert_eq!(effective_local_base_url(None), LOCAL_DEFAULT_BASE_URL);
+        assert_eq!(
+            effective_local_base_url(Some("http://box.lan/v1")),
+            "http://box.lan/v1"
+        );
+    }
+
+    #[test]
+    fn garbage_base_url_is_a_friendly_error() {
+        for input in ["ftp://box.lan", "http://", "ht tp://x", "///"] {
+            let err = normalize_local_base_url(input)
+                .err()
+                .unwrap_or_else(|| panic!("{input:?} should be invalid"));
+            assert!(err.contains("http://localhost:11434"), "{err}");
+        }
+    }
+
+    #[test]
+    fn local_endpoints_derive_from_the_base() {
+        assert_eq!(
+            local_chat_endpoint("http://localhost:11434/v1"),
+            "http://localhost:11434/v1/chat/completions"
+        );
+        // Trailing-slash tolerance: a hand-edited store can't double it.
+        assert_eq!(
+            local_models_endpoint("http://box.lan/api/v1/"),
+            "http://box.lan/api/v1/models"
+        );
+    }
+
+    #[test]
+    fn local_resolver_builds_the_openai_pair() {
+        let targets = resolve_local_targets(None, String::new(), "llama3.2:3b")
+            .expect("default base resolves");
+        assert_eq!(targets.answer.kind, ProviderKind::OpenAiCompatible);
+        assert_eq!(
+            targets.answer.endpoint,
+            "http://localhost:11434/v1/chat/completions"
+        );
+        assert!(targets.answer.api_key.is_empty(), "keyless stays keyless");
+        assert_eq!(targets.answer.model, "llama3.2:3b");
+        assert_eq!(targets.answer.name, "Local");
+        assert_eq!(targets.answer.debug_id, "local");
+        assert!(targets.answer.extra_headers.is_empty());
+        // Answer == rewrite: same model, same endpoint, same debug id — the
+        // debug table's rewrite-row suppression relies on the pair matching.
+        assert_eq!(targets.rewrite.model, targets.answer.model);
+        assert_eq!(targets.rewrite.endpoint, targets.answer.endpoint);
+        assert_eq!(targets.rewrite.debug_id, targets.answer.debug_id);
+        assert!(!targets.rewrite_skip_reasoning, "plain id stays eligible");
+    }
+
+    #[test]
+    fn local_resolver_uses_the_stored_base_and_key() {
+        let targets = resolve_local_targets(
+            Some("http://box.lan:8080/api/v1"),
+            "tok-1".to_string(),
+            "qwen3:8b",
+        )
+        .expect("stored base resolves");
+        assert_eq!(
+            targets.answer.endpoint,
+            "http://box.lan:8080/api/v1/chat/completions"
+        );
+        assert_eq!(targets.answer.api_key, "tok-1");
+    }
+
+    #[test]
+    fn local_resolver_requires_a_model_pick() {
+        for model in ["", "   "] {
+            let err = resolve_local_targets(None, String::new(), model)
+                .err()
+                .expect("blank model must not resolve");
+            assert!(err.contains("footer menu"), "{err}");
+        }
+    }
+
+    #[test]
+    fn local_resolver_flags_a_thinking_rewrite() {
+        let targets = resolve_local_targets(None, String::new(), "some-model:thinking")
+            .expect("resolves");
+        assert!(targets.rewrite_skip_reasoning, ":thinking is conclusive");
+    }
+
+    /// A hand-edited settings.json can hold anything; the resolver must fail
+    /// with a Settings pointer, not hand llm.rs a mangled URL.
+    #[test]
+    fn local_resolver_rejects_a_corrupt_stored_base() {
+        let err = resolve_local_targets(Some("ftp://box.lan"), String::new(), "m")
+            .err()
+            .expect("corrupt stored base must not resolve");
+        assert!(err.contains("Settings"), "{err}");
     }
 
     #[test]
