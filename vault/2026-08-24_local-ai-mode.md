@@ -6,7 +6,7 @@ created: 2026-08-24
 updated: 2026-08-25
 tags: [llm, rust, frontend]
 related: ["[[2026-08-24_replace-default-mode-with-local-ai]]", "[[2026-07-26_default-mode-and-byo-api-keys]]", "[[2026-07-29_keys-are-not-a-mode-choice]]", "[[2026-08-04_default-mode-subscription]]"]
-commit: [d9a897f, d9bc2b6, 156130e, 6b0a65b, 029a8ad, bdcf6e1, 171cf3b, 5237c60]
+commit: [d9a897f, d9bc2b6, 156130e, 6b0a65b, 029a8ad, bdcf6e1, 171cf3b, 5237c60, 451984c, 08d0f02]
 ---
 
 # Local AI mode replaces Default mode
@@ -106,3 +106,9 @@ Ollama before merge.
   fetch core → resolver seam → settings store → backend cut → frontend cut →
   eval retarget → docs sweep), `/check` green throughout. Remaining pre-merge
   gate is human: the updated smoke §7 against a live Ollama.
+- 2026-08-25 — adversarial review (10 verified findings) landed two more
+  commits: the address/key hardening (same-URL field re-sync, one validated
+  base for ask + model list, https default for routable scheme-less pastes,
+  `http:/` typo repair, pasted-endpoint trimming, ghost-key re-paste copy,
+  single-diagnosis menu error) and the dedup refactor (one keyLine renderer,
+  one footer model surface, `fresh_settings`).
