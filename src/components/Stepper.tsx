@@ -5,7 +5,7 @@ import { cycle } from "../stepper";
 
 export interface StepperOption {
   id: string;
-  /** Visible name ("Built In", "Custom API"). */
+  /** Visible name ("Custom API", "Local AI"). */
   name: string;
   /** The option row's aria-label — sentence case and descriptive, per the
    * instrument-layer rule: accessible names never take a visual register. */

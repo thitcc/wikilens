@@ -27,6 +27,8 @@ import {
   APP_VERSION,
   KEY_STATUS,
   SETTINGS,
+  SETTINGS_LOCAL,
+  SETTINGS_LOCAL_KEYED,
   SETTINGS_POSITION_LOCKED,
   deferred,
   installBackend,
@@ -96,21 +98,9 @@ const CUSTOM_SUMMON: SettingsInfo = {
   },
 };
 
-/** SETTINGS with a configured built-in — the two-option stepper. */
-const CONFIGURED: SettingsInfo = {
-  ...SETTINGS,
-  defaultMode: { configured: true, vision: false },
-};
-
-/** CONFIGURED with Custom API stored as the mode. */
-const ON_CUSTOM: SettingsInfo = { ...CONFIGURED, mode: "custom" };
-
-/** SETTINGS with Default mode chosen and configured behind it. */
-const ON_DEFAULT: SettingsInfo = {
-  ...SETTINGS,
-  mode: "default",
-  defaultMode: { configured: true, vision: false },
-};
+/** SETTINGS with Custom API stored as the mode (the never-chosen fixture
+ * already behaves as Custom; this one pins the explicit choice). */
+const ON_CUSTOM: SettingsInfo = { ...SETTINGS, mode: "custom" };
 
 /** KEY_STATUS with the Anthropic key stored. */
 const ANTHROPIC_KEYED: KeyStatus[] = KEY_STATUS.map((s) =>
@@ -126,7 +116,7 @@ const BOTH_KEYED: KeyStatus[] = KEY_STATUS.map((s) => ({ ...s, hasKey: true }));
 const settleKeyedAnthropic = () =>
   screen.findByRole("button", { name: "Remove the Anthropic API key" });
 
-/** Settle a healthy Default-mode render: the key lines aren't rendered there
+/** Settle a Local-mode render: the registry key lines aren't rendered there
  * and nothing else visibly changes when the statuses land, so flush the fetch
  * inside act() instead of awaiting an artifact. */
 const settleStatuses = () => act(async () => {});
@@ -432,7 +422,7 @@ test("saving a key stores it and leaves the mode where it was", async () => {
   const backend = installBackend({ set_api_key: () => ANTHROPIC_KEYED });
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
-  // A configured built-in exists, so a mode flip WOULD be possible — the key
+  // Local AI is one arrow away, so a mode flip WOULD be possible — the key
   // save still commits nothing (a key is storage, not a choice).
   await renderMenu({
     settings: ON_CUSTOM,
@@ -569,42 +559,41 @@ test("removing a key fires onKeysChanged once; a failure fires none", async () =
   expect(changed).toBe(1);
 });
 
-test("picking the built-in option calls set_mode and reports the fresh settings", async () => {
+test("picking Local AI calls set_mode and reports the fresh settings", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
   await renderMenu({
-    settings: CONFIGURED,
     onSaved: (next) => saved.push(next),
   });
 
   await openAnswers(user);
   await user.click(
-    screen.getByRole("button", { name: "Answer with the built-in model" }),
+    screen.getByRole("button", { name: "Answer with a local AI server" }),
   );
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "local" }]);
   expect(saved).toHaveLength(1);
   // The pick closed the popover behind it.
   expect(
-    screen.queryByRole("button", { name: "Answer with the built-in model" }),
+    screen.queryByRole("button", { name: "Answer with a local AI server" }),
   ).toBeNull();
 });
 
-test("the stored default mode shows Built In and keeps the key lines away", async () => {
+test("the stored local mode shows Local AI and keeps the key lines away", async () => {
   installBackend();
   const user = userEvent.setup();
-  await renderMenu({ settings: ON_DEFAULT, settle: settleStatuses });
+  await renderMenu({ settings: SETTINGS_LOCAL, settle: settleStatuses });
 
-  expect(answersValue().textContent).toContain("Built In");
-  // The key lines exist exactly while Custom API answers — none here, so
-  // nothing below the stepper can contradict the value.
+  expect(answersValue().textContent).toContain("Local AI");
+  // The registry key lines exist exactly while Custom API answers — none
+  // here, so nothing below the stepper can contradict the value.
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
   await openAnswers(user);
   expect(
     screen
-      .getByRole("button", { name: "Answer with the built-in model" })
+      .getByRole("button", { name: "Answer with a local AI server" })
       .getAttribute("aria-current"),
   ).toBe("true");
   expect(
@@ -614,61 +603,34 @@ test("the stored default mode shows Built In and keeps the key lines away", asyn
   ).toBeNull();
 });
 
-test("an install with no built-in and no keys has a one-option stepper and says nothing can answer", async () => {
+test("a fresh keyless install has both modes live and the needs-a-key note on Custom", async () => {
   installBackend();
   const user = userEvent.setup();
   await renderMenu();
 
-  expect(
-    screen.getByText("Nothing can answer yet — add a key below."),
-  ).toBeTruthy();
-  // One option: the arrows have nothing to cycle to and disable; the value
-  // still opens its one-row popover.
+  // Two options always exist (Local AI is always nominally configured), so
+  // the arrows never disable.
   expect(
     screen
       .getByRole("button", { name: "Switch to the previous answer source" })
       .hasAttribute("disabled"),
-  ).toBe(true);
+  ).toBe(false);
   expect(
     screen
       .getByRole("button", { name: "Switch to the next answer source" })
       .hasAttribute("disabled"),
-  ).toBe(true);
+  ).toBe(false);
+  // The note is Custom's alone — Local AI has no key precondition.
+  expect(answersValue().textContent).toContain("Needs a key");
   await openAnswers(user);
-  expect(
-    screen.queryByRole("button", { name: "Answer with the built-in model" }),
-  ).toBeNull();
   expect(
     screen
       .getByRole("button", { name: "Answer with your own provider" })
       .getAttribute("aria-current"),
   ).toBe("true");
-});
-
-test("a stale default mode keeps Built In selected, marked not set up, keys away", async () => {
-  const stale: SettingsInfo = {
-    ...SETTINGS,
-    mode: "default",
-    defaultMode: { configured: false, vision: false },
-  };
-  installBackend();
-  await renderMenu({
-    settings: stale,
-    settle: () => screen.findByText(/Nothing can answer yet/),
-  });
-
-  const value = answersValue();
-  expect(value.textContent).toContain("Built In");
-  expect(value.textContent).toContain("Not set up here");
-  // The keys live behind Custom API now, so the guidance points there.
   expect(
-    screen.getByText(
-      "Nothing can answer yet — switch to Custom API and add a key.",
-    ),
+    screen.getByRole("button", { name: "Answer with a local AI server" }),
   ).toBeTruthy();
-  expect(
-    screen.queryByRole("button", { name: "Add a key for Anthropic" }),
-  ).toBeNull();
 });
 
 // ---- The keys follow the mode ----------------------------------------------
@@ -681,7 +643,7 @@ test("picking Custom API reveals the key lines once the fresh settings land", as
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
   const view = await renderMenu({
-    settings: ON_DEFAULT,
+    settings: SETTINGS_LOCAL,
     onSaved: (next) => saved.push(next),
     settle: settleStatuses,
   });
@@ -701,8 +663,8 @@ test("picking Custom API reveals the key lines once the fresh settings land", as
   ).toBeTruthy();
 });
 
-test("picking Built In puts the key lines away with the fresh settings", async () => {
-  const backend = installBackend({ set_mode: () => ON_DEFAULT });
+test("picking Local AI swaps the key lines for the server rows", async () => {
+  const backend = installBackend({ set_mode: () => SETTINGS_LOCAL });
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
   const view = await renderMenu({
@@ -712,25 +674,41 @@ test("picking Built In puts the key lines away with the fresh settings", async (
 
   await openAnswers(user);
   await user.click(
-    screen.getByRole("button", { name: "Answer with the built-in model" }),
+    screen.getByRole("button", { name: "Answer with a local AI server" }),
   );
 
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "local" }]);
   view.rerenderWith(saved[0]);
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
+  // The Local rows are there instead: the address field carries the
+  // effective URL, the optional key line its rail note, and the eye its off
+  // state.
+  expect(
+    (
+      screen.getByRole("textbox", {
+        name: "Local AI server address",
+      }) as HTMLInputElement
+    ).value,
+  ).toBe("http://localhost:11434/v1");
+  expect(screen.getByText("Optional")).toBeTruthy();
+  expect(
+    screen.getByRole("button", {
+      name: "Mark the local model as able to read images",
+    }),
+  ).toBeTruthy();
 });
 
 test("leaving Custom API drops an open key draft", async () => {
-  installBackend({ set_mode: () => ON_DEFAULT });
+  installBackend({ set_mode: () => SETTINGS_LOCAL });
   const user = userEvent.setup();
   await renderMenu({ settings: ON_CUSTOM });
 
   await user.type(await expandKeyForm(user, "Anthropic"), "sk-ant-test");
   await openAnswers(user);
   await user.click(
-    screen.getByRole("button", { name: "Answer with the built-in model" }),
+    screen.getByRole("button", { name: "Answer with a local AI server" }),
   );
 
   // The key-residency rule, one level out: the typed key must not outlive
@@ -745,7 +723,7 @@ test("a failed mode flip says so and moves nothing", async () => {
     throw "Couldn't save your choice: the disk is full";
   });
   const user = userEvent.setup();
-  await renderMenu({ settings: ON_DEFAULT, settle: settleStatuses });
+  await renderMenu({ settings: SETTINGS_LOCAL, settle: settleStatuses });
 
   await openAnswers(user);
   await user.click(
@@ -753,12 +731,167 @@ test("a failed mode flip says so and moves nothing", async () => {
   );
 
   expect(await screen.findByText(/the disk is full/)).toBeTruthy();
-  // The flip never happened: the value still reads Built In and the key
+  // The flip never happened: the value still reads Local AI and the key
   // lines stay away.
-  expect(answersValue().textContent).toContain("Built In");
+  expect(answersValue().textContent).toContain("Local AI");
   expect(
     screen.queryByRole("button", { name: "Add a key for Anthropic" }),
   ).toBeNull();
+});
+
+// ---- The Local AI rows -----------------------------------------------------
+// Rendered exactly while Local AI answers (the key-lines rule, one mode
+// over): the server address (Rust normalizes; empty clears to the baked
+// default), the optional key line, and the vision eye on the heading's rail.
+// Configuring never moves the mode — the keys ADR extended to an address.
+
+test("saving the server address goes through Rust and reports fresh settings", async () => {
+  const saved: SettingsInfo[] = [];
+  const savedSettings: SettingsInfo = {
+    ...SETTINGS_LOCAL,
+    localMode: { ...SETTINGS_LOCAL.localMode, baseUrl: "http://box.lan:8080/v1" },
+  };
+  const backend = installBackend({ set_local_base_url: () => savedSettings });
+  const user = userEvent.setup();
+  const view = await renderMenu({
+    settings: SETTINGS_LOCAL,
+    onSaved: (next) => saved.push(next),
+    settle: settleStatuses,
+  });
+
+  const field = screen.getByRole("textbox", {
+    name: "Local AI server address",
+  }) as HTMLInputElement;
+  await user.clear(field);
+  await user.type(field, "box.lan:8080");
+  await user.click(
+    screen.getByRole("button", { name: "Save the local AI server address" }),
+  );
+
+  // The raw paste crosses; Rust owns normalization (scheme, /v1).
+  expect(backend.callsTo("set_local_base_url")).toEqual([
+    { baseUrl: "box.lan:8080" },
+  ]);
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+  expect(saved).toHaveLength(1);
+  // The fresh settings re-sync the field to the normalized form.
+  view.rerenderWith(saved[0]);
+  expect(field.value).toBe("http://box.lan:8080/v1");
+});
+
+test("a failed address save shows the error under the row and keeps the draft", async () => {
+  const backend = installBackend();
+  backend.onCommand("set_local_base_url", () => {
+    throw "That doesn't look like a server address — use something like http://localhost:11434.";
+  });
+  const user = userEvent.setup();
+  await renderMenu({ settings: SETTINGS_LOCAL, settle: settleStatuses });
+
+  const field = screen.getByRole("textbox", {
+    name: "Local AI server address",
+  }) as HTMLInputElement;
+  await user.clear(field);
+  await user.type(field, "ftp://nope{Enter}");
+
+  expect(
+    await screen.findByText(/doesn't look like a server address/),
+  ).toBeTruthy();
+  expect(field.value).toBe("ftp://nope");
+});
+
+test("the eye flips vision through set_local_vision and never the mode", async () => {
+  const saved: SettingsInfo[] = [];
+  const visionOn: SettingsInfo = {
+    ...SETTINGS_LOCAL,
+    localMode: { ...SETTINGS_LOCAL.localMode, vision: true },
+  };
+  const backend = installBackend({ set_local_vision: () => visionOn });
+  const user = userEvent.setup();
+  const view = await renderMenu({
+    settings: SETTINGS_LOCAL,
+    onSaved: (next) => saved.push(next),
+    settle: settleStatuses,
+  });
+
+  await user.click(
+    screen.getByRole("button", {
+      name: "Mark the local model as able to read images",
+    }),
+  );
+  expect(backend.callsTo("set_local_vision")).toEqual([{ vision: true }]);
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+
+  // The fresh settings flip the glyph and the accessible name.
+  view.rerenderWith(saved[0]);
+  const on = screen.getByRole("button", {
+    name: "Mark the local model as text-only",
+  });
+  expect(on.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("the local key line saves through its own command and never the mode", async () => {
+  const saved: SettingsInfo[] = [];
+  const backend = installBackend({
+    set_local_api_key: () => SETTINGS_LOCAL_KEYED,
+  });
+  const user = userEvent.setup();
+  const view = await renderMenu({
+    settings: SETTINGS_LOCAL,
+    onSaved: (next) => saved.push(next),
+    settle: settleStatuses,
+  });
+
+  // Unkeyed wears the rail note; opening the form reveals the local help.
+  expect(screen.getByText("Optional")).toBeTruthy();
+  await user.click(
+    screen.getByRole("button", { name: "Add a key for the local AI server" }),
+  );
+  expect(screen.getByText(/Only needed if your server requires one/)).toBeTruthy();
+  await user.type(
+    screen.getByLabelText("Local AI server API key"),
+    "local-tok",
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Save the local AI server's API key" }),
+  );
+
+  expect(backend.callsTo("set_local_api_key")).toEqual([{ key: "local-tok" }]);
+  expect(backend.callsTo("set_mode")).toHaveLength(0);
+  // The keyed line is static: the Set pill marks it, the trash is the only
+  // control, and the form is gone.
+  view.rerenderWith(saved[0]);
+  expect(screen.getByText("Set")).toBeTruthy();
+  expect(screen.queryByLabelText("Local AI server API key")).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Add a key for the local AI server" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", {
+      name: "Remove the local AI server's API key",
+    }),
+  ).toBeTruthy();
+});
+
+test("the local trash removes the key through its own command", async () => {
+  const saved: SettingsInfo[] = [];
+  const backend = installBackend({
+    remove_local_api_key: () => SETTINGS_LOCAL,
+  });
+  const user = userEvent.setup();
+  const view = await renderMenu({
+    settings: SETTINGS_LOCAL_KEYED,
+    onSaved: (next) => saved.push(next),
+    settle: settleStatuses,
+  });
+
+  await user.click(
+    screen.getByRole("button", { name: "Remove the local AI server's API key" }),
+  );
+  expect(backend.callsTo("remove_local_api_key")).toHaveLength(1);
+  view.rerenderWith(saved[0]);
+  expect(
+    screen.getByRole("button", { name: "Add a key for the local AI server" }),
+  ).toBeTruthy();
 });
 
 // ---- The steppers ----------------------------------------------------------
@@ -768,27 +901,26 @@ test("a failed mode flip says so and moves nothing", async () => {
 // layers exactly: recording, popover, menu, overlay.
 
 test("the arrows cycle the mode with wrap", async () => {
-  const backend = installBackend({ set_mode: () => ON_DEFAULT });
+  const backend = installBackend({ set_mode: () => SETTINGS_LOCAL });
   const user = userEvent.setup();
   const saved: SettingsInfo[] = [];
   const view = await renderMenu({
-    settings: CONFIGURED,
     onSaved: (next) => saved.push(next),
   });
 
-  // Custom API is the LAST option — the next arrow wraps around to Built In.
+  // Custom API is the FIRST option — the next arrow steps to Local AI…
   await user.click(
     screen.getByRole("button", { name: "Switch to the next answer source" }),
   );
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "local" }]);
 
-  // From Built In the same arrow steps normally to Custom API.
+  // …and from Local AI, the last option, the same arrow wraps back around.
   view.rerenderWith(saved[0]);
   await user.click(
     screen.getByRole("button", { name: "Switch to the next answer source" }),
   );
   expect(backend.callsTo("set_mode")).toEqual([
-    { mode: "default" },
+    { mode: "local" },
     { mode: "custom" },
   ]);
 });
@@ -836,39 +968,40 @@ test("picking the current option closes the popover without IPC", async () => {
 test("ArrowDown and ArrowUp walk the popover options, clamped", async () => {
   installBackend();
   const user = userEvent.setup();
-  await renderMenu({ settings: CONFIGURED });
+  await renderMenu();
 
   await openAnswers(user);
-  const builtIn = screen.getByRole("button", {
-    name: "Answer with the built-in model",
-  });
   const custom = screen.getByRole("button", {
     name: "Answer with your own provider",
   });
-  // Focus opened on the current option — Custom API, the last row.
+  const local = screen.getByRole("button", {
+    name: "Answer with a local AI server",
+  });
+  // Focus opened on the current option — Custom API, the first row.
   expect(document.activeElement).toBe(custom);
-  await user.keyboard("{ArrowUp}");
-  expect(document.activeElement).toBe(builtIn);
-  // Clamped, not wrapped — only the horizontal cycle wraps.
-  await user.keyboard("{ArrowUp}");
-  expect(document.activeElement).toBe(builtIn);
   await user.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(local);
+  // Clamped, not wrapped — only the horizontal cycle wraps.
+  await user.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(local);
+  await user.keyboard("{ArrowUp}");
   expect(document.activeElement).toBe(custom);
 });
 
 test("ArrowLeft on the focused value cycles without opening", async () => {
   const backend = installBackend();
   const user = userEvent.setup();
-  await renderMenu({ settings: CONFIGURED });
+  await renderMenu();
 
   act(() => {
     answersValue().focus();
   });
   await user.keyboard("{ArrowLeft}");
 
-  expect(backend.callsTo("set_mode")).toEqual([{ mode: "default" }]);
+  // From the first option the backward arrow wraps to Local AI.
+  expect(backend.callsTo("set_mode")).toEqual([{ mode: "local" }]);
   expect(
-    screen.queryByRole("button", { name: "Answer with the built-in model" }),
+    screen.queryByRole("button", { name: "Answer with a local AI server" }),
   ).toBeNull();
 });
 
@@ -939,7 +1072,7 @@ test("a mode flip in flight gates the whole stepper", async () => {
   const backend = installBackend();
   backend.onCommand("set_mode", () => gate.promise);
   const user = userEvent.setup();
-  await renderMenu({ settings: CONFIGURED });
+  await renderMenu();
 
   await user.click(
     screen.getByRole("button", { name: "Switch to the next answer source" }),
@@ -953,7 +1086,7 @@ test("a mode flip in flight gates the whole stepper", async () => {
   ).toBe(true);
 
   await act(async () => {
-    gate.resolve(ON_DEFAULT);
+    gate.resolve(SETTINGS_LOCAL);
   });
   expect(answersValue().hasAttribute("disabled")).toBe(false);
 });
@@ -979,23 +1112,20 @@ test("arming a recorder closes an open option popover", async () => {
 
 // ---- What the panel says before it knows -----------------------------------
 
-test("neither key note speaks while the status fetch is still open", async () => {
+test("the needs-a-key note stays silent while the status fetch is open", async () => {
   const gate = deferred<KeyStatus[]>();
   const backend = installBackend();
   backend.onCommand("list_key_status", () => gate.promise);
   await renderMenu({ settle: () => screen.findByText("Loading…") });
 
-  // Derived from a bare some(), these read false while statuses is null — so
-  // they flashed on every open and pinned forever when the fetch failed.
-  expect(screen.queryByText(/Nothing can answer yet/)).toBeNull();
+  // Derived from a bare some(), the note read false while statuses is null —
+  // so it flashed on every open and pinned forever when the fetch failed.
   expect(answersValue().textContent).not.toContain("Needs a key");
 
   await act(async () => {
     gate.resolve(KEY_STATUS);
   });
-  expect(
-    await screen.findByText("Nothing can answer yet — add a key below."),
-  ).toBeTruthy();
+  expect(answersValue().textContent).toContain("Needs a key");
 });
 
 test("a failed key-status read says so instead of reading as no keys", async () => {
@@ -1007,8 +1137,9 @@ test("a failed key-status read says so instead of reading as no keys", async () 
   await renderMenu({ settle: () => screen.findByText(/store is unreadable/) });
 
   // The failure is panel-scope: tagged to a row, it would have gone
-  // unrendered on a Default-mode install where no key line exists.
-  expect(screen.queryByText(/Nothing can answer yet/)).toBeNull();
+  // unrendered on a Local-mode install where no key line exists. And a
+  // failed read must not masquerade as "no keys anywhere".
+  expect(answersValue().textContent).not.toContain("Needs a key");
 });
 
 test("an empty provider list says so instead of showing an empty box", async () => {

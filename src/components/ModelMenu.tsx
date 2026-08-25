@@ -65,6 +65,11 @@ export function ModelMenu({
   });
   const [lists, setLists] = useState<Record<string, ModelList>>({});
   const [loading, setLoading] = useState<Set<string>>(() => new Set());
+  /** Per-group fetch failure copy. Registry ids degrade to their curated
+   * fallback Rust-side and rarely land here; the Local group has no fallback
+   * and rejects with "is it running?" copy that must reach the player — a
+   * silent empty group would be a dead end. */
+  const [errors, setErrors] = useState<Record<string, string>>({});
   // The keyboard highlight, as a `${providerId}:${modelId}` row key. null =
   // "auto": the first match while filtering, the selected row otherwise. A
   // key survives rows appearing above it (async lists) and degrades to
@@ -124,10 +129,11 @@ export function ModelMenu({
       .then((list) => {
         setLists((prev) => ({ ...prev, [providerId]: list }));
       })
-      .catch(() => {
-        // The backend already degrades to its curated fallback on any fetch
-        // problem, so a rejection here is an IPC-level failure; show an empty
-        // offline group rather than an error state in a quick-pick menu.
+      .catch((e) => {
+        // Keep the message: for the Local group it is the whole diagnosis
+        // ("Couldn't reach your local AI server at … — is it running?").
+        // The empty fallback list keeps the group renderable either way.
+        setErrors((prev) => ({ ...prev, [providerId]: String(e) }));
         setLists((prev) => ({
           ...prev,
           [providerId]: { models: [], source: "fallback" },
@@ -315,12 +321,17 @@ export function ModelMenu({
                   ▾
                 </span>
                 {provider.name}
-                {!isCollapsed && list?.source === "fallback" && (
-                  <span className="group-note">offline list</span>
-                )}
+                {!isCollapsed &&
+                  list?.source === "fallback" &&
+                  !errors[provider.id] && (
+                    <span className="group-note">offline list</span>
+                  )}
               </button>
               {!isCollapsed && loading.has(provider.id) && (
                 <div className="menu-note">Loading…</div>
+              )}
+              {!isCollapsed && errors[provider.id] && (
+                <div className="menu-error">{errors[provider.id]}</div>
               )}
               {!isCollapsed &&
                 visible.map((model) => {

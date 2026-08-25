@@ -147,10 +147,37 @@ export function removeApiKey(providerId: string): Promise<KeyStatus[]> {
 }
 
 /** Persist the model-source choice — the footer chip and the ask path follow
- * it (Default: one env-configured target; Custom: keyed providers). Resolves
- * with the fresh settings. */
+ * it (Custom: keyed registry providers; Local: the configured local server).
+ * Resolves with the fresh settings. */
 export function setMode(mode: Mode): Promise<SettingsInfo> {
   return invoke<SettingsInfo>("set_mode", { mode });
+}
+
+/** Store the Local AI server address. Rust normalizes the paste (scheme-less
+ * hosts get `http://`, bare origins gain `/v1`); an empty string clears back
+ * to the baked Ollama default. Never flips the mode. Resolves with the fresh
+ * settings; rejects with user-readable copy on an unparseable address. */
+export function setLocalBaseUrl(baseUrl: string): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_local_base_url", { baseUrl });
+}
+
+/** Flip the Local AI "reads images" toggle — the capture chip follows it in
+ * Local mode. Resolves with the fresh settings. */
+export function setLocalVision(vision: boolean): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_local_vision", { vision });
+}
+
+/** Store (or replace) the Local AI server's optional API key — key material
+ * crosses toward Rust here and never back; the response carries only
+ * `localMode.hasKey`. Never flips the mode. */
+export function setLocalApiKey(key: string): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("set_local_api_key", { key });
+}
+
+/** Drop the Local AI server's stored key. Resolves with the fresh settings;
+ * a double-clicked trash stays quiet (absent = no-op Rust-side). */
+export function removeLocalApiKey(): Promise<SettingsInfo> {
+  return invoke<SettingsInfo>("remove_local_api_key");
 }
 
 /** Persist a Position stepper pick (an anchor, or `"manual"`) and move the

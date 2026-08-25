@@ -109,7 +109,7 @@ export const CANDIDATES: WikiCandidate[] = [
 ];
 
 /** The shipped defaults, mirroring Rust's `default_summon`/`default_capture`
- * (fresh install: no mode chosen, Default source unconfigured). */
+ * (fresh install: no mode chosen, Local at the baked Ollama default). */
 export const SETTINGS: SettingsInfo = {
   hotkeys: {
     summon: {
@@ -128,7 +128,11 @@ export const SETTINGS: SettingsInfo = {
     },
   },
   mode: null,
-  defaultMode: { configured: false, vision: false },
+  localMode: {
+    baseUrl: "http://localhost:11434/v1",
+    vision: false,
+    hasKey: false,
+  },
   position: {
     mode: "anchored",
     anchor: "top-right",
@@ -147,17 +151,31 @@ export const KEY_STATUS: KeyStatus[] = [
   { id: "deepseek", name: "DeepSeek", hasKey: false },
 ];
 
-/** Default mode chosen and configured (text-only). */
-export const SETTINGS_DEFAULT: SettingsInfo = {
+/** Local mode chosen, text-only toggle state (the default). */
+export const SETTINGS_LOCAL: SettingsInfo = {
   ...SETTINGS,
-  mode: "default",
-  defaultMode: { configured: true, vision: false },
+  mode: "local",
 };
 
-/** Default mode with an image-capable target (WIKILENS_DEFAULT_VISION). */
-export const SETTINGS_DEFAULT_VISION: SettingsInfo = {
-  ...SETTINGS_DEFAULT,
-  defaultMode: { configured: true, vision: true },
+/** Local mode with the "reads images" toggle on. */
+export const SETTINGS_LOCAL_VISION: SettingsInfo = {
+  ...SETTINGS_LOCAL,
+  localMode: { ...SETTINGS_LOCAL.localMode, vision: true },
+};
+
+/** Local mode with a stored server key (the trash-only key line state). */
+export const SETTINGS_LOCAL_KEYED: SettingsInfo = {
+  ...SETTINGS_LOCAL,
+  localMode: { ...SETTINGS_LOCAL.localMode, hasKey: true },
+};
+
+/** The local catalog the fake server lists (`list_models` for id "local"). */
+export const LOCAL_MODELS: ModelList = {
+  models: [
+    { id: "llama3.2:3b", label: "llama3.2:3b", vision: false },
+    { id: "qwen3:8b", label: "qwen3:8b", vision: false },
+  ],
+  source: "live",
 };
 
 /** The Position padlock engaged — the header must not offer a drag. */
@@ -235,6 +253,10 @@ export function installBackend(
       set_api_key: () => KEY_STATUS,
       remove_api_key: () => KEY_STATUS,
       set_mode: () => SETTINGS,
+      set_local_base_url: () => SETTINGS,
+      set_local_vision: () => SETTINGS,
+      set_local_api_key: () => SETTINGS,
+      remove_local_api_key: () => SETTINGS,
       set_panel_position: () => SETTINGS,
       set_position_locked: () => SETTINGS,
       suggest_wikis: () => CANDIDATES,
