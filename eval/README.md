@@ -19,7 +19,7 @@ round-2 results live in `vault/2026-08-22_retrieval-eval-suite.md` and
 | `lib.mjs`, `html.mjs`, `titles.mjs` | Node mirrors of the Rust pipeline: `preprocess_query`, `simplify_query`, `build_search_params`, `merge_hits`, `parse_rewrite_queries`, the rewrite request, `fetch_rendered_page` + `truncate_text`, `build_user_message` + the answer request, `html::to_plaintext`, the title index (`allpages` walk + Jaro-Winkler `best_match`). |
 | `lib.test.mjs`, `html.test.mjs`, `titles.test.mjs` | Parity tests against the crate's own test vectors and insta snapshots — run by `npm run test:node` (CI). A mirror that drifts fails the build. |
 | `run-retrieval.mjs` | The runner: N rounds, per-leg counterfactuals, zero-hit ladder, JSONL per round. |
-| `run-answer.mjs` | Answer-level eval on a retrieval run: fetch the merged pages like `fetch.rs`, call the Default-mode answer model with the production prompt, check the expected fact against the context actually sent, judge the answer. |
+| `run-answer.mjs` | Answer-level eval on a retrieval run: fetch the merged pages like `fetch.rs`, call the eval answer model with the production prompt, check the expected fact against the context actually sent, judge the answer. |
 | `aggregate.mjs` | Summaries: overall / per leg / per wiki / per engine / per style / per source / stability / skip-gate counterfactual / timings → `summary.json` + console digest. |
 | `merge-policies.mjs` | Replays a run's recorded searches (raw + per-candidate rewrite hits) through alternative merge rules and scores each against the same gold — a fair what-if for merge-rule changes. `production` is the shipped gc-rr rule; `old-production` keeps the pre-2026-08-23 reserved-slot rule as the legacy baseline, and `gc-rr` must always show +0 −0 vs production (identity tripwire). |
 | `gen-synthetic.mjs` | Drafts synthetic candidates from sampled page content (curator reviews, then `fixture-merge.mjs`). |
@@ -42,12 +42,15 @@ Then `node eval/merge-policies.mjs --run eval/out/2026-08-22` for the merge what
 Flags: `--only S1,M2`, `--game stardew`, `--source hand|history|synthetic`,
 `--no-rewrite` (raw-only pipeline), `--pace 300` (ms between requests).
 
-The LLM legs (rewrite, answer, judge, synthetic drafting) use the **Default-mode
-target from the repo `.env`** (`WIKILENS_DEFAULT_*`, the same vars the app
-reads) — the model the user actually ships. The key is used for the request
-header only; no record, log, or summary ever contains it. Cost is small
-(Haiku-class: ~200 questions × 3 rounds ≈ a few tenths of a dollar; the
-answer subset ≈ the same again).
+The LLM legs (rewrite, answer, judge, synthetic drafting) use the **eval-owned
+target from the repo `.env`** — the `WIKILENS_EVAL_*` family (`_API_PROVIDER`
+= `anthropic` | `openai`, `_API_URL`, `_API_KEY`, `_ANSWER_MODEL`, optional
+`_REWRITE_MODEL`; commented template in `.env.example`). Eval-only by design:
+the app's modes read nothing from env anymore, and a stable cloud target keeps
+measurements reproducible instead of silently following the app's Settings.
+The key is used for the request header only; no record, log, or summary ever
+contains it. Cost is small (Haiku-class: ~200 questions × 3 rounds ≈ a few
+tenths of a dollar; the answer subset ≈ the same again).
 
 Etiquette: sequential per question, ≥300 ms between requests, the raw search
 and the rewrite concurrently (different hosts, like production), ≤2 candidate

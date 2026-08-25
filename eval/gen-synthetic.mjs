@@ -8,14 +8,14 @@
 // Samples random main-namespace pages (filters: ≥ --min-bytes, no
 // disambiguation/list pages; shared-wiki guards: Grounded 2 suffix, UESP
 // namespace, Fallout 4 category), reads each page through the real reducer,
-// and asks the Default-mode model for ONE player-voice question per page in a
+// and asks the eval model for ONE player-voice question per page in a
 // rotating style. 1 in 5 gets a programmatic typo in the subject word. The
 // curator reviews the candidates (drop nonsense, fix gold alternates) before
 // merging them as `source: "synthetic"` — reports quarantine that bucket.
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { loadDefaultTarget, loadFixture, fetchRenderedPage, sleep, UA } from './lib.mjs';
+import { loadEvalTarget, loadFixture, fetchRenderedPage, sleep, UA } from './lib.mjs';
 import { toPlaintext } from './html.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => (a.startsWith('--') ? [a.slice(2), arr[i + 1] ?? true] : null)).filter(Boolean));
@@ -25,7 +25,7 @@ const MIN_BYTES = Number(args['min-bytes'] ?? 4000);
 const fixture = loadFixture();
 const wiki = fixture.wikis[args.game];
 if (!wiki) throw new Error(`unknown wiki ${args.game}`);
-const target = loadDefaultTarget().rewrite;
+const target = loadEvalTarget().rewrite;
 
 const STYLES = ['howto', 'stat', 'negation', 'compare', 'entity'];
 const PACE = 400;
