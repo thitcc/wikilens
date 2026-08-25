@@ -768,6 +768,41 @@ function App() {
   }
 
   const provider = providers.find((p) => p.id === selectedProvider);
+  // The footer's model surface — chip labels + menu wiring derived ONCE per
+  // mode, so the two mounts can never drift apart. `null` = no chip (Custom
+  // with no keyed provider; the zero-providers CTA takes the slot).
+  const modelSurface =
+    mode === "local"
+      ? {
+          // A real chip in Local mode too: local installs are multi-model
+          // and picking is the point — the menu lists the live catalog.
+          chip: {
+            providerName: LOCAL_PROVIDER.name,
+            modelLabel: localPick?.label ?? LOCAL_PROVIDER.defaultModelLabel,
+          },
+          menu: {
+            providers: [LOCAL_PROVIDER],
+            selected: {
+              providerId: LOCAL_PROVIDER.id,
+              modelId: localPick?.id ?? "",
+            },
+          },
+        }
+      : provider
+        ? {
+            chip: {
+              providerName: provider.name,
+              modelLabel: modelPick?.label ?? provider.defaultModelLabel,
+            },
+            menu: {
+              providers,
+              selected: {
+                providerId: selectedProvider,
+                modelId: modelPick?.id ?? provider.defaultModel,
+              },
+            },
+          }
+        : null;
   // Whether the active model can read images — gates capture and image submit.
   // Local mode: the Settings eye (opt-in, text-only unless flipped — a local
   // pick's own `vision` is never consulted, the catalog carries no metadata);
@@ -1255,24 +1290,10 @@ function App() {
       </div>
 
       <footer className="panel-footer">
-        {mode === "local" ? (
-          // A real chip: Local installs are multi-model and picking is the
-          // point — the menu lists the live local catalog.
+        {modelSurface ? (
           <ModelChip
-            providerName={LOCAL_PROVIDER.name}
-            modelLabel={localPick?.label ?? LOCAL_PROVIDER.defaultModelLabel}
-            theme={theme}
-            open={openMenu === "model"}
-            disabled={busy}
-            onToggle={() =>
-              openMenu === "model" ? closeMenu() : setOpenMenu("model")
-            }
-            buttonRef={chipRef}
-          />
-        ) : provider ? (
-          <ModelChip
-            providerName={provider.name}
-            modelLabel={modelPick?.label ?? provider.defaultModelLabel}
+            providerName={modelSurface.chip.providerName}
+            modelLabel={modelSurface.chip.modelLabel}
             theme={theme}
             open={openMenu === "model"}
             disabled={busy}
@@ -1325,25 +1346,10 @@ function App() {
       </footer>
 
       {/* Menus are direct children of .panel — .content's overflow would clip them. */}
-      {openMenu === "model" && mode === "custom" && provider && (
+      {openMenu === "model" && modelSurface && (
         <ModelMenu
-          providers={providers}
-          selected={{
-            providerId: selectedProvider,
-            modelId: modelPick?.id ?? provider.defaultModel,
-          }}
-          onSelect={handleModelSelect}
-          onClose={closeMenu}
-          chipRef={chipRef}
-        />
-      )}
-      {openMenu === "model" && mode === "local" && (
-        <ModelMenu
-          providers={[LOCAL_PROVIDER]}
-          selected={{
-            providerId: LOCAL_PROVIDER.id,
-            modelId: localPick?.id ?? "",
-          }}
+          providers={modelSurface.menu.providers}
+          selected={modelSurface.menu.selected}
           onSelect={handleModelSelect}
           onClose={closeMenu}
           chipRef={chipRef}

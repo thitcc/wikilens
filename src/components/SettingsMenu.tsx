@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import {
   getAppVersion,
   listKeyStatus,
@@ -73,6 +73,31 @@ const KEYS_ROW = "keys";
 const LOCAL_ADDRESS_ROW = "local-address";
 const LOCAL_KEY_ROW = "local-key";
 const LOCAL_VISION_ROW = "local-vision";
+
+/** One key line's wiring. The registry provider rows and the Local server
+ * row share the whole load-bearing anatomy — Set pill, trash, one-open-form,
+ * the removal focus hand-off, draft residency, busy gating — through the one
+ * `keyLine` renderer; a spec carries only what differs: ids, copy, and the
+ * persistence calls. `rowId` is one string with three jobs: the `openKey`
+ * id, the pending-action row tag, and the error-slot id. */
+interface KeyLineSpec {
+  rowId: string;
+  /** Visible row name. */
+  name: string;
+  addLabel: string;
+  inputLabel: string;
+  saveLabel: string;
+  removeLabel: string;
+  hasKey: boolean;
+  /** Unkeyed right-rail note ("Optional" on the Local row). */
+  note?: string;
+  /** The open form's help line. */
+  help: ReactNode;
+  /** Persist the trimmed key; throws user-readable copy. */
+  save: (key: string) => Promise<void>;
+  /** Drop the stored key; throws user-readable copy. */
+  remove: () => Promise<void>;
+}
 
 /** The option popovers' ids, for the value buttons' `aria-controls`.
  * Module constants are safe: App's `openMenu` union guarantees one mounted
@@ -339,47 +364,42 @@ export function SettingsMenu({
 
   /** Store the open field's key. That is the whole job — a key is not a choice
    * (vault/2026-07-29_keys-are-not-a-mode-choice.md), so the mode stays where
-   * the player put it and the check does not move. `onKeysChanged` is all App
-   * needs: its provider re-fetch is what makes a newly-keyed provider reachable
-   * from the footer chip. */
-  async function handleSaveKey(providerId: string) {
+   * the player put it and the check does not move. `spec.save` carries the
+   * owner's own persistence (registry: fresh statuses + `onKeysChanged`, so
+   * App's provider re-fetch makes the newly-keyed provider reachable; Local:
+   * the fresh SettingsInfo through `onSaved`). */
+  async function saveKeyFor(spec: KeyLineSpec) {
     const key = draft.trim();
     if (busyAll || key === "") return;
     setAction("save-key");
-    setActionRow(providerId);
+    setActionRow(spec.rowId);
     setSourceError(null);
     try {
-      // The fresh statuses land first, so the Custom row's "Needs a key" note
-      // clears in the same commit the key does.
-      setStatuses(await setApiKey(providerId, key));
+      await spec.save(key);
       // Success collapses the form; drop the key text from state too.
       setDraft("");
       setOpenKey(null);
-      onKeysChanged?.();
     } catch (e) {
       // The draft stays for a retry.
-      setSourceError({ rowId: providerId, message: String(e) });
+      setSourceError({ rowId: spec.rowId, message: String(e) });
     } finally {
       setAction("idle");
       setActionRow(null);
     }
   }
 
-  async function handleRemoveKey(providerId: string) {
+  async function removeKeyFor(spec: KeyLineSpec) {
     if (busyAll) return;
     setAction("remove-key");
-    setActionRow(providerId);
+    setActionRow(spec.rowId);
     setSourceError(null);
     try {
-      setStatuses(await removeApiKey(providerId));
+      await spec.remove();
       // The trash that had focus unmounts with this commit; hand focus to
       // the row's fresh "Add a key" button (removal never opens a field).
-      refocusRowRef.current = providerId;
-      // Never touches the mode or the pick — App's own fallback moves the
-      // check if the removed provider was the source.
-      onKeysChanged?.();
+      refocusRowRef.current = spec.rowId;
     } catch (e) {
-      setSourceError({ rowId: providerId, message: String(e) });
+      setSourceError({ rowId: spec.rowId, message: String(e) });
     } finally {
       setAction("idle");
       setActionRow(null);
@@ -422,47 +442,6 @@ export function SettingsMenu({
       onSaved(await setLocalVision(!settings.localMode.vision));
     } catch (e) {
       setSourceError({ rowId: LOCAL_VISION_ROW, message: String(e) });
-    } finally {
-      setAction("idle");
-      setActionRow(null);
-    }
-  }
-
-  /** Store the local server's optional key — the registry `handleSaveKey`
-   * shape, but the fresh state arrives as `SettingsInfo.localMode.hasKey`
-   * rather than a status list. */
-  async function handleSaveLocalKey() {
-    const key = draft.trim();
-    if (busyAll || key === "") return;
-    setAction("save-key");
-    setActionRow(LOCAL_KEY_ROW);
-    setSourceError(null);
-    try {
-      onSaved(await setLocalApiKey(key));
-      // Success collapses the form; drop the key text from state too.
-      setDraft("");
-      setOpenKey(null);
-    } catch (e) {
-      // The draft stays for a retry.
-      setSourceError({ rowId: LOCAL_KEY_ROW, message: String(e) });
-    } finally {
-      setAction("idle");
-      setActionRow(null);
-    }
-  }
-
-  async function handleRemoveLocalKey() {
-    if (busyAll) return;
-    setAction("remove-key");
-    setActionRow(LOCAL_KEY_ROW);
-    setSourceError(null);
-    try {
-      onSaved(await removeLocalApiKey());
-      // The trash that had focus unmounts with this commit (see
-      // refocusRowRef on the registry lines — same recipe).
-      refocusRowRef.current = LOCAL_KEY_ROW;
-    } catch (e) {
-      setSourceError({ rowId: LOCAL_KEY_ROW, message: String(e) });
     } finally {
       setAction("idle");
       setActionRow(null);
@@ -674,68 +653,77 @@ export function SettingsMenu({
     );
   }
 
-  /** The one open key field, mounted as a plain sibling of its row — no fill,
-   * no border, no shadow, so it claims no second altitude inside the card. */
-  function keyForm(status: KeyStatus) {
+  /** A registry provider's key-line wiring: fresh statuses land first so the
+   * Custom row's "Needs a key" note clears in the same commit the key does,
+   * and `onKeysChanged` re-arms App's provider fetch. Removal never touches
+   * the mode or the pick — App's own fallback moves the check if the removed
+   * provider was the source. */
+  const providerKeySpec = (status: KeyStatus): KeyLineSpec => {
     const help = keyHelp(status.id);
-    return (
-      <div className="key-form">
-        <div className="key-help">
-          {help.url ? (
-            <>
-              Create one at{" "}
-              <button
-                type="button"
-                className="source-link"
-                onClick={() => void openExternal(help.url as string)}
-              >
-                {help.host}
-              </button>{" "}
-              — it&apos;s stored on this PC and never shown again.
-            </>
-          ) : (
-            <>
-              Create one in your {status.name} account — it&apos;s stored on
-              this PC and never shown again.
-            </>
-          )}
-        </div>
-        <div className="key-field">
-          <input
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            autoFocus
-            value={draft}
-            placeholder="Paste your key…"
-            aria-label={`${status.name} API key`}
-            onChange={(e) => setDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void handleSaveKey(status.id);
-              }
-            }}
-          />
+    return {
+      rowId: status.id,
+      name: status.name,
+      addLabel: `Add a key for ${status.name}`,
+      inputLabel: `${status.name} API key`,
+      saveLabel: `Save the ${status.name} API key`,
+      removeLabel: `Remove the ${status.name} API key`,
+      hasKey: status.hasKey,
+      help: help.url ? (
+        <>
+          Create one at{" "}
           <button
             type="button"
-            className="menu-action"
-            disabled={busyAll || draft.trim() === ""}
-            aria-label={`Save the ${status.name} API key`}
-            onClick={() => void handleSaveKey(status.id)}
+            className="source-link"
+            onClick={() => void openExternal(help.url as string)}
           >
-            {action === "save-key" && actionRow === status.id
-              ? "Saving…"
-              : "Save"}
-          </button>
-        </div>
-      </div>
-    );
-  }
+            {help.host}
+          </button>{" "}
+          — it&apos;s stored on this PC and never shown again.
+        </>
+      ) : (
+        <>
+          Create one in your {status.name} account — it&apos;s stored on this
+          PC and never shown again.
+        </>
+      ),
+      save: async (key) => {
+        setStatuses(await setApiKey(status.id, key));
+        onKeysChanged?.();
+      },
+      remove: async () => {
+        setStatuses(await removeApiKey(status.id));
+        onKeysChanged?.();
+      },
+    };
+  };
 
-  // The list picks a MODE (built-in vs your own provider), and the provider
-  // lines below only set/clear a key — the provider itself is picked from the
-  // footer chip on the main panel.
+  /** The Local server's key-line wiring: same anatomy, but the fresh state
+   * arrives as `SettingsInfo.localMode.hasKey` through `onSaved`, and the
+   * unkeyed row wears the "Optional" rail note (sheet pick D1) — most local
+   * servers need no key. */
+  const localKeySpec: KeyLineSpec = {
+    rowId: LOCAL_KEY_ROW,
+    name: "API key",
+    addLabel: "Add a key for the local AI server",
+    inputLabel: "Local AI server API key",
+    saveLabel: "Save the local AI server's API key",
+    removeLabel: "Remove the local AI server's API key",
+    hasKey: settings.localMode.hasKey,
+    note: "Optional",
+    help: (
+      <>
+        Only needed if your server requires one (an <code>--api-key</code>{" "}
+        flag on LM Studio or llama.cpp) — it&apos;s stored on this PC and
+        never shown again.
+      </>
+    ),
+    save: async (key) => onSaved(await setLocalApiKey(key)),
+    remove: async () => onSaved(await removeLocalApiKey()),
+  };
+
+  // The list picks a MODE (your own provider vs a local server), and the
+  // rows below only configure it — the provider/model itself is picked from
+  // the footer chip on the main panel.
 
   /** No provider has a key. Gated on the fetch having landed: derived from a
    * bare `some()` it reads false while `statuses` is null, so the Custom
@@ -838,13 +826,16 @@ export function SettingsMenu({
     },
   ];
 
-  /* A key line: an unkeyed name opens the field; a keyed line is static —
-     the Set pill marks it and the trash is its only control. Nothing here is
-     a choice — only the Answers stepper above picks the mode. */
-  const keyLine = (status: KeyStatus) => (
-    <Fragment key={status.id}>
-      <div className={"key-line" + (status.hasKey ? " is-keyed" : "")}>
-        {status.hasKey ? (
+  /* THE key line — one implementation for the registry providers and the
+     Local server (the spec carries the ids, copy, and commands; the load-
+     bearing anatomy lives once). An unkeyed name opens the field; a keyed
+     line is static — the Set pill marks it and the trash is its only
+     control. Nothing here is a choice — only the Answers stepper above
+     picks the mode. */
+  const keyLine = (spec: KeyLineSpec) => (
+    <Fragment key={spec.rowId}>
+      <div className={"key-line" + (spec.hasKey ? " is-keyed" : "")}>
+        {spec.hasKey ? (
           // Not a button on purpose: a stored key can't be replaced in
           // place, so a click target would promise an action that doesn't
           // exist (and its aria-expanded could never flip). AT reads the
@@ -854,7 +845,7 @@ export function SettingsMenu({
           // and reads ~2px high next to the letters.
           <div className="model-row model-row--static">
             <span className="row-main">
-              <span className="row-name">{status.name}</span>
+              <span className="row-name">{spec.name}</span>
             </span>
             <span className="row-side">
               <Badge title="Key stored on this PC">Set</Badge>
@@ -863,106 +854,47 @@ export function SettingsMenu({
         ) : (
           <button
             type="button"
-            className={"model-row" + (openKey === status.id ? " is-open" : "")}
+            className={"model-row" + (openKey === spec.rowId ? " is-open" : "")}
             disabled={busyAll}
-            aria-expanded={openKey === status.id}
-            aria-label={`Add a key for ${status.name}`}
+            aria-expanded={openKey === spec.rowId}
+            aria-label={spec.addLabel}
             ref={(el) => {
               // After a removal, this button is the line's fresh identity —
               // catch focus here (see refocusRowRef).
-              if (el && refocusRowRef.current === status.id) {
+              if (el && refocusRowRef.current === spec.rowId) {
                 refocusRowRef.current = null;
                 el.focus();
               }
             }}
-            onClick={() => toggleKeyForm(status.id)}
+            onClick={() => toggleKeyForm(spec.rowId)}
           >
             <span className="row-main">
-              <span className="row-name">{status.name}</span>
+              <span className="row-name">{spec.name}</span>
             </span>
+            {spec.note && <span className="row-note">{spec.note}</span>}
           </button>
         )}
-        {status.hasKey && (
+        {spec.hasKey && (
           <button
             type="button"
             className="remove-btn remove-btn--icon"
             disabled={busyAll}
-            aria-label={`Remove the ${status.name} API key`}
+            aria-label={spec.removeLabel}
             title="Remove key"
-            onClick={() => void handleRemoveKey(status.id)}
+            onClick={() => void removeKeyFor(spec)}
           >
-            {action === "remove-key" && actionRow === status.id
+            {action === "remove-key" && actionRow === spec.rowId
               ? "…"
               : TRASH_ICON}
           </button>
         )}
       </div>
-      {openKey === status.id && keyForm(status)}
-      {sourceError?.rowId === status.id && (
-        <div className="menu-error">{sourceError.message}</div>
-      )}
-    </Fragment>
-  );
-
-  /* The Local server's key line — the registry keyLine anatomy driven by
-     `settings.localMode.hasKey` instead of a status row. Unkeyed wears the
-     muted "Optional" rail note (sheet pick D1): most local servers need no
-     key, and the note says so without opening the form. */
-  const localKeyLine = () => (
-    <Fragment>
-      <div className={"key-line" + (settings.localMode.hasKey ? " is-keyed" : "")}>
-        {settings.localMode.hasKey ? (
-          <div className="model-row model-row--static">
-            <span className="row-main">
-              <span className="row-name">API key</span>
-            </span>
-            <span className="row-side">
-              <Badge title="Key stored on this PC">Set</Badge>
-            </span>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className={"model-row" + (openKey === LOCAL_KEY_ROW ? " is-open" : "")}
-            disabled={busyAll}
-            aria-expanded={openKey === LOCAL_KEY_ROW}
-            aria-label="Add a key for the local AI server"
-            ref={(el) => {
-              if (el && refocusRowRef.current === LOCAL_KEY_ROW) {
-                refocusRowRef.current = null;
-                el.focus();
-              }
-            }}
-            onClick={() => toggleKeyForm(LOCAL_KEY_ROW)}
-          >
-            <span className="row-main">
-              <span className="row-name">API key</span>
-            </span>
-            <span className="row-note">Optional</span>
-          </button>
-        )}
-        {settings.localMode.hasKey && (
-          <button
-            type="button"
-            className="remove-btn remove-btn--icon"
-            disabled={busyAll}
-            aria-label="Remove the local AI server's API key"
-            title="Remove key"
-            onClick={() => void handleRemoveLocalKey()}
-          >
-            {action === "remove-key" && actionRow === LOCAL_KEY_ROW
-              ? "…"
-              : TRASH_ICON}
-          </button>
-        )}
-      </div>
-      {openKey === LOCAL_KEY_ROW && (
+      {/* The one open key field, mounted as a plain sibling of its row — no
+          fill, no border, no shadow, so it claims no second altitude inside
+          the card. */}
+      {openKey === spec.rowId && (
         <div className="key-form">
-          <div className="key-help">
-            Only needed if your server requires one (an{" "}
-            <code>--api-key</code> flag on LM Studio or llama.cpp) — it&apos;s
-            stored on this PC and never shown again.
-          </div>
+          <div className="key-help">{spec.help}</div>
           <div className="key-field">
             <input
               type="password"
@@ -971,12 +903,12 @@ export function SettingsMenu({
               autoFocus
               value={draft}
               placeholder="Paste your key…"
-              aria-label="Local AI server API key"
+              aria-label={spec.inputLabel}
               onChange={(e) => setDraft(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  void handleSaveLocalKey();
+                  void saveKeyFor(spec);
                 }
               }}
             />
@@ -984,17 +916,17 @@ export function SettingsMenu({
               type="button"
               className="menu-action"
               disabled={busyAll || draft.trim() === ""}
-              aria-label="Save the local AI server's API key"
-              onClick={() => void handleSaveLocalKey()}
+              aria-label={spec.saveLabel}
+              onClick={() => void saveKeyFor(spec)}
             >
-              {action === "save-key" && actionRow === LOCAL_KEY_ROW
+              {action === "save-key" && actionRow === spec.rowId
                 ? "Saving…"
                 : "Save"}
             </button>
           </div>
         </div>
       )}
-      {sourceError?.rowId === LOCAL_KEY_ROW && (
+      {sourceError?.rowId === spec.rowId && (
         <div className="menu-error">{sourceError.message}</div>
       )}
     </Fragment>
@@ -1046,7 +978,7 @@ export function SettingsMenu({
                 No providers to key on this install.
               </div>
             )}
-            {statuses?.map(keyLine)}
+            {statuses?.map((status) => keyLine(providerKeySpec(status)))}
           </div>
         )}
 
@@ -1111,7 +1043,7 @@ export function SettingsMenu({
             {sourceError?.rowId === LOCAL_ADDRESS_ROW && (
               <div className="menu-error">{sourceError.message}</div>
             )}
-            {localKeyLine()}
+            {keyLine(localKeySpec)}
           </div>
         )}
 

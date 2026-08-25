@@ -157,9 +157,17 @@ fn hotkey_info(settings: &SettingsStore, role: HotkeyRole) -> HotkeyInfo {
     }
 }
 
+/// The settings envelope every mutating command resolves with — one place
+/// spells the KeyStore-derived input, so a new command can't pass the wrong
+/// bool. The pure `settings_info` below stays separate for the guardrail
+/// pin, which feeds a literal.
+fn fresh_settings(settings: &SettingsStore, keys: &impl KeyStore) -> SettingsInfo {
+    settings_info(settings, keys.has_key(LOCAL_KEY_ID))
+}
+
 /// Pure over its inputs: the store holds the Local config, but key presence
 /// lives in the KeyStore, so it arrives as the one extra argument (commands
-/// pass `keys.has_key(LOCAL_KEY_ID)`; the guardrail pin a literal).
+/// go through `fresh_settings`; the guardrail pin passes a literal).
 pub(crate) fn settings_info(settings: &SettingsStore, local_has_key: bool) -> SettingsInfo {
     let local = settings.local();
     SettingsInfo {
@@ -520,7 +528,7 @@ pub fn get_settings(
     settings: State<'_, SettingsStore>,
     keys: State<'_, DpapiKeyStore>,
 ) -> SettingsInfo {
-    settings_info(&settings, keys.has_key(LOCAL_KEY_ID))
+    fresh_settings(&settings, &*keys)
 }
 
 /// Change one shortcut: parse, refuse the other role's combo, prove the OS
@@ -537,7 +545,7 @@ pub async fn set_hotkey(
     let new = hotkey::parse_accelerator(&accelerator).map_err(String::from)?;
     let current = settings.shortcut(role);
     if new == current {
-        return Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)));
+        return Ok(fresh_settings(&settings, &*keys));
     }
     let other = match role {
         HotkeyRole::Summon => HotkeyRole::Capture,
@@ -569,7 +577,7 @@ pub async fn set_hotkey(
         }
     }
     crate::tray::update_summon_tooltip(&app);
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Drop the OS hotkey registrations while the settings recorder is armed —
@@ -641,7 +649,7 @@ pub fn set_mode(
     mode: Mode,
 ) -> Result<SettingsInfo, String> {
     settings.set_mode(mode).map_err(String::from)?;
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Store the Local AI server address. The pasted text is normalized here
@@ -657,7 +665,7 @@ pub fn set_local_base_url(
 ) -> Result<SettingsInfo, String> {
     let normalized = target::normalize_local_base_url(&base_url)?;
     settings.set_local_base_url(normalized).map_err(String::from)?;
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Flip the Local AI "reads images" toggle — the capture chip follows it in
@@ -670,7 +678,7 @@ pub fn set_local_vision(
     vision: bool,
 ) -> Result<SettingsInfo, String> {
     settings.set_local_vision(vision).map_err(String::from)?;
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Store (or replace) the Local AI server's optional API key — the same
@@ -691,7 +699,7 @@ pub fn set_local_api_key(
         return Err("Paste an API key first.".to_string());
     }
     keys.set(LOCAL_KEY_ID, key).map_err(String::from)?;
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Drop the Local AI server's stored key. Absent = the trait's no-op leg, so
@@ -702,7 +710,7 @@ pub fn remove_local_api_key(
     keys: State<'_, DpapiKeyStore>,
 ) -> Result<SettingsInfo, String> {
     keys.remove(LOCAL_KEY_ID).map_err(String::from)?;
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// The Position stepper's wire value: one of the five anchors, or Manual.
@@ -767,7 +775,7 @@ pub fn set_panel_position(
     // invalidation).
     window::clear_drag_override(&app);
     window::apply_layout(&app);
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Flip the Position padlock. Locked = the header never drags, in every mode
@@ -781,7 +789,7 @@ pub fn set_position_locked(
     locked: bool,
 ) -> Result<SettingsInfo, String> {
     settings.set_position_locked(locked).map_err(String::from)?;
-    Ok(settings_info(&settings, keys.has_key(LOCAL_KEY_ID)))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Start a region capture: hide the panel, freeze the monitor under the cursor,
