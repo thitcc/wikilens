@@ -1,14 +1,15 @@
 ---
 title: Default mode as a subscription — provisioned per-user keys
 type: plan
-status: idea
+status: dropped
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-24
 tags: [llm, security]
 related:
   - "[[2026-07-26_default-mode-and-byo-api-keys]]"
   - "[[2026-07-26_api-key-storage-dpapi]]"
   - "[[2026-07-29_keys-are-not-a-mode-choice]]"
+  - "[[2026-08-24_replace-default-mode-with-local-ai]]"
 commit:
 ---
 
@@ -68,3 +69,6 @@ UTC rather than signup anniversaries.
 - 2026-08-04 — created as an idea after v0.1.0's first packaged install
   surfaced the "Default mode needs env" gap; explainer page written the
   same day.
+- 2026-08-24 — dropped: Default mode itself is removed in favor of a Local
+  AI mode ahead of open-sourcing ([[2026-08-24_replace-default-mode-with-local-ai]]);
+  the explainer page leaves the repo in the same change.

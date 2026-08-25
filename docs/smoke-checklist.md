@@ -14,8 +14,9 @@ Copy the boxes into the release notes/log and tick them as you go.
   needed for item 9).
 - At least one provider keyed from **Settings → Answers**; for item 6
   you need both a vision-capable and a text-only model reachable from the model
-  menu. Item 7 additionally needs a working `WIKILENS_DEFAULT_*` set (see
-  README's "Default mode" section).
+  menu. Item 7 additionally needs a running **Ollama** (or another local
+  OpenAI-compatible server) with at least one model pulled (see README's
+  "Local AI mode" section).
 - If available, a second monitor at **>100% DPI scaling** for item 3 — if not,
   note "single monitor" in the run log.
 - Items 1–10 run on `npm run tauri dev` (items 8 and 10 need
@@ -167,18 +168,17 @@ Copy the boxes into the release notes/log and tick them as you go.
       history** empties the menu and the chip disappears — the answer on the
       panel stays.
 
-### 7. Answers: the stepper and the key lines
+### 7. Answers: the stepper, the key lines, and Local AI
 
-- [ ] Settings → **Answers** is a game-style stepper: **◁ Value ▷**. With both
-      options available, each arrow flips between **Built In** and **Custom
-      API** — and keeps going past the end (the cycle wraps; no dead arrow at
-      either edge). Clicking the center value opens a floating popover listing
-      the options with the check on the current one; picking one closes it,
-      and it arrives with a small drop (flip near the card's bottom edge rises
-      instead). Esc closes the popover first, the menu second, the overlay
-      third.
+- [ ] Settings → **Answers** is a game-style stepper: **◁ Value ▷**. Each
+      arrow flips between **Custom API** and **Local AI** — and keeps going
+      past the end (the cycle wraps; no dead arrow at either edge). Clicking
+      the center value opens a floating popover listing the options with the
+      check on the current one; picking one closes it, and it arrives with a
+      small drop (flip near the card's bottom edge rises instead). Esc closes
+      the popover first, the menu second, the overlay third.
 - [ ] The key lines exist exactly while **Custom API** answers: cycle to
-      **Built In** and they leave, cycle back and they return. In Custom API,
+      **Local AI** and they leave, cycle back and they return. In Custom API,
       clicking an **unkeyed** provider line opens its key field in place (only
       one field open at a time; clicking another line collapses it and drops
       what you typed). **Save** collapses the field and moves **nothing** —
@@ -191,23 +191,33 @@ Copy the boxes into the release notes/log and tick them as you go.
       field auto-opens) and keyboard focus lands on that line, not the panel.
 - [ ] Click the trash and watch the button, not the row: it holds its box while
       the "…" shows. (jsdom can't see a collapsed line box; this needs eyes.)
-- [ ] Delete `settings.json` from the app-data dir, set the
-      `WIKILENS_DEFAULT_*` block, relaunch: first launch lands in **Default**
-      mode (footer reads just "Default", no provider or model anywhere, and the
-      Answers value reads **Built In**). Repeat without the vars: first launch
-      lands on **Custom API** — a one-option stepper: both arrows disabled,
-      the value still opening its one-row popover, no Built In anywhere.
-- [ ] In Default mode an ask succeeds end-to-end with no vendor name visible
-      anywhere in the UI; cycling to **Custom API** restores the
-      provider/model chip and menu, and cycling back to **Built In** goes
-      back.
-- [ ] The capture chip follows `WIKILENS_DEFAULT_VISION`: disabled with the
-      "can't read images" copy when unset, armed when truthy.
+- [ ] With Ollama running, cycle to **Local AI**: the section shows the
+      server address (prefilled `http://localhost:11434/v1`), the optional
+      **API key** line ("Optional" on its rail), and the eye on the **Local
+      AI** heading. The footer chip reads **Local · Choose a model**; its menu
+      lists the models `ollama list` shows, and picking one relabels the chip.
+      An ask streams end-to-end from the local model (debug table: `local /
+      <model>`; the wire never leaves the machine).
+- [ ] Saving a scheme-less address (`localhost:11434`) round-trips to
+      `http://localhost:11434/v1` in the field; clearing the field and saving
+      restores the default. Stop the Ollama service and open the model menu:
+      the group shows "Couldn't reach your local AI server at … — is it
+      running?" instead of a silent empty list (no "offline list" badge).
+- [ ] The capture chip follows the Local AI eye: disabled with the "can't
+      read images" copy while the eye is off (the copy names the eye, not the
+      Image badge), armed after flipping it on — and the flip survives a
+      restart.
+- [ ] Cycling back to **Custom API** restores the provider/model chip with
+      the provider you had picked before (a Local pick never clobbers it),
+      and the Local pick is still there when you return.
 - [ ] The trash on the answering provider's key line (one click, no
       confirmation) drops it from the model menu; with zero keys the footer
       shows **Set up a model** and it opens Settings.
 - [ ] Paste a garbage key and ask: the vendor's 401 shows verbatim in the
       error box, and the model menu degrades to the "offline list" note.
+- [ ] Upgrade path: a `settings.json` still holding `"mode": "default"`
+      (the removed Built In) relaunches into Custom API with a one-line
+      stderr notice naming the removal — nothing else in the file is touched.
 
 ### 8. Game detection (the header suggestion chip)
 
@@ -278,9 +288,9 @@ failure that costs anything.
 - [ ] With no `.env` present, a Custom-mode ask succeeds from the
       DPAPI-stored key alone (keys never ride env; the store lives in
       app-data).
-- [ ] With the `WIKILENS_DEFAULT_*` block set as **OS environment variables**
-      (`.env` is dev-only; a packaged app's cwd is unpredictable), Default
-      mode works in the installed app.
+- [ ] With Ollama running, a **Local AI** ask succeeds in the installed app
+      (the mode's whole config lives in `settings.json` + the DPAPI store —
+      nothing rides env).
 - [ ] Source links still open in the browser (the opener URL scope is present
       at runtime — this fails as `ForbiddenUrl`, not at compile time).
 - [ ] Ask a question, quit via the tray, relaunch: the History chip is there

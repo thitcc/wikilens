@@ -412,12 +412,14 @@ field with a border needs no second voice.
   (Answers, Theme). The arrows cycle the value and **wrap** at the ends (a
   stepper has no scroll viewport, so the menus' no-wrap rationale doesn't
   apply — `cycle` in `stepper.ts`); the centered value opens a floating
-  option popover. With one option (an install with no built-in) the arrows
-  disable and the value still opens its one-row popover.
+  option popover. With one option the arrows disable and the value still
+  opens its one-row popover (no shipped stepper is one-option today —
+  Answers always lists Custom API and Local AI).
 - **Rail:** the settings control rows — both steppers, the shortcut recorder
-  rows, and the Custom API key lines — sit on one **90% centered rail**
-  inside the card, so the controls read as a column set into the plate;
-  headings, notes, and error boxes keep the card's full measure.
+  rows, the Custom API key lines, and the Local AI server rows — sit on one
+  **90% centered rail** inside the card, so the controls read as a column set
+  into the plate; headings, notes, and error boxes keep the card's full
+  measure.
 - **Frame:** the stepper row wears a **1px hairline frame** at control radius
   (`--border` — the framed-control voice, the input frame's family, not a
   button border). Deliberately steppers only: the shortcut rows stay bare, so
