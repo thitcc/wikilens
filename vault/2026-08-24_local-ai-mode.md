@@ -1,12 +1,12 @@
 ---
 title: Local AI mode replaces Default mode
 type: plan
-status: active
+status: done
 created: 2026-08-24
-updated: 2026-08-24
+updated: 2026-08-25
 tags: [llm, rust, frontend]
 related: ["[[2026-08-24_replace-default-mode-with-local-ai]]", "[[2026-07-26_default-mode-and-byo-api-keys]]", "[[2026-07-29_keys-are-not-a-mode-choice]]", "[[2026-08-04_default-mode-subscription]]"]
-commit:
+commit: [d9a897f, d9bc2b6, 156130e, 6b0a65b, 029a8ad, bdcf6e1, 171cf3b, 5237c60]
 ---
 
 # Local AI mode replaces Default mode
@@ -102,3 +102,7 @@ Ollama before merge.
   Save button on the address row (the shipped add-game anatomy; Enter-only
   declined as a hidden commit), **D1** "API key" + muted "Optional" rail note
   (label-embedded "(optional)" declined).
+- 2026-08-25 — done: eight commits on `feat/local-ai-mode` (keyless auth →
+  fetch core → resolver seam → settings store → backend cut → frontend cut →
+  eval retarget → docs sweep), `/check` green throughout. Remaining pre-merge
+  gate is human: the updated smoke §7 against a live Ollama.

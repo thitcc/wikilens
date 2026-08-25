@@ -386,7 +386,10 @@ export function ModelMenu({
               {!isCollapsed &&
                 list &&
                 visible.length === 0 &&
-                !loading.has(provider.id) && (
+                !loading.has(provider.id) &&
+                // An errored group already explains itself — "No models"
+                // under "is it running?" would diagnose two things at once.
+                !errors[provider.id] && (
                   <div className="menu-note">
                     {query ? "No matches" : "No models"}
                   </div>

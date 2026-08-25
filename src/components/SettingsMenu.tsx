@@ -395,7 +395,13 @@ export function SettingsMenu({
     setActionRow(LOCAL_ADDRESS_ROW);
     setSourceError(null);
     try {
-      onSaved(await setLocalBaseUrl(addressDraft));
+      const next = await setLocalBaseUrl(addressDraft);
+      // Re-sync here, not only via the settings effect: when the normalized
+      // result EQUALS the previous effective URL (clearing back to the
+      // default, re-typing the default scheme-less), the prop never changes
+      // and the effect never fires — the field would keep the raw paste.
+      setAddressDraft(next.localMode.baseUrl);
+      onSaved(next);
     } catch (e) {
       // The draft stays for a fix-up.
       setSourceError({ rowId: LOCAL_ADDRESS_ROW, message: String(e) });

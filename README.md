@@ -72,8 +72,11 @@ OpenAI-compatible server at the address on the row beneath (default
 models your server actually has loaded — pick one there like any provider.
 
 - **Server address**: paste and **Save**. Scheme-less pastes work
-  (`localhost:11434` becomes `http://localhost:11434/v1`); a bare origin
-  gains `/v1`; a custom path (a `/api/v1` proxy) is kept as typed. Clearing
+  (`localhost:11434` becomes `http://localhost:11434/v1`; a routable
+  hostname defaults to `https://` instead — type `http://` explicitly for a
+  LAN proxy); a bare origin gains `/v1`; a pasted full endpoint
+  (`…/v1/chat/completions`, the URL LM Studio hands out) is trimmed back to
+  its base; any other path (a `/api/v1` proxy) is kept as typed. Clearing
   the field restores the default. This covers **Ollama**, **LM Studio**
   (`http://localhost:1234/v1`), **llama.cpp server**, and **vLLM**.
 - **API key (optional)**: only for servers started with one (LM Studio /

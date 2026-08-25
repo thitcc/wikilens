@@ -1,12 +1,12 @@
 ---
 title: Replace Default mode with a Local AI mode
 type: decision
-status: active
+status: done
 created: 2026-08-24
-updated: 2026-08-24
+updated: 2026-08-25
 tags: [llm, rust, frontend]
 related: ["[[2026-08-24_local-ai-mode]]", "[[2026-07-26_default-mode-and-byo-api-keys]]", "[[2026-07-29_keys-are-not-a-mode-choice]]", "[[2026-08-04_default-mode-subscription]]"]
-commit:
+commit: [029a8ad, bdcf6e1]
 ---
 
 # Replace Default mode with a Local AI mode

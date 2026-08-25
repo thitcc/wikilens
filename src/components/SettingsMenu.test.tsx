@@ -779,6 +779,25 @@ test("saving the server address goes through Rust and reports fresh settings", a
   expect(field.value).toBe("http://box.lan:8080/v1");
 });
 
+test("the field re-syncs even when normalization lands on the same effective URL", async () => {
+  // The most common flow: retype the default scheme-less. Rust normalizes to
+  // exactly the previous effective baseUrl, so the settings prop never
+  // changes and the sync effect never fires — the success path itself must
+  // re-seed the field.
+  installBackend({ set_local_base_url: () => SETTINGS_LOCAL });
+  const user = userEvent.setup();
+  await renderMenu({ settings: SETTINGS_LOCAL, settle: settleStatuses });
+
+  const field = screen.getByRole("textbox", {
+    name: "Local AI server address",
+  }) as HTMLInputElement;
+  await user.clear(field);
+  await user.type(field, "localhost:11434{Enter}");
+  await act(async () => {});
+
+  expect(field.value).toBe("http://localhost:11434/v1");
+});
+
 test("a failed address save shows the error under the row and keeps the draft", async () => {
   const backend = installBackend();
   backend.onCommand("set_local_base_url", () => {

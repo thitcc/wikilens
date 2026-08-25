@@ -66,31 +66,69 @@ pub const LOCAL_TARGET_DEBUG_ID: &str = "local";
 /// connection error, not a setup error.
 pub const LOCAL_DEFAULT_BASE_URL: &str = "http://localhost:11434/v1";
 
+/// The scheme a scheme-less paste defaults to. `http` only for hosts that
+/// plainly live on this machine or LAN — loopback, private/link-local IPs,
+/// dotless names, the household pseudo-TLDs; anything routable defaults to
+/// `https`, because a stored key must never silently ride plaintext to a
+/// public host (typing `http://` explicitly stays allowed — LAN reverse
+/// proxies are a supported case, same stance as the wiki fetch policy).
+fn scheme_less_default(host: &str) -> &'static str {
+    use std::net::IpAddr;
+    let name = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = name.parse::<IpAddr>() {
+        let local = match ip {
+            IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
+            IpAddr::V6(v6) => {
+                v6.is_loopback()
+                    // fc00::/7 (unique-local) and fe80::/10 (link-local).
+                    || (v6.segments()[0] & 0xfe00) == 0xfc00
+                    || (v6.segments()[0] & 0xffc0) == 0xfe80
+            }
+        };
+        return if local { "http" } else { "https" };
+    }
+    let name = name.trim_end_matches('.').to_ascii_lowercase();
+    let household = [".local", ".lan", ".home", ".internal", ".localdomain"];
+    if !name.contains('.') || household.iter().any(|tld| name.ends_with(tld)) {
+        "http"
+    } else {
+        "https"
+    }
+}
+
 /// Normalize a pasted Local AI base URL. `Ok(None)` means the field was
 /// cleared — store nothing and fall back to [`LOCAL_DEFAULT_BASE_URL`].
-/// Rules: trim; a scheme-less paste gets `http://` (local servers are the
-/// common case — `localhost:11434` must just work); http(s) only; trailing
-/// slashes drop; a bare origin gets `/v1` appended (every supported runtime
-/// serves the OpenAI surface there); any other path is kept verbatim so
-/// `/api/v1`-style proxies stay expressible. Query/fragment are dropped —
-/// a base URL has neither. `Err` is complete user-facing copy; unlike the
-/// key paths, echoing is a non-issue (a URL is config, not a secret), but
-/// the copy leads with the fix anyway.
+/// Rules: trim; the `http:/host` single-slash typo is repaired (Url::parse
+/// would read the scheme word as the HOST); a scheme-less paste gets
+/// `http://` for a local-looking host (`localhost:11434` must just work) and
+/// `https://` for a routable one (see [`scheme_less_default`]); http(s)
+/// only; trailing slashes drop; a pasted full endpoint (`…/chat/completions`
+/// or `…/models` — the URLs LM Studio's UI hands out) is trimmed back to its
+/// base; a bare origin gains `/v1` (every supported runtime serves the
+/// OpenAI surface there); any other path is kept verbatim so `/api/v1`-style
+/// proxies stay expressible. Query/fragment are dropped — a base URL has
+/// neither. `Err` is complete user-facing copy; unlike the key paths,
+/// echoing is a non-issue (a URL is config, not a secret), but the copy
+/// leads with the fix anyway.
 pub fn normalize_local_base_url(input: &str) -> Result<Option<String>, String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return Ok(None);
     }
-    let with_scheme = if trimmed.contains("://") {
-        trimmed.to_string()
-    } else {
-        format!("http://{trimmed}")
-    };
     let invalid = || {
         String::from(
             "That doesn't look like a server address — use something like \
              http://localhost:11434.",
         )
+    };
+    let repaired = repair_single_slash_scheme(trimmed);
+    let with_scheme = if repaired.contains("://") {
+        repaired.to_string()
+    } else {
+        // Probe-parse once to learn the host, then pick the scheme by it.
+        let probe = reqwest::Url::parse(&format!("http://{repaired}")).map_err(|_| invalid())?;
+        let host = probe.host_str().ok_or_else(invalid)?;
+        format!("{}://{repaired}", scheme_less_default(host))
     };
     let url = reqwest::Url::parse(&with_scheme).map_err(|_| invalid())?;
     if !matches!(url.scheme(), "http" | "https") {
@@ -102,6 +140,8 @@ pub fn normalize_local_base_url(input: &str) -> Result<Option<String>, String> {
         base.push_str(&format!(":{port}"));
     }
     let path = url.path().trim_end_matches('/');
+    let path = path.strip_suffix("/chat/completions").unwrap_or(path);
+    let path = path.strip_suffix("/models").unwrap_or(path);
     if path.is_empty() {
         base.push_str("/v1");
     } else {
@@ -110,12 +150,47 @@ pub fn normalize_local_base_url(input: &str) -> Result<Option<String>, String> {
     Ok(Some(base))
 }
 
+/// `"http:/host"` → `"http://host"` (and the https twin). Only the exact
+/// one-slash form is touched; everything else passes through for the parser
+/// to judge.
+fn repair_single_slash_scheme(input: &str) -> String {
+    for scheme in ["http", "https"] {
+        let prefix = format!("{scheme}:/");
+        if let Some(rest) = input.strip_prefix(&prefix) {
+            if !rest.starts_with('/') {
+                return format!("{scheme}://{rest}");
+            }
+        }
+    }
+    input.to_string()
+}
+
 /// The base URL Local mode actually uses: the stored one, or the baked
-/// Ollama default.
+/// Ollama default. Display-oriented (the Settings field shows it verbatim,
+/// mangled or not, so a hand-edited entry is visible and fixable) — the
+/// request paths go through [`resolved_local_base`], which validates.
 pub fn effective_local_base_url(stored: Option<&str>) -> String {
     stored
         .map(str::to_string)
         .unwrap_or_else(|| LOCAL_DEFAULT_BASE_URL.to_string())
+}
+
+/// The validated base every request path shares — the ask resolver and the
+/// model-list route must never disagree about a hand-edited settings.json.
+/// Re-normalizes the stored value (the store keeps it verbatim at load);
+/// `Err` is complete user-facing copy pointing at Settings.
+pub fn resolved_local_base(stored: Option<&str>) -> Result<String, String> {
+    match stored {
+        Some(stored) => Ok(normalize_local_base_url(stored)
+            .map_err(|_| {
+                String::from(
+                    "The Local AI server address in Settings isn't a valid URL — \
+                     fix it in Settings → Answers.",
+                )
+            })?
+            .unwrap_or_else(|| LOCAL_DEFAULT_BASE_URL.to_string())),
+        None => Ok(LOCAL_DEFAULT_BASE_URL.to_string()),
+    }
 }
 
 /// The two endpoints derived from a Local base URL. Tolerates a trailing
@@ -148,19 +223,9 @@ pub fn resolve_local_targets(
         ));
     }
     // The store only holds normalized values, but settings.json is a plain
-    // file — re-validate so a hand-edited entry fails with a pointer, not a
-    // confusing connection error against a mangled URL.
-    let base = match stored_base_url {
-        Some(stored) => normalize_local_base_url(stored)
-            .map_err(|_| {
-                String::from(
-                    "The Local AI server address in Settings isn't a valid URL — \
-                     fix it in Settings → Answers.",
-                )
-            })?
-            .unwrap_or_else(|| LOCAL_DEFAULT_BASE_URL.to_string()),
-        None => LOCAL_DEFAULT_BASE_URL.to_string(),
-    };
+    // file — the shared validation makes a hand-edited entry fail with a
+    // pointer, not a confusing connection error against a mangled URL.
+    let base = resolved_local_base(stored_base_url)?;
     let endpoint = local_chat_endpoint(&base);
     let rewrite_skip_reasoning = crate::models::reasoning_from_id(model) == Some(true);
     let target = || LlmTarget {
@@ -274,9 +339,20 @@ mod tests {
     fn base_url_normalization_matrix() {
         // (input, expected stored value)
         for (input, expected) in [
-            // Scheme-less pastes get http:// — the local common case.
+            // Scheme-less local-looking pastes get http:// — the common case.
             ("localhost:11434", "http://localhost:11434/v1"),
             ("192.168.0.5:8080", "http://192.168.0.5:8080/v1"),
+            ("box", "http://box/v1"),
+            ("box.lan:8080", "http://box.lan:8080/v1"),
+            // A scheme-less ROUTABLE host defaults to https — a stored key
+            // must never silently ride plaintext to a public host.
+            ("myproxy.example.com", "https://myproxy.example.com/v1"),
+            ("203.0.113.7:8443", "https://203.0.113.7:8443/v1"),
+            // Explicit http to a routable host stays allowed (LAN proxies).
+            ("http://myproxy.example.com", "http://myproxy.example.com/v1"),
+            // The single-slash scheme typo is repaired, not stored as
+            // host "http".
+            ("http:/localhost:11434", "http://localhost:11434/v1"),
             // Bare origins gain /v1; trailing slashes drop first.
             ("http://localhost:11434", "http://localhost:11434/v1"),
             ("http://localhost:11434/", "http://localhost:11434/v1"),
@@ -284,6 +360,13 @@ mod tests {
             ("http://localhost:11434/v1", "http://localhost:11434/v1"),
             ("http://localhost:11434/v1/", "http://localhost:11434/v1"),
             ("https://box.lan/api/v1", "https://box.lan/api/v1"),
+            // A pasted full endpoint (the URL LM Studio's UI hands out)
+            // trims back to its base instead of doubling the path later.
+            (
+                "http://localhost:1234/v1/chat/completions",
+                "http://localhost:1234/v1",
+            ),
+            ("http://localhost:1234/v1/models", "http://localhost:1234/v1"),
             // Whitespace trims; https survives.
             ("  https://box.lan:9090  ", "https://box.lan:9090/v1"),
         ] {
@@ -391,6 +474,24 @@ mod tests {
         let err = resolve_local_targets(Some("ftp://box.lan"), String::new(), "m")
             .err()
             .expect("corrupt stored base must not resolve");
+        assert!(err.contains("Settings"), "{err}");
+    }
+
+    /// The one validated base both request paths share — the ask resolver and
+    /// the model-list route must agree about a hand-edited store.
+    #[test]
+    fn resolved_local_base_validates_like_the_resolver() {
+        assert_eq!(
+            resolved_local_base(None).as_deref(),
+            Ok(LOCAL_DEFAULT_BASE_URL)
+        );
+        // A verbatim scheme-less stored value re-normalizes here too.
+        assert_eq!(
+            resolved_local_base(Some("localhost:11434")).as_deref(),
+            Ok("http://localhost:11434/v1")
+        );
+        let err = resolved_local_base(Some("ftp://box.lan"))
+            .expect_err("corrupt stored base must not resolve");
         assert!(err.contains("Settings"), "{err}");
     }
 

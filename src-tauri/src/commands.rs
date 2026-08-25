@@ -195,6 +195,23 @@ pub(crate) fn position_info(settings: &SettingsStore) -> PositionInfo {
 /// paths read it.
 pub(crate) const LOCAL_KEY_ID: &str = "local";
 
+/// The stored Local key for a request, `String::new()` when none is stored
+/// (keyless server — llm.rs then omits the auth header). A GHOST key —
+/// `has_key` true but undecryptable, the restored-from-another-machine state
+/// keys.rs documents — errors with the re-paste pointer instead of silently
+/// degrading to keyless: the keyed server's raw 401 would otherwise carry no
+/// hint (Custom mode's identical state gets `MissingApiKey` copy).
+fn local_request_key(keys: &dyn KeyStore) -> Result<String, String> {
+    match keys.get(LOCAL_KEY_ID) {
+        Some(key) => Ok(key),
+        None if keys.has_key(LOCAL_KEY_ID) => Err(String::from(
+            "The stored Local AI key can't be read on this PC — remove it in \
+             Settings and paste it again.",
+        )),
+        None => Ok(String::new()),
+    }
+}
+
 /// One row per registry provider, in registry order. Presence only — reading
 /// `has_key` never decrypts (keys.rs).
 pub(crate) fn key_status(keys: &impl KeyStore) -> Vec<KeyStatus> {
@@ -382,13 +399,16 @@ pub async fn list_models(
     provider_id: String,
 ) -> Result<ModelList, String> {
     if provider_id == LOCAL_KEY_ID {
-        let base = target::effective_local_base_url(settings.local().base_url.as_deref());
+        // The same validated base the ask path resolves — the two surfaces
+        // must never disagree about a hand-edited settings.json.
+        let base = target::resolved_local_base(settings.local().base_url.as_deref())?;
+        let api_key = local_request_key(&*keys)?;
         let models = models::fetch_models_at(
             &state.http,
             providers::ProviderKind::OpenAiCompatible,
             &target::local_models_endpoint(&base),
             target::LOCAL_TARGET_NAME,
-            keys.get(LOCAL_KEY_ID).as_deref(),
+            (!api_key.is_empty()).then_some(api_key.as_str()),
         )
         .await
         .map_err(|e| match e {
@@ -1030,12 +1050,9 @@ async fn run_ask(
         // picked model; `provider_id` is deliberately ignored.
         Mode::Local => {
             let local = settings.local();
-            target::resolve_local_targets(
-                local.base_url.as_deref(),
-                keys.get(LOCAL_KEY_ID).unwrap_or_default(),
-                model,
-            )
-            .map_err(AppError::LocalMode)?
+            let api_key = local_request_key(keys).map_err(AppError::LocalMode)?;
+            target::resolve_local_targets(local.base_url.as_deref(), api_key, model)
+                .map_err(AppError::LocalMode)?
         }
         Mode::Custom => resolve_custom_targets(keys, provider_id, model)?,
     };
@@ -1779,6 +1796,38 @@ mod tests {
         let keys = InMemoryKeyStore::default();
         let err = remove_key(&keys, "netscape").unwrap_err();
         assert!(err.contains("Unknown provider"), "was: {err}");
+    }
+
+    /// The keys.rs-documented ghost state: a blob that exists but no longer
+    /// decrypts on this machine (`has_key` never decrypts; `get` does).
+    struct GhostKeyStore;
+    impl KeyStore for GhostKeyStore {
+        fn set(&self, _: &str, _: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn remove(&self, _: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn has_key(&self, _: &str) -> bool {
+            true
+        }
+        fn get(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    /// A ghost Local key must error with the re-paste pointer, never
+    /// silently degrade to keyless (a keyed server's raw 401 carries no
+    /// hint) — the Local twin of Custom mode's `MissingApiKey` recovery.
+    #[test]
+    fn a_ghost_local_key_errors_with_the_repaste_pointer() {
+        let err = local_request_key(&GhostKeyStore).unwrap_err();
+        assert!(err.contains("paste it again"), "{err}");
+        // The plain legs stay plain: unset → keyless, stored → the key.
+        let keys = InMemoryKeyStore::default();
+        assert_eq!(local_request_key(&keys).unwrap(), "");
+        keys.set(LOCAL_KEY_ID, "tok").unwrap();
+        assert_eq!(local_request_key(&keys).unwrap(), "tok");
     }
 
     /// The Local key lives in the same DPAPI store under a reserved id —
