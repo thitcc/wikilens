@@ -3,7 +3,7 @@ title: Tag-triggered release CI — build installers into a draft Release
 type: plan
 status: done
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-08-26
 tags: [build, testing]
 related:
   - "[[2026-08-04_release-scoped-semver]]"
@@ -70,3 +70,10 @@ environment.
   wrong. At 3 a broken build would compile four times, past the 60-minute
   timeout, with the error buried; `release.yml` now sets 0 — fail once, fail
   legibly, re-run from the Actions tab for the upload-flake case.
+- 2026-08-26 — the first real tag push, on record: run 31037775479 on
+  `v0.1.1` (2026-08-05) built both installers and uploaded them into a draft
+  Release in 18 minutes; the draft was later deleted unpublished (the
+  runbook's unsmoked-draft path — no smoke walk was recorded) and the tag
+  stays. The CI build-and-upload half is therefore verified end to end; the
+  publish half lands with 0.2.0, the first published GitHub Release
+  ([[2026-08-26_open-source-release-0-2-0]]).

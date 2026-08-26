@@ -3,7 +3,7 @@ title: Default mode as a subscription — provisioned per-user keys
 type: plan
 status: dropped
 created: 2026-08-04
-updated: 2026-08-24
+updated: 2026-08-26
 tags: [llm, security]
 related:
   - "[[2026-07-26_default-mode-and-byo-api-keys]]"
@@ -24,7 +24,8 @@ works"? Bundling the app-owner's vendor key in the executable is ruled out
 hard — anything shipped is extractable (strings, memory dump, a local proxy
 reading the auth header), unrevocable, and unbounded spend on the owner's
 account. Whatever ships must put only a *bounded, revocable* secret on the
-user's machine. Visual explainer: `docs/default-mode-subscription.html`.
+user's machine. Visual explainer: `docs/default-mode-subscription.html`
+(removed 2026-08-24 together with the mode — see the status log).
 
 ## Goal / non-goals
 
