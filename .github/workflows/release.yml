@@ -74,7 +74,7 @@ jobs:
             **Draft — publishing is the human gate** (`docs/release.md` §5–6). Before promoting:
 
             - Download both installers below; walk `docs/smoke-checklist.md`
-              (item 10 on the downloaded installer) and run the live suites
+              (item 11 on the downloaded installer) and run the live suites
               (`cargo test -- --ignored` from `src-tauri/`).
             - Replace this body with behavior bullets from
               `git log --first-parent vPREV..${{ github.ref_name }}` plus the
