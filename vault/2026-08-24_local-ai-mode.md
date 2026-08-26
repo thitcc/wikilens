@@ -3,9 +3,9 @@ title: Local AI mode replaces Default mode
 type: plan
 status: done
 created: 2026-08-24
-updated: 2026-08-25
+updated: 2026-08-26
 tags: [llm, rust, frontend]
-related: ["[[2026-08-24_replace-default-mode-with-local-ai]]", "[[2026-07-26_default-mode-and-byo-api-keys]]", "[[2026-07-29_keys-are-not-a-mode-choice]]", "[[2026-08-04_default-mode-subscription]]"]
+related: ["[[2026-08-24_replace-default-mode-with-local-ai]]", "[[2026-07-26_default-mode-and-byo-api-keys]]", "[[2026-07-29_keys-are-not-a-mode-choice]]", "[[2026-08-04_default-mode-subscription]]", "[[2026-08-26_reasoning-only-stream-error]]", "[[2026-08-26_local-thinking-off-switch]]"]
 commit: [d9a897f, d9bc2b6, 156130e, 6b0a65b, 029a8ad, bdcf6e1, 171cf3b, 5237c60, 451984c, 08d0f02]
 ---
 
@@ -112,3 +112,15 @@ Ollama before merge.
   `http:/` typo repair, pasted-endpoint trimming, ghost-key re-paste copy,
   single-diagnosis menu error) and the dedup refactor (one keyLine renderer,
   one footer model surface, `fresh_settings`).
+- 2026-08-26 — live smoke §7 walked on the dev rig against Ollama 0.32.15 with
+  `qwen3-vl:8b-instruct`: model list + footer pick, text ask (rewrite 231 ms,
+  first token 1.7 s, 9.0 s total for a 486-token answer), capture eye + image
+  ask (image decoded server-side, answer 2.9 s), and a stale footer pick
+  surfacing as the provider's 404 in the error box (the documented
+  no-Rust-side-validation contract). Not walked: the down-server menu copy.
+  The first rig test with Qwen3.8-27B exposed two follow-ups captured as idea
+  docs — an answer stream that is all hidden reasoning ends as an empty
+  answer ([[2026-08-26_reasoning-only-stream-error]]), and Ollama forces
+  thinking on over /v1 for every 2026 library model unless the client sends
+  `reasoning_effort` ([[2026-08-26_local-thinking-off-switch]]). Neither
+  rides in this PR.
