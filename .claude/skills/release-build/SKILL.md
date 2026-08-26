@@ -47,12 +47,13 @@ macOS-only concern — ignore it on Windows.
   window is created hidden — the app is the tray icon plus the summon
   hotkey (default Ctrl+`).
 - **`.env` stops working.** A packaged app's cwd is unpredictable, so
-  dotenv is dev-only: the `WIKILENS_DEFAULT_*` set (README "Default mode"),
-  `WIKILENS_*_MODEL` overrides, and the retrieval-tuning/debug vars (README
-  "Retrieval tuning (advanced)") must be **OS env vars** for a packaged
-  install. Those README tables are the var contracts — don't re-list them.
-- **API keys are unaffected**: they live in the DPAPI store (`keys.json`,
-  app-data) and are pasted via Settings → Answers, never env.
+  dotenv is dev-only: the `WIKILENS_*_MODEL` overrides and the
+  retrieval-tuning/debug vars (README "Retrieval tuning (advanced)") must be
+  **OS env vars** for a packaged install. Those README tables are the var
+  contracts — don't re-list them.
+- **Both answer modes are unaffected**: API keys live in the DPAPI store
+  (`keys.json`, app-data) and the Local AI config in `settings.json` — all
+  of it set from Settings → Answers, never env.
 
 ## After building
 

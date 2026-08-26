@@ -1,14 +1,18 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import {
   getAppVersion,
   listKeyStatus,
   onOverlayHidden,
   openExternal,
   removeApiKey,
+  removeLocalApiKey,
   resumeHotkeys,
   setApiKey,
   setHotkey,
+  setLocalApiKey,
+  setLocalBaseUrl,
+  setLocalVision,
   setMode,
   setPanelPosition,
   setPositionLocked,
@@ -57,9 +61,43 @@ const ROLE_NAMES: Record<HotkeyRole, string> = {
 };
 
 /** The error tag for the panel-wide key-status fetch. The other `sourceError`
- * ids are a mode ("default"/"custom") or a provider id, so this one must be
- * neither — its slot sits under the heading, not on a row. */
+ * ids are a mode ("custom"/"local"), a registry provider id, or one of the
+ * `LOCAL_*_ROW` tags below, so this one must be none of those — its slot sits
+ * under the heading, not on a row. */
 const KEYS_ROW = "keys";
+
+/** The Local AI rows' error tags — not mode ids (the mode slot renders those)
+ * and not registry provider ids, same reasoning as KEYS_ROW. LOCAL_KEY_ROW
+ * doubles as the local key form's `openKey` id: the registry key lines render
+ * only while Custom answers, so the two uses can never collide. */
+const LOCAL_ADDRESS_ROW = "local-address";
+const LOCAL_KEY_ROW = "local-key";
+const LOCAL_VISION_ROW = "local-vision";
+
+/** One key line's wiring. The registry provider rows and the Local server
+ * row share the whole load-bearing anatomy — Set pill, trash, one-open-form,
+ * the removal focus hand-off, draft residency, busy gating — through the one
+ * `keyLine` renderer; a spec carries only what differs: ids, copy, and the
+ * persistence calls. `rowId` is one string with three jobs: the `openKey`
+ * id, the pending-action row tag, and the error-slot id. */
+interface KeyLineSpec {
+  rowId: string;
+  /** Visible row name. */
+  name: string;
+  addLabel: string;
+  inputLabel: string;
+  saveLabel: string;
+  removeLabel: string;
+  hasKey: boolean;
+  /** Unkeyed right-rail note ("Optional" on the Local row). */
+  note?: string;
+  /** The open form's help line. */
+  help: ReactNode;
+  /** Persist the trimmed key; throws user-readable copy. */
+  save: (key: string) => Promise<void>;
+  /** Drop the stored key; throws user-readable copy. */
+  remove: () => Promise<void>;
+}
 
 /** The option popovers' ids, for the value buttons' `aria-controls`.
  * Module constants are safe: App's `openMenu` union guarantees one mounted
@@ -123,6 +161,40 @@ const LOCK_CLOSED_ICON = (
   </svg>
 );
 
+/** The vision-toggle states (local-ai-rows sheet picks A2/B1, 2026-08-25):
+ * an open eye while the model reads images, a slashed eye while text-only —
+ * the padlock's two-glyph recipe on the Local AI heading's right rail. */
+const EYE_ON_ICON = (
+  <svg
+    aria-hidden="true"
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinecap="round"
+  >
+    <path d="M1.5 8c1.9-3.1 4.1-4.7 6.5-4.7S12.6 4.9 14.5 8c-1.9 3.1-4.1 4.7-6.5 4.7S3.4 11.1 1.5 8Z" />
+    <circle cx="8" cy="8" r="2" />
+  </svg>
+);
+const EYE_OFF_ICON = (
+  <svg
+    aria-hidden="true"
+    width="12"
+    height="12"
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.4"
+    strokeLinecap="round"
+  >
+    <path d="M1.5 8c1.9-3.1 4.1-4.7 6.5-4.7S12.6 4.9 14.5 8c-1.9 3.1-4.1 4.7-6.5 4.7S3.4 11.1 1.5 8Z" />
+    <path d="M2.5 13.5l11-11" />
+  </svg>
+);
+
 /** Bootstrap Icons "trash" (MIT), sized like the header gear. Static, so it
  * lives at module scope rather than being rebuilt on every render. */
 const TRASH_ICON = (
@@ -151,22 +223,24 @@ function comboKeys(parts: string[]) {
 /**
  * The Settings panel: where answers come from, and the two key recorders.
  *
- * Two jobs, not one list. The "Answers" stepper picks a MODE — the built-in
- * model (when this install has one) or Custom API, your own provider — by
- * cycling the arrows or picking from the value's option popover. The provider
- * lines below it are not choices: they only set and clear keys, because which
- * provider answers is picked from the footer chip on the main panel. An
- * unkeyed line opens in place into a single key field (one at a time). A
- * stored key's only action is the trash: the keyed line is static — a neutral
- * "Set" pill marks it, and re-keying means trash, then the now-unkeyed line.
- * Ink strength reinforces the pill (keyed at full ink, unkeyed receding). A
- * pasted key crosses IPC once and is never displayed back.
+ * Two jobs, not one list. The "Answers" stepper picks a MODE — Custom API
+ * (your own provider) or Local AI (a local server) — by cycling the arrows or
+ * picking from the value's option popover. The rows below it are not choices:
+ * the Custom provider lines only set and clear keys (which provider answers
+ * is picked from the footer chip), and the Local rows only configure the
+ * server (address, optional key, the "reads images" eye on the heading's
+ * rail). An unkeyed line opens in place into a single key field (one at a
+ * time). A stored key's only action is the trash: the keyed line is static —
+ * a neutral "Set" pill marks it, and re-keying means trash, then the
+ * now-unkeyed line. Ink strength reinforces the pill (keyed at full ink,
+ * unkeyed receding). A pasted key crosses IPC once and is never displayed
+ * back.
  *
- * Two rules follow from the split, and both are load-bearing. A key never
- * moves the value: saving one stores it and nothing else
- * (vault/2026-07-29_keys-are-not-a-mode-choice.md). And the key lines exist
- * exactly while Custom API answers — their visibility is derived from the
- * mode, so the list can never sit open under a value that isn't answering.
+ * Two rules follow from the split, and both are load-bearing. Configuring
+ * never moves the value: saving a key or an address stores it and nothing
+ * else (vault/2026-07-29_keys-are-not-a-mode-choice.md). And each mode's rows
+ * exist exactly while that mode answers — visibility is derived from the
+ * mode, so no list can sit open under a value that isn't answering.
  *
  * Arming a recorder suspends the OS registrations (pressing the current combo
  * mid-recording must not toggle the overlay) and swallows every keydown at
@@ -202,7 +276,7 @@ export function SettingsMenu({
    * row running it — the pending label belongs to that row alone, or two keyed
    * providers both read "Removing…" for one click. */
   const [action, setAction] = useState<
-    "idle" | "source" | "save-key" | "remove-key"
+    "idle" | "source" | "save-key" | "remove-key" | "save-address"
   >("idle");
   const [actionRow, setActionRow] = useState<string | null>(null);
   /** A failure, tagged with the row that produced it so it renders under it. */
@@ -232,11 +306,12 @@ export function SettingsMenu({
   const busyAll = saving || action !== "idle";
   /** The stored choice; never-chosen behaves as Custom (today's behavior). */
   const currentMode: Mode = settings.mode ?? "custom";
-  /** The built-in row exists when it is configured — or when it is the stored
-   * mode on an install that lost its config, because a state the player is
-   * actually in must stay visible and one click from a fix. */
-  const showBuiltIn =
-    settings.defaultMode.configured || currentMode === "default";
+  /** The address field's draft, seeded from (and re-synced to) the effective
+   * URL Rust reports — after a save, the normalized form replaces the paste. */
+  const [addressDraft, setAddressDraft] = useState(settings.localMode.baseUrl);
+  useEffect(() => {
+    setAddressDraft(settings.localMode.baseUrl);
+  }, [settings.localMode.baseUrl]);
   // Key statuses are fetched per open (the menu mounts fresh each time).
   useEffect(() => {
     let active = true;
@@ -289,47 +364,84 @@ export function SettingsMenu({
 
   /** Store the open field's key. That is the whole job — a key is not a choice
    * (vault/2026-07-29_keys-are-not-a-mode-choice.md), so the mode stays where
-   * the player put it and the check does not move. `onKeysChanged` is all App
-   * needs: its provider re-fetch is what makes a newly-keyed provider reachable
-   * from the footer chip. */
-  async function handleSaveKey(providerId: string) {
+   * the player put it and the check does not move. `spec.save` carries the
+   * owner's own persistence (registry: fresh statuses + `onKeysChanged`, so
+   * App's provider re-fetch makes the newly-keyed provider reachable; Local:
+   * the fresh SettingsInfo through `onSaved`). */
+  async function saveKeyFor(spec: KeyLineSpec) {
     const key = draft.trim();
     if (busyAll || key === "") return;
     setAction("save-key");
-    setActionRow(providerId);
+    setActionRow(spec.rowId);
     setSourceError(null);
     try {
-      // The fresh statuses land first, so the Custom row's "Needs a key" note
-      // clears in the same commit the key does.
-      setStatuses(await setApiKey(providerId, key));
+      await spec.save(key);
       // Success collapses the form; drop the key text from state too.
       setDraft("");
       setOpenKey(null);
-      onKeysChanged?.();
     } catch (e) {
       // The draft stays for a retry.
-      setSourceError({ rowId: providerId, message: String(e) });
+      setSourceError({ rowId: spec.rowId, message: String(e) });
     } finally {
       setAction("idle");
       setActionRow(null);
     }
   }
 
-  async function handleRemoveKey(providerId: string) {
+  async function removeKeyFor(spec: KeyLineSpec) {
     if (busyAll) return;
     setAction("remove-key");
-    setActionRow(providerId);
+    setActionRow(spec.rowId);
     setSourceError(null);
     try {
-      setStatuses(await removeApiKey(providerId));
+      await spec.remove();
       // The trash that had focus unmounts with this commit; hand focus to
       // the row's fresh "Add a key" button (removal never opens a field).
-      refocusRowRef.current = providerId;
-      // Never touches the mode or the pick — App's own fallback moves the
-      // check if the removed provider was the source.
-      onKeysChanged?.();
+      refocusRowRef.current = spec.rowId;
     } catch (e) {
-      setSourceError({ rowId: providerId, message: String(e) });
+      setSourceError({ rowId: spec.rowId, message: String(e) });
+    } finally {
+      setAction("idle");
+      setActionRow(null);
+    }
+  }
+
+  /** Store the Local AI server address (Rust normalizes; empty clears back
+   * to the baked default). Storage only — the mode never moves, the
+   * keys-are-not-a-mode-choice rule extended to an address. */
+  async function handleSaveAddress() {
+    if (busyAll) return;
+    setAction("save-address");
+    setActionRow(LOCAL_ADDRESS_ROW);
+    setSourceError(null);
+    try {
+      const next = await setLocalBaseUrl(addressDraft);
+      // Re-sync here, not only via the settings effect: when the normalized
+      // result EQUALS the previous effective URL (clearing back to the
+      // default, re-typing the default scheme-less), the prop never changes
+      // and the effect never fires — the field would keep the raw paste.
+      setAddressDraft(next.localMode.baseUrl);
+      onSaved(next);
+    } catch (e) {
+      // The draft stays for a fix-up.
+      setSourceError({ rowId: LOCAL_ADDRESS_ROW, message: String(e) });
+    } finally {
+      setAction("idle");
+      setActionRow(null);
+    }
+  }
+
+  /** Flip the "reads images" eye — the capture chip follows it in Local mode
+   * (local model catalogs carry no capability metadata). */
+  async function handleToggleLocalVision() {
+    if (busyAll) return;
+    setAction("source");
+    setActionRow(LOCAL_VISION_ROW);
+    setSourceError(null);
+    try {
+      onSaved(await setLocalVision(!settings.localMode.vision));
+    } catch (e) {
+      setSourceError({ rowId: LOCAL_VISION_ROW, message: String(e) });
     } finally {
       setAction("idle");
       setActionRow(null);
@@ -541,77 +653,84 @@ export function SettingsMenu({
     );
   }
 
-  /** The one open key field, mounted as a plain sibling of its row — no fill,
-   * no border, no shadow, so it claims no second altitude inside the card. */
-  function keyForm(status: KeyStatus) {
+  /** A registry provider's key-line wiring: fresh statuses land first so the
+   * Custom row's "Needs a key" note clears in the same commit the key does,
+   * and `onKeysChanged` re-arms App's provider fetch. Removal never touches
+   * the mode or the pick — App's own fallback moves the check if the removed
+   * provider was the source. */
+  const providerKeySpec = (status: KeyStatus): KeyLineSpec => {
     const help = keyHelp(status.id);
-    return (
-      <div className="key-form">
-        <div className="key-help">
-          {help.url ? (
-            <>
-              Create one at{" "}
-              <button
-                type="button"
-                className="source-link"
-                onClick={() => void openExternal(help.url as string)}
-              >
-                {help.host}
-              </button>{" "}
-              — it&apos;s stored on this PC and never shown again.
-            </>
-          ) : (
-            <>
-              Create one in your {status.name} account — it&apos;s stored on
-              this PC and never shown again.
-            </>
-          )}
-        </div>
-        <div className="key-field">
-          <input
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            autoFocus
-            value={draft}
-            placeholder="Paste your key…"
-            aria-label={`${status.name} API key`}
-            onChange={(e) => setDraft(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void handleSaveKey(status.id);
-              }
-            }}
-          />
+    return {
+      rowId: status.id,
+      name: status.name,
+      addLabel: `Add a key for ${status.name}`,
+      inputLabel: `${status.name} API key`,
+      saveLabel: `Save the ${status.name} API key`,
+      removeLabel: `Remove the ${status.name} API key`,
+      hasKey: status.hasKey,
+      help: help.url ? (
+        <>
+          Create one at{" "}
           <button
             type="button"
-            className="menu-action"
-            disabled={busyAll || draft.trim() === ""}
-            aria-label={`Save the ${status.name} API key`}
-            onClick={() => void handleSaveKey(status.id)}
+            className="source-link"
+            onClick={() => void openExternal(help.url as string)}
           >
-            {action === "save-key" && actionRow === status.id
-              ? "Saving…"
-              : "Save"}
-          </button>
-        </div>
-      </div>
-    );
-  }
+            {help.host}
+          </button>{" "}
+          — it&apos;s stored on this PC and never shown again.
+        </>
+      ) : (
+        <>
+          Create one in your {status.name} account — it&apos;s stored on this
+          PC and never shown again.
+        </>
+      ),
+      save: async (key) => {
+        setStatuses(await setApiKey(status.id, key));
+        onKeysChanged?.();
+      },
+      remove: async () => {
+        setStatuses(await removeApiKey(status.id));
+        onKeysChanged?.();
+      },
+    };
+  };
 
-  // The list picks a MODE (built-in vs your own provider), and the provider
-  // lines below only set/clear a key — the provider itself is picked from the
-  // footer chip on the main panel.
+  /** The Local server's key-line wiring: same anatomy, but the fresh state
+   * arrives as `SettingsInfo.localMode.hasKey` through `onSaved`, and the
+   * unkeyed row wears the "Optional" rail note (sheet pick D1) — most local
+   * servers need no key. */
+  const localKeySpec: KeyLineSpec = {
+    rowId: LOCAL_KEY_ROW,
+    name: "API key",
+    addLabel: "Add a key for the local AI server",
+    inputLabel: "Local AI server API key",
+    saveLabel: "Save the local AI server's API key",
+    removeLabel: "Remove the local AI server's API key",
+    hasKey: settings.localMode.hasKey,
+    note: "Optional",
+    help: (
+      <>
+        Only needed if your server requires one (an <code>--api-key</code>{" "}
+        flag on LM Studio or llama.cpp) — it&apos;s stored on this PC and
+        never shown again.
+      </>
+    ),
+    save: async (key) => onSaved(await setLocalApiKey(key)),
+    remove: async () => onSaved(await removeLocalApiKey()),
+  };
+
+  // The list picks a MODE (your own provider vs a local server), and the
+  // rows below only configure it — the provider/model itself is picked from
+  // the footer chip on the main panel.
 
   /** No provider has a key. Gated on the fetch having landed: derived from a
-   * bare `some()` it reads false while `statuses` is null, so both notes below
-   * flashed on every open and pinned forever when the fetch failed. */
+   * bare `some()` it reads false while `statuses` is null, so the Custom
+   * row's note flashed on every open and pinned forever when the fetch
+   * failed. (There is no "nothing can answer" state anymore — Local AI is
+   * always nominally configured.) */
   const needsKey = statuses !== null && !statuses.some((s) => s.hasKey);
-  /** Nothing on this install can answer at all — no configured built-in model
-   * and no key. Keys on `configured` rather than `showBuiltIn`, so a stale
-   * default (row visible, nothing behind it) still reads as dead. */
-  const nothingCanAnswer = needsKey && !settings.defaultMode.configured;
 
   async function pickMode(next: Mode) {
     if (busyAll || currentMode === next) return;
@@ -675,27 +794,23 @@ export function SettingsMenu({
     }
   }
 
-  /** The Answers enum. One option on an unconfigured install that never
-   * chose Default — the arrows disable and the popover lists the lone row.
-   * The mode pick is an IPC round trip with an error slot; the theme pick
-   * below is pure frontend state with nothing to fail — one Stepper, and
-   * each wiring keeps its own contract. */
+  /** The Answers enum — always both modes (Local is always nominally
+   * configured, so neither row is ever conditional). The mode pick is an IPC
+   * round trip with an error slot; the theme pick below is pure frontend
+   * state with nothing to fail — one Stepper, and each wiring keeps its own
+   * contract. */
   const modeOptions = [
-    ...(showBuiltIn
-      ? [
-          {
-            id: "default",
-            name: "Built In",
-            label: "Answer with the built-in model",
-            note: settings.defaultMode.configured ? null : "Not set up here",
-          },
-        ]
-      : []),
     {
       id: "custom",
       name: "Custom API",
       label: "Answer with your own provider",
       note: needsKey ? "Needs a key" : null,
+    },
+    {
+      id: "local",
+      name: "Local AI",
+      label: "Answer with a local AI server",
+      note: null,
     },
   ];
 
@@ -711,13 +826,16 @@ export function SettingsMenu({
     },
   ];
 
-  /* A key line: an unkeyed name opens the field; a keyed line is static —
-     the Set pill marks it and the trash is its only control. Nothing here is
-     a choice — only the Answers stepper above picks the mode. */
-  const keyLine = (status: KeyStatus) => (
-    <Fragment key={status.id}>
-      <div className={"key-line" + (status.hasKey ? " is-keyed" : "")}>
-        {status.hasKey ? (
+  /* THE key line — one implementation for the registry providers and the
+     Local server (the spec carries the ids, copy, and commands; the load-
+     bearing anatomy lives once). An unkeyed name opens the field; a keyed
+     line is static — the Set pill marks it and the trash is its only
+     control. Nothing here is a choice — only the Answers stepper above
+     picks the mode. */
+  const keyLine = (spec: KeyLineSpec) => (
+    <Fragment key={spec.rowId}>
+      <div className={"key-line" + (spec.hasKey ? " is-keyed" : "")}>
+        {spec.hasKey ? (
           // Not a button on purpose: a stored key can't be replaced in
           // place, so a click target would promise an action that doesn't
           // exist (and its aria-expanded could never flip). AT reads the
@@ -727,7 +845,7 @@ export function SettingsMenu({
           // and reads ~2px high next to the letters.
           <div className="model-row model-row--static">
             <span className="row-main">
-              <span className="row-name">{status.name}</span>
+              <span className="row-name">{spec.name}</span>
             </span>
             <span className="row-side">
               <Badge title="Key stored on this PC">Set</Badge>
@@ -736,42 +854,79 @@ export function SettingsMenu({
         ) : (
           <button
             type="button"
-            className={"model-row" + (openKey === status.id ? " is-open" : "")}
+            className={"model-row" + (openKey === spec.rowId ? " is-open" : "")}
             disabled={busyAll}
-            aria-expanded={openKey === status.id}
-            aria-label={`Add a key for ${status.name}`}
+            aria-expanded={openKey === spec.rowId}
+            aria-label={spec.addLabel}
             ref={(el) => {
               // After a removal, this button is the line's fresh identity —
               // catch focus here (see refocusRowRef).
-              if (el && refocusRowRef.current === status.id) {
+              if (el && refocusRowRef.current === spec.rowId) {
                 refocusRowRef.current = null;
                 el.focus();
               }
             }}
-            onClick={() => toggleKeyForm(status.id)}
+            onClick={() => toggleKeyForm(spec.rowId)}
           >
             <span className="row-main">
-              <span className="row-name">{status.name}</span>
+              <span className="row-name">{spec.name}</span>
             </span>
+            {spec.note && <span className="row-note">{spec.note}</span>}
           </button>
         )}
-        {status.hasKey && (
+        {spec.hasKey && (
           <button
             type="button"
             className="remove-btn remove-btn--icon"
             disabled={busyAll}
-            aria-label={`Remove the ${status.name} API key`}
+            aria-label={spec.removeLabel}
             title="Remove key"
-            onClick={() => void handleRemoveKey(status.id)}
+            onClick={() => void removeKeyFor(spec)}
           >
-            {action === "remove-key" && actionRow === status.id
+            {action === "remove-key" && actionRow === spec.rowId
               ? "…"
               : TRASH_ICON}
           </button>
         )}
       </div>
-      {openKey === status.id && keyForm(status)}
-      {sourceError?.rowId === status.id && (
+      {/* The one open key field, mounted as a plain sibling of its row — no
+          fill, no border, no shadow, so it claims no second altitude inside
+          the card. */}
+      {openKey === spec.rowId && (
+        <div className="key-form">
+          <div className="key-help">{spec.help}</div>
+          <div className="key-field">
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+              value={draft}
+              placeholder="Paste your key…"
+              aria-label={spec.inputLabel}
+              onChange={(e) => setDraft(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void saveKeyFor(spec);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="menu-action"
+              disabled={busyAll || draft.trim() === ""}
+              aria-label={spec.saveLabel}
+              onClick={() => void saveKeyFor(spec)}
+            >
+              {action === "save-key" && actionRow === spec.rowId
+                ? "Saving…"
+                : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+      {sourceError?.rowId === spec.rowId && (
         <div className="menu-error">{sourceError.message}</div>
       )}
     </Fragment>
@@ -792,16 +947,9 @@ export function SettingsMenu({
         </div>
         {/* Panel-scope, so it sits above the stepper rather than on it: a
             failed key-status read isn't any one option's failure, and on a
-            Default-mode install the key lines it describes aren't rendered. */}
+            Local-mode install the key lines it describes aren't rendered. */}
         {sourceError?.rowId === KEYS_ROW && (
           <div className="menu-error">{sourceError.message}</div>
-        )}
-        {nothingCanAnswer && (
-          <div className="menu-note">
-            {currentMode === "custom"
-              ? "Nothing can answer yet — add a key below."
-              : "Nothing can answer yet — switch to Custom API and add a key."}
-          </div>
         )}
         <Stepper
           options={modeOptions}
@@ -817,8 +965,8 @@ export function SettingsMenu({
           cardRef={menuRef}
           listRef={listRef}
         />
-        {(sourceError?.rowId === "default" ||
-          sourceError?.rowId === "custom") && (
+        {(sourceError?.rowId === "custom" ||
+          sourceError?.rowId === "local") && (
           <div className="menu-error">{sourceError.message}</div>
         )}
 
@@ -830,7 +978,72 @@ export function SettingsMenu({
                 No providers to key on this install.
               </div>
             )}
-            {statuses?.map(keyLine)}
+            {statuses?.map((status) => keyLine(providerKeySpec(status)))}
+          </div>
+        )}
+
+        {currentMode === "local" && (
+          <div className="keys-nest">
+            {/* The eye rides the heading's right rail (the padlock seat;
+                local-ai-rows sheet picks A2/B1, 2026-08-25): accent open eye
+                while the model reads images, muted slashed eye while
+                text-only. It shares the padlock's icon-toggle recipe, class
+                included. */}
+            <div className="menu-heading menu-heading--lock">
+              Local AI
+              <button
+                type="button"
+                className={
+                  "lock-btn" + (settings.localMode.vision ? " is-locked" : "")
+                }
+                disabled={busyAll}
+                aria-pressed={settings.localMode.vision}
+                aria-label={
+                  settings.localMode.vision
+                    ? "Mark the local model as text-only"
+                    : "Mark the local model as able to read images"
+                }
+                title={
+                  settings.localMode.vision
+                    ? "Reads images — the capture chip is armed"
+                    : "Text-only — turn on if your model reads images"
+                }
+                onClick={() => void handleToggleLocalVision()}
+              >
+                {settings.localMode.vision ? EYE_ON_ICON : EYE_OFF_ICON}
+              </button>
+            </div>
+            {sourceError?.rowId === LOCAL_VISION_ROW && (
+              <div className="menu-error">{sourceError.message}</div>
+            )}
+            <div className="menu-url-row">
+              <input
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={addressDraft}
+                aria-label="Local AI server address"
+                onChange={(e) => setAddressDraft(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleSaveAddress();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={busyAll}
+                aria-label="Save the local AI server address"
+                onClick={() => void handleSaveAddress()}
+              >
+                {action === "save-address" ? "Saving…" : "Save"}
+              </button>
+            </div>
+            {sourceError?.rowId === LOCAL_ADDRESS_ROW && (
+              <div className="menu-error">{sourceError.message}</div>
+            )}
+            {keyLine(localKeySpec)}
           </div>
         )}
 

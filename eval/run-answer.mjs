@@ -7,7 +7,7 @@
 // the titles the retrieval round actually merged, fetch them the way
 // fetch.rs does (sequential `action=parse`, 12s, 8000-char truncation,
 // relevance order), build the exact user message (llm.rs) and call the
-// Default-mode answer model with the production system prompt and
+// eval answer model with the production system prompt and
 // max_tokens (non-streaming). Then:
 //   factInContext  — the fact's evidence string occurs in the context SENT
 //                    (truncated pages) — programmatic, case-insensitive;
@@ -24,7 +24,7 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadDefaultTarget, loadFixture, readJsonl, appendJsonl, fetchRenderedPage, sortByRelevance,
+  loadEvalTarget, loadFixture, readJsonl, appendJsonl, fetchRenderedPage, sortByRelevance,
   answerCompletion, sleep,
 } from './lib.mjs';
 import { toPlaintext } from './html.mjs';
@@ -36,7 +36,7 @@ const ROUND = Number(args.round ?? 1);
 const PACE = Number(args.pace ?? 300);
 const fixture = loadFixture();
 const WIKIS = fixture.wikis;
-const targets = loadDefaultTarget();
+const targets = loadEvalTarget();
 const answerTarget = targets.answer;
 
 const roundRecs = readJsonl(join(RUN, `round-${ROUND}.jsonl`));

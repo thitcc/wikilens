@@ -42,10 +42,11 @@ pub struct HistoryEntry {
     /// The full streamed answer, as markdown (LLM output — never wiki text).
     pub answer: String,
     pub sources: Vec<Source>,
-    /// `targets.answer.name` — `"Default"` in Default mode.
+    /// `targets.answer.name` — `"Local"` in Local mode.
     pub provider_name: String,
-    /// `None` in Default mode: the vendor model id stays dev-only there
-    /// (the footer shows only "Default", and history follows it).
+    /// The resolved model id in both modes. `Option` survives for the stored
+    /// rows the removed Default mode wrote as `null` (its vendor id was
+    /// deliberately dev-only); new entries always carry `Some`.
     pub model: Option<String>,
     pub had_image: bool,
 }

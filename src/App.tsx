@@ -132,14 +132,22 @@ function storedRecentGames(): string[] {
 const CAPTURE_NEEDS_VISION =
   "This model can't read images — remove it or pick one with the Image badge.";
 
-/** The Default-mode variant: there is no model menu to pick from. Keeps the
- * same leading clause (test suites match on it). */
-const CAPTURE_NEEDS_VISION_DEFAULT =
-  "This model can't read images — remove the screenshot to ask.";
+/** The Local-mode variant: capability comes from the Settings toggle, not a
+ * badge. Keeps the same leading clause (test suites match on it). */
+const CAPTURE_NEEDS_VISION_LOCAL =
+  "This model can't read images — remove the screenshot, or turn on the eye in Settings if it does.";
 
-/** The footer's word for the Default model source — the single constant the
- * whole frontend renders for it (mirrors Rust `target::DEFAULT_TARGET_NAME`). */
-const DEFAULT_MODE_LABEL = "Default";
+/** The synthesized footer group for Local mode — not a registry provider:
+ * the id routes `list_models` to the local server (mirrors Rust
+ * `LOCAL_KEY_ID`/`LOCAL_TARGET_NAME`), and the empty `defaultModel` is the
+ * "no pick yet" state (Local has no curated default to fall back to). */
+const LOCAL_PROVIDER: ProviderInfo = {
+  id: "local",
+  name: "Local",
+  defaultModel: "",
+  defaultModelLabel: "Choose a model",
+  defaultModelVision: false,
+};
 
 const STATUS_LABEL: Record<AskStatus, string> = {
   searching: "Searching the wiki…",
@@ -192,6 +200,13 @@ function App() {
   );
   const [modelPick, setModelPick] = useState<StoredModelPick | null>(() =>
     storedModel(localStorage.getItem(PROVIDER_STORAGE_KEY) ?? ""),
+  );
+  // Local mode's own pick, stored under the reserved "local" slot —
+  // deliberately outside the provider-keyed pick above so flipping modes
+  // never clobbers either memory (and a Local pick never touches the shared
+  // selectedProvider key — returning to Custom must restore the old pick).
+  const [localPick, setLocalPick] = useState<StoredModelPick | null>(() =>
+    storedModel(LOCAL_PROVIDER.id),
   );
   const [recentGames, setRecentGames] = useState<string[]>(storedRecentGames);
   // The appearance pick (DESIGN.md §8) — a UI pick like the game/model ones,
@@ -354,7 +369,7 @@ function App() {
   // The keyed-provider list — Custom mode only, once the mode is known
   // (settings settled; a failed get_settings settles as Custom). Re-runs when
   // the panel saves/removes a key (keysVersion) and on a mode flip back to
-  // Custom — Default mode never calls list_providers at all.
+  // Custom — Local mode never calls list_providers at all.
   useEffect(() => {
     if (!settingsSettled || mode !== "custom") return;
     let active = true;
@@ -444,7 +459,7 @@ function App() {
   // and rewrites localStorage, so capture gating resolves correctly for
   // returning users instead of wrongly treating them as text-only. Custom mode
   // only, and only once the mode is actually known — a stale pick must never
-  // fire a vendor-shaped fetch in (or racing into) Default mode.
+  // fire a vendor-shaped fetch in (or racing into) Local mode.
   useEffect(() => {
     if (
       !settingsSettled ||
@@ -723,6 +738,19 @@ function App() {
   }
 
   function handleModelSelect(providerId: string, model: ModelInfo) {
+    // A Local pick writes ONLY its own slot: the shared selectedProvider key
+    // holds a registry id, and "local" in it would clobber the remembered
+    // Custom provider on the next mode flip (the fetch effect falls back to
+    // list[0] for an unknown id).
+    if (providerId === LOCAL_PROVIDER.id) {
+      localStorage.setItem(
+        MODEL_STORAGE_PREFIX + LOCAL_PROVIDER.id,
+        JSON.stringify(model),
+      );
+      setLocalPick(model);
+      closeMenu();
+      return;
+    }
     // Storage first: the provider-change effect re-reads the stored pick.
     localStorage.setItem(PROVIDER_STORAGE_KEY, providerId);
     localStorage.setItem(MODEL_STORAGE_PREFIX + providerId, JSON.stringify(model));
@@ -740,16 +768,53 @@ function App() {
   }
 
   const provider = providers.find((p) => p.id === selectedProvider);
+  // The footer's model surface — chip labels + menu wiring derived ONCE per
+  // mode, so the two mounts can never drift apart. `null` = no chip (Custom
+  // with no keyed provider; the zero-providers CTA takes the slot).
+  const modelSurface =
+    mode === "local"
+      ? {
+          // A real chip in Local mode too: local installs are multi-model
+          // and picking is the point — the menu lists the live catalog.
+          chip: {
+            providerName: LOCAL_PROVIDER.name,
+            modelLabel: localPick?.label ?? LOCAL_PROVIDER.defaultModelLabel,
+          },
+          menu: {
+            providers: [LOCAL_PROVIDER],
+            selected: {
+              providerId: LOCAL_PROVIDER.id,
+              modelId: localPick?.id ?? "",
+            },
+          },
+        }
+      : provider
+        ? {
+            chip: {
+              providerName: provider.name,
+              modelLabel: modelPick?.label ?? provider.defaultModelLabel,
+            },
+            menu: {
+              providers,
+              selected: {
+                providerId: selectedProvider,
+                modelId: modelPick?.id ?? provider.defaultModel,
+              },
+            },
+          }
+        : null;
   // Whether the active model can read images — gates capture and image submit.
-  // Default mode: the env-declared flag (opt-in, text-only unless set);
+  // Local mode: the Settings eye (opt-in, text-only unless flipped — a local
+  // pick's own `vision` is never consulted, the catalog carries no metadata);
   // Custom mode: the pick/provider resolution.
   const vision =
-    mode === "default"
-      ? (settings?.defaultMode.vision ?? false)
+    mode === "local"
+      ? (settings?.localMode.vision ?? false)
       : activeModelVision(provider, modelPick);
-  // The matching "why not" copy (Default mode has no menu to pick from).
+  // The matching "why not" copy (Local mode's fix lives in Settings, not a
+  // menu badge).
   const captureVisionCopy =
-    mode === "default" ? CAPTURE_NEEDS_VISION_DEFAULT : CAPTURE_NEEDS_VISION;
+    mode === "local" ? CAPTURE_NEEDS_VISION_LOCAL : CAPTURE_NEEDS_VISION;
 
   // Start a capture (footer button and hotkey both land here). Rust hides the
   // panel, shows the crosshair overlay, and later fires capture://attached.
@@ -849,8 +914,10 @@ function App() {
     const trimmed = question.trim();
     if (busy || !trimmed || !selectedGame) return;
     // Custom mode needs a provider (zero keyed providers blocks here);
-    // Default mode resolves its target Rust-side and ignores these args.
-    if (mode !== "default" && !selectedProvider) return;
+    // Local mode needs a picked model (the chip reads "Choose a model" until
+    // one exists — Rust's friendly blank-model error is the backstop).
+    if (mode === "custom" && !selectedProvider) return;
+    if (mode === "local" && !localPick) return;
     // Never dispatch an image to a model that can't read it — the attachment
     // hint already explains why; this makes Enter a no-op instead of burning a
     // request we can predict will fail.
@@ -872,10 +939,13 @@ function App() {
       // Custom mode: the explicit pick when there is one, else the provider
       // default (a blank value would fall back Rust-side; this is the same
       // rule applied eagerly so the chip and the request always agree).
-      // Default mode: both args blank — run_ask ignores them by contract.
-      const providerId = mode === "default" ? "" : selectedProvider;
+      // Local mode: the local pick alone — provider_id is ignored by
+      // contract, and there is no default to fall back to.
+      const providerId = mode === "local" ? "" : selectedProvider;
       const model =
-        mode === "default" ? "" : (modelPick?.id ?? provider?.defaultModel ?? "");
+        mode === "local"
+          ? (localPick?.id ?? "")
+          : (modelPick?.id ?? provider?.defaultModel ?? "");
       const result = await ask(
         selectedGame,
         providerId,
@@ -1220,14 +1290,10 @@ function App() {
       </div>
 
       <footer className="panel-footer">
-        {mode === "default" ? (
-          // Static, non-interactive: the vendor never surfaces; the
-          // explanation lives in the Settings panel's Model source section.
-          <span className="quiet-chip static-chip">{DEFAULT_MODE_LABEL}</span>
-        ) : provider ? (
+        {modelSurface ? (
           <ModelChip
-            providerName={provider.name}
-            modelLabel={modelPick?.label ?? provider.defaultModelLabel}
+            providerName={modelSurface.chip.providerName}
+            modelLabel={modelSurface.chip.modelLabel}
             theme={theme}
             open={openMenu === "model"}
             disabled={busy}
@@ -1280,13 +1346,10 @@ function App() {
       </footer>
 
       {/* Menus are direct children of .panel — .content's overflow would clip them. */}
-      {openMenu === "model" && mode === "custom" && provider && (
+      {openMenu === "model" && modelSurface && (
         <ModelMenu
-          providers={providers}
-          selected={{
-            providerId: selectedProvider,
-            modelId: modelPick?.id ?? provider.defaultModel,
-          }}
+          providers={modelSurface.menu.providers}
+          selected={modelSurface.menu.selected}
           onSelect={handleModelSelect}
           onClose={closeMenu}
           chipRef={chipRef}

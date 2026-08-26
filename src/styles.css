@@ -371,17 +371,6 @@ body {
   opacity: 0.5;
 }
 
-/* Non-interactive footer label (Default mode): quiet-chip anatomy on a
-   <span> — no hover affordance, nothing to open. Source order beats the
-   generic hover rule above (spans match :not(:disabled)). */
-.quiet-chip.static-chip {
-  cursor: default;
-}
-.quiet-chip.static-chip:hover {
-  background: transparent;
-  color: var(--fg-muted);
-}
-
 /* Shared menu card (all menus are direct children of .panel — never inside
    .content, whose overflow would clip them). The base anchoring is the
    model menu's UPWARD FALLBACK: floated above the footer, used only when a
@@ -730,10 +719,11 @@ body {
   align-items: center;
 }
 
-/* The Position padlock (sheet picks A1/B1, 2026-08-14): the trash/caret
-   recipe — a fixed square seat, bare muted ink at rest, veil on hover —
-   with accent ink while engaged (One Signal Rule: the lock is a held
-   state, like a selection). */
+/* The heading-rail icon toggle: the trash/caret recipe — a fixed square
+   seat, bare muted ink at rest, veil on hover — with accent ink while
+   engaged (One Signal Rule: a held state, like a selection). Worn by the
+   Position padlock (sheet picks A1/B1, 2026-08-14) and the Local AI vision
+   eye (local-ai-rows sheet picks A2/B1, 2026-08-25). */
 .lock-btn {
   flex: 0 0 auto;
   display: inline-flex;
@@ -997,7 +987,7 @@ body {
 
 /* Right-aligned host hint on a candidate row (wiki.gg vs Fandom), and the
    settings steppers' single right-cell signal ("Needs a key" on Custom API,
-   "Not set up here" on Built In). */
+   "Optional" on the Local key line). */
 .row-note {
   flex: 0 0 auto;
   color: var(--fg-muted);

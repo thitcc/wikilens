@@ -7,9 +7,9 @@
 // Mirrored from src-tauri/src/{wiki/search.rs, wiki/fetch.rs, commands.rs,
 // llm.rs} — see the `// <file>:<line>` tags.
 //
-// Secrets: `loadDefaultTarget` reads the repo `.env` (the Default-mode var
-// family) in-process; key material is used for the HTTP header and is never
-// logged, written, or returned in any record.
+// Secrets: `loadEvalTarget` reads the repo `.env` (the eval-owned
+// WIKILENS_EVAL_* var family) in-process; key material is used for the HTTP
+// header and is never logged, written, or returned in any record.
 
 import { readFileSync, appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -161,21 +161,24 @@ export function parseRewriteQueries(text) {
 
 // ── LLM targets ───────────────────────────────────────────────────────
 
-// target.rs Default-mode resolution from the WIKILENS_DEFAULT_* family.
-// Values are used, NEVER logged. Key material stays in-process.
-export function loadDefaultTarget(envPath = join(REPO_ROOT, '.env')) {
+// The eval's LLM target, from the eval-owned WIKILENS_EVAL_* family in the
+// repo `.env` (the app's removed Default mode once supplied this — the eval
+// keeps its own stable cloud target so measurements stay reproducible and
+// never silently follow the app's Settings). Values are used, NEVER logged.
+// Key material stays in-process.
+export function loadEvalTarget(envPath = join(REPO_ROOT, '.env')) {
   const text = readFileSync(envPath, 'utf8');
   const env = {};
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(/^([A-Z_]+)=(.*)$/);
     if (m) env[m[1]] = m[2].replace(/\s+#.*$/, '').trim().replace(/^"|"$/g, '');
   }
-  const need = ['WIKILENS_DEFAULT_API_KEY', 'WIKILENS_DEFAULT_API_PROVIDER', 'WIKILENS_DEFAULT_API_URL', 'WIKILENS_DEFAULT_ANSWER_MODEL'];
+  const need = ['WIKILENS_EVAL_API_KEY', 'WIKILENS_EVAL_API_PROVIDER', 'WIKILENS_EVAL_API_URL', 'WIKILENS_EVAL_ANSWER_MODEL'];
   for (const n of need) if (!env[n]) throw new Error(`missing ${n} in .env`);
-  const answerModel = env.WIKILENS_DEFAULT_ANSWER_MODEL;
-  const rewriteModel = env.WIKILENS_DEFAULT_REWRITE_MODEL || answerModel;
-  const kind = env.WIKILENS_DEFAULT_API_PROVIDER.toLowerCase(); // 'anthropic' | 'openai'
-  const base = { kind, endpoint: env.WIKILENS_DEFAULT_API_URL, apiKey: env.WIKILENS_DEFAULT_API_KEY };
+  const answerModel = env.WIKILENS_EVAL_ANSWER_MODEL;
+  const rewriteModel = env.WIKILENS_EVAL_REWRITE_MODEL || answerModel;
+  const kind = env.WIKILENS_EVAL_API_PROVIDER.toLowerCase(); // 'anthropic' | 'openai'
+  const base = { kind, endpoint: env.WIKILENS_EVAL_API_URL, apiKey: env.WIKILENS_EVAL_API_KEY };
   return {
     rewrite: { ...base, model: rewriteModel, skipReasoning: reasoningFromId(rewriteModel) },
     answer: { ...base, model: answerModel },

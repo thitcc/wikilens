@@ -10,8 +10,9 @@ second hotkey (**Ctrl+Shift+C** by default) — or the footer capture chip — g
 a screen region and attaches it to the prompt as an image (vision-capable models
 only). Both shortcuts are configurable from the header gear's **Settings**
 panel (persisted to `settings.json` in the app-data dir), whose **Answers**
-stepper picks which model answers — **Built In** or **Custom API** — with
-provider keys pasted on lines shown while Custom API answers, and whose
+stepper picks which model answers — **Custom API** or **Local AI** — with
+provider keys pasted on lines shown while Custom API answers, the local
+server's address/key/vision rows shown while Local AI answers, and whose
 **Position** stepper docks the panel to any corner or the center — or
 **Manual**, keeping it wherever a header drag left it (a padlock pins the
 gesture). Works over
@@ -61,20 +62,20 @@ wikilens/
     ├── capabilities/             # webview permissions: default.json (overlay — no http/fs) + capture.json (capture — events + show/hide/focus only) + debug.json (debug — events + start-dragging only)
     └── src/
         ├── main.rs               # thin entry → wikilens_lib::run()
-        ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state + first-launch mode auto-sense
+        ├── lib.rs                # dotenv + builder: plugins, tray, hotkey, commands, state
         ├── state.rs              # AppState: shared reqwest::Client, ask-in-progress flag, model-list + title-index caches, pending shot + attachment, rewrite breaker
-        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys, the persisted mode choice + the panel placement (anchor/Manual memories, padlock); loaded in setup before registration
-        ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), per-provider API keys as per-user DPAPI ciphertexts (base64); read by the key commands and at ask/model-list time
+        ├── settings.rs           # SettingsStore: settings.json (app-data) — the configurable hotkeys, the persisted mode choice, the Local AI config (base_url/vision) + the panel placement (anchor/Manual memories, padlock); loaded in setup before registration
+        ├── keys.rs               # KeyStore trait + DpapiKeyStore: keys.json (app-data), API keys as per-user DPAPI ciphertexts (base64) — one per registry provider + the reserved "local" id; read by the key commands and at ask/model-list time
         ├── history.rs            # HistoryStore: history.json (app-data), answered asks newest-first (cap 50) — recorded best-effort at the ask success tail; the webview can only list/clear
         ├── window.rs             # toggle/show/hide, anchored/Manual placement (layout_overlay + DragTracker), height-follows-panel (DPI-aware)
         ├── hotkey.rs             # global shortcuts: defaults (Ctrl+` summon, Ctrl+Shift+C capture), accelerator (de)serialization, live re-registration (release-safe)
         ├── tray.rs               # tray icon: Show/Hide, Quit
         ├── capture.rs            # region capture: freeze monitor snapshot → crop/downscale → PNG attachment held in AppState
-        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode / set_panel_position / set_position_locked / list_history / clear_history
+        ├── commands.rs           # #[tauri::command] ask / cancel_ask / hide_overlay / show_overlay / set_overlay_height / debug_available / toggle_debug_window / list_games / suggest_wikis / add_game / remove_game / list_providers / list_models / begin,finish,cancel,clear_capture / get_settings / set_hotkey / suspend,resume_hotkeys / list_key_status / set,remove_api_key / set_mode / set_local_base_url / set_local_vision / set,remove_local_api_key / set_panel_position / set_position_locked / list_history / clear_history
         ├── error.rs              # AppError (thiserror) + Into<String>
         ├── http.rs               # shared client factory: redirect policy, connect/read timeouts
         ├── providers.rs          # LLM provider registry + curated model fallbacks
-        ├── target.rs             # LlmTarget/AskTargets: the resolved-target seam — Custom (registry + KeyStore) vs Default (WIKILENS_DEFAULT_*) resolution + the legacy-env startup nudge
+        ├── target.rs             # LlmTarget/AskTargets: the resolved-target seam — Custom (registry + KeyStore) vs Local (stored base URL + optional key) resolution, base-URL normalization + the legacy-env startup nudge
         ├── llm.rs                # streaming client: Anthropic + OpenAI-compatible SSE over LlmTargets
         ├── models.rs             # model catalogs: live fetch + parsers → {id, label}
         ├── debug.rs              # WIKILENS_DEBUG=1 per-ask stderr table (print-on-Drop; see §4) + debug:// event payloads/sink
@@ -99,7 +100,8 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `.claude/skills/` (vault-lint, sync-agents) and the `eval/` mirror's parity
   tests (against the Rust test vectors + insta snapshots), on Node's built-in
   runner. Vitest's `include` is `src/**` only, so these need their own step
-- Retrieval eval (live, paced, uses the `.env` Default-mode model):
+- Retrieval eval (live, paced, uses the `.env` `WIKILENS_EVAL_*` model —
+  eval-owned, the app reads none of it):
   `npm run eval:retrieval -- --out eval/out/<name> --rounds 3` →
   `npm run eval:answer -- --run eval/out/<name>` →
   `npm run eval:aggregate -- --run eval/out/<name>`; method, flags and
@@ -141,12 +143,13 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   `vault/2026-07-26_api-key-storage-dpapi.md`) and read from the store at
   ask/model-list time — the vendor env vars (`ANTHROPIC_API_KEY` etc.) are
   gone. The invariant: key *material* crosses IPC exactly once — the
-  `set_api_key` request, webview → Rust — and never back (no response, event,
-  error string, or debug payload may contain it; pinned in
-  `config_guardrails.rs`). Key *presence* booleans may cross
-  (`KeyStatus.hasKey`). Never logged, never displayed back — a stored key's
-  only action is the trash. A startup stderr notice (`target::warn_legacy_env`)
-  names any legacy env var still set.
+  `set_api_key` / `set_local_api_key` request, webview → Rust — and never back
+  (no response, event, error string, or debug payload may contain it; pinned
+  in `config_guardrails.rs`). Key *presence* booleans may cross
+  (`KeyStatus.hasKey`, `LocalModeInfo.hasKey`). Never logged, never displayed
+  back — a stored key's only action is the trash. A startup stderr notice
+  (`target::warn_legacy_env`) names any legacy env var still set (the vendor
+  key vars, the rewrite pins, and the removed `WIKILENS_DEFAULT_*` family).
 - **Model precedence** (Custom mode): an explicit UI pick (footer chip menu, stored
   per provider in `localStorage["wikilens.selectedModel.<id>"]`) wins; else the
   `WIKILENS_<PROVIDER>_MODEL` env override (e.g. `WIKILENS_DEEPSEEK_MODEL`); else
@@ -154,17 +157,21 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   the pre-search rewrite. `ask` takes the model id; blank falls back to the
   provider default, and ids are deliberately **not** validated Rust-side — the
   provider is the authoritative validator (a stale id surfaces in the error box).
-  In **Default mode** (the Answers stepper's "Built In" option in Settings)
-  this chain is
-  bypassed: the `WIKILENS_DEFAULT_*` env family defines one answer/rewrite
-  target (`target.rs`), `ask` ignores the request's provider/model args, and the
-  footer shows only "Default" — the var contract lives in README's
-  "Default mode" section (single source; don't re-list it here).
+  In **Local mode** (the Answers stepper's "Local AI" option) the env-override
+  chain doesn't exist: the stored base URL + optional key (`target.rs`,
+  settings/DPAPI) define the endpoint, the footer pick (stored at
+  `localStorage["wikilens.selectedModel.local"]`, never in the shared
+  provider slot) is the whole model choice, and `ask` ignores the request's
+  provider arg — the player-facing contract lives in README's "Local AI mode"
+  section (single source; don't re-list it here).
 - **Model lists** (`list_models`, hybrid — see the sourcing ADR in `vault/`):
   live fetch (8s timeout, parsers trim to `{id, label}`) → session cache (**live
   lists only** — fallbacks always retry next open) → the provider's tiny
   `curated_models`, flagged `source: "fallback"` so the menu can say
-  "offline list" without revealing why.
+  "offline list" without revealing why. The reserved `"local"` id routes to
+  the Local server instead: never cached (the address is editable
+  mid-session), no curated fallback — a down server errors with "is it
+  running?" copy the menu shows inline.
 - **Frontend → Rust only via `src/api.ts`.** Components never import
   `@tauri-apps/*` directly.
 - **Commands return `Result<T, String>`** with user-readable messages; internal
@@ -247,9 +254,7 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - **Debugging an ask:** `WIKILENS_DEBUG=1` prints a per-ask table to stderr —
   phase timings, models, token counts, queries, page titles + char counts;
   never wiki text or keys (`src-tauri/src/debug.rs`, print-on-Drop so error
-  exits still report). Carve-out: in Default mode the table/window still print
-  the underlying `default / <model>` pair — vendor-shaped ids are fine for dev
-  tooling that's off by default. The flag also creates the **visual debug
+  exits still report). The flag also creates the **visual debug
   window** (`debug_window.rs` → `src/debug/`): a glass panel like the overlay,
   draggable by its header, live per-ask cards fed by the `debug://…` events —
   progress bars, collapsible details, ~25-ask session history. It starts

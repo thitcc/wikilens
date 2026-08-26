@@ -244,10 +244,25 @@ fn build_anthropic_request(
         .json(&body)
 }
 
-/// OpenAI-compatible Chat Completions request (DeepSeek, OpenRouter, a Default
-/// target speaking the openai protocol): `Bearer` auth from the target, the
-/// system prompt as a `system` role message, plus the target's extra headers
-/// (e.g. OpenRouter attribution).
+/// Attach `Authorization: Bearer …` unless the target carries no key. Cloud
+/// targets always do (their resolvers refuse a missing key before any request
+/// is built); an empty key means a keyless local server (e.g. Ollama), where a
+/// bare `Bearer ` header is at best noise and at worst a 401.
+fn authorize_openai(
+    request: reqwest::RequestBuilder,
+    target: &LlmTarget,
+) -> reqwest::RequestBuilder {
+    if target.api_key.is_empty() {
+        request
+    } else {
+        request.header("Authorization", format!("Bearer {}", target.api_key))
+    }
+}
+
+/// OpenAI-compatible Chat Completions request (DeepSeek, OpenRouter, a local
+/// target speaking the openai protocol): `Bearer` auth from the target (omitted
+/// when the target is keyless), the system prompt as a `system` role message,
+/// plus the target's extra headers (e.g. OpenRouter attribution).
 fn build_openai_request(
     client: &reqwest::Client,
     target: &LlmTarget,
@@ -268,9 +283,7 @@ fn build_openai_request(
             { "role": "user", "content": build_user_content(target.kind, question, pages, image_png) }
         ]
     });
-    let mut request = client
-        .post(&target.endpoint)
-        .header("Authorization", format!("Bearer {}", target.api_key));
+    let mut request = authorize_openai(client.post(&target.endpoint), target);
     for (name, value) in target.extra_headers {
         request = request.header(*name, *value);
     }
@@ -379,11 +392,11 @@ fn build_user_message(question: &str, pages: &[WikiPage]) -> String {
 
 /// Max output tokens for the query-rewrite completion — the JSON object is tiny,
 /// so keep the cap tight. The rewrite is meant to run on a fast *non-reasoning*
-/// model (the picked model in Custom mode, `WIKILENS_DEFAULT_REWRITE_MODEL` in
-/// Default mode); known-Reasoning models never reach this call (`run_ask`
-/// skips them outright), so the tight cap is the fail-fast for *untagged*
-/// reasoning models — they burn the budget in seconds (empty `content`, seen
-/// in the trace) rather than reasoning at length.
+/// model (the picked model drives it in both modes); known-Reasoning models
+/// never reach this call (`run_ask` skips them outright), so the tight cap is
+/// the fail-fast for *untagged* reasoning models — they burn the budget in
+/// seconds (empty `content`, seen in the trace) rather than reasoning at
+/// length.
 const REWRITE_MAX_TOKENS: u32 = 256;
 
 /// Total-request cap for the rewrite completion. `run_ask` joins the rewrite
@@ -500,9 +513,7 @@ fn build_completion_openai(
             { "role": "user", "content": user }
         ]
     });
-    let mut request = client
-        .post(&target.endpoint)
-        .header("Authorization", format!("Bearer {}", target.api_key));
+    let mut request = authorize_openai(client.post(&target.endpoint), target);
     for (name, value) in target.extra_headers {
         request = request.header(*name, *value);
     }
@@ -1271,6 +1282,36 @@ mod http_tests {
         let (result, deltas) = ask(&target, None).await;
         assert_eq!(result.unwrap(), "");
         assert!(deltas.is_empty());
+    }
+
+    /// A keyless target (a local server like Ollama) must not send a bare
+    /// `Authorization: Bearer ` header — some keyed local servers 401 on it,
+    /// and it is noise everywhere else. Keyed targets keep the header
+    /// (pinned by `openai_stream_accumulates_deltas_and_stops_at_done`).
+    #[tokio::test]
+    async fn keyless_openai_target_sends_no_authorization_header() {
+        let server = MockServer::start().await;
+        let target = LlmTarget {
+            api_key: String::new(),
+            ..mock_target(
+                ProviderKind::OpenAiCompatible,
+                &format!("{}/chat", server.uri()),
+            )
+        };
+        Mock::given(method("POST"))
+            .and(path("/chat"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(sse_body(&["data: [DONE]"]), "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let (result, _) = ask(&target, None).await;
+        assert_eq!(result.unwrap(), "");
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests[0].headers.get("authorization").is_none());
     }
 
     #[tokio::test]

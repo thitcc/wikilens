@@ -25,14 +25,15 @@ permissions and never sees your API key.
   missing, install the [Evergreen WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 - **Node.js ≥ 18** and npm.
 - **Rust** (stable toolchain) + Cargo.
-- An **API key** for at least one supported LLM provider — **Anthropic**,
-  **DeepSeek**, or **OpenRouter**.
+- A model to answer with — either an **API key** for a supported LLM provider
+  (**Anthropic**, **DeepSeek**, or **OpenRouter**), or a **locally running
+  OpenAI-compatible server** (Ollama, LM Studio, llama.cpp, vLLM).
 
 ## Setup: where answers come from
 
-Open the header gear (**Settings**). The **Answers** rows say which model writes
-your answers: the built-in model when this install has one, and **your own
-provider**. Exactly one wears the check.
+Open the header gear (**Settings**). The **Answers** stepper says which model
+writes your answers: **Custom API** (your own cloud provider) or **Local AI**
+(a server running on your machine). Exactly one is the value.
 
 The provider lines below — Anthropic, DeepSeek, OpenRouter — are not that
 choice. They only hold keys: click one to paste a key in the field that opens,
@@ -62,28 +63,36 @@ touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matte
 because model ids drift over time (e.g. DeepSeek retired its `deepseek-chat` alias
 in favor of `deepseek-v4-flash`).
 
-### Default mode (optional)
+### Local AI mode
 
-One env-configured model source with the vendor hidden: the footer chip reads
-just **Default**, there is no provider or model menu, and asks resolve entirely
-from these variables. It appears in Settings → **Answers** as **Built In**;
-the Answers stepper's arrows (or its option popover) switch between it and
-**Custom API**. On first launch WikiLens auto-senses (a complete
-`WIKILENS_DEFAULT_*` set selects Default once — your stored choice wins forever
-after). All four are required together:
+Answer from a model running on your own machine — no key, no cloud. Pick
+**Local AI** in Settings → **Answers** and WikiLens talks to an
+OpenAI-compatible server at the address on the row beneath (default
+`http://localhost:11434/v1`, Ollama's). The footer chip then lists the
+models your server actually has loaded — pick one there like any provider.
 
-| Variable | Meaning |
-|---|---|
-| `WIKILENS_DEFAULT_API_PROVIDER` | Wire protocol: `anthropic` or `openai` (never a vendor id — a neutral proxy works) |
-| `WIKILENS_DEFAULT_API_URL` | Full chat/messages endpoint URL |
-| `WIKILENS_DEFAULT_API_KEY` | The credential sent to that endpoint |
-| `WIKILENS_DEFAULT_ANSWER_MODEL` | Model id for answers |
+- **Server address**: paste and **Save**. Scheme-less pastes work
+  (`localhost:11434` becomes `http://localhost:11434/v1`; a routable
+  hostname defaults to `https://` instead — type `http://` explicitly for a
+  LAN proxy); a bare origin gains `/v1`; a pasted full endpoint
+  (`…/v1/chat/completions`, the URL LM Studio hands out) is trimmed back to
+  its base; any other path (a `/api/v1` proxy) is kept as typed. Clearing
+  the field restores the default. This covers **Ollama**, **LM Studio**
+  (`http://localhost:1234/v1`), **llama.cpp server**, and **vLLM**.
+- **API key (optional)**: only for servers started with one (LM Studio /
+  llama.cpp `--api-key`). Stored DPAPI-encrypted like the provider keys;
+  leave it unset for a stock Ollama.
+- **Reads images** (the eye on the Local AI heading): local catalogs carry no
+  capability metadata, so you declare it — flip the eye on for a vision model
+  (LLaVA, Qwen-VL, …) and the capture chip arms; off means text-only.
 
-Optional: `WIKILENS_DEFAULT_REWRITE_MODEL` (a fast model for the pre-search
-query rewrite; defaults to the answer model) and `WIKILENS_DEFAULT_VISION`
-(truthy if the answer model reads images; default text-only — the capture
-chip follows it). Packaged apps should set these as OS env vars (`.env` works
-for `npm run tauri dev`).
+Two timing notes for local servers: the first ask against a cold model waits
+for it to load (a very large model can exceed WikiLens's 60-second stream
+patience), and the quick pre-search query rewrite has a 4-second budget a
+cold model will miss — after two misses WikiLens skips rewrites for the
+session (asks still work). Keeping the model warm avoids both: `ollama run
+<model>` before playing, or raise `OLLAMA_KEEP_ALIVE` (Ollama unloads idle
+models after ~5 minutes).
 
 ## Retrieval tuning (advanced)
 
@@ -98,11 +107,11 @@ these variables are escape hatches for when you want to change or trace it.
 | `WIKILENS_TITLE_INDEX` | on | Set to `0`/`false`/`off`/`no` to disable the last-resort fuzzy match of short queries against the game's page titles (it only fires when every search returned nothing). |
 | `WIKILENS_TRACE_RETRIEVAL` | off | Set (to anything) to log each retrieval round as a JSON line on stderr for offline evaluation — public wiki data only, never keys or answer text. |
 
-The picked model drives both the answer and the rewrite (Default mode: the
-answer model, or `WIKILENS_DEFAULT_REWRITE_MODEL` when set). Two behaviors are
-automatic, with no variable to set: if that model is known to be a *reasoning*
-model (those think out loud and return unusable rewrites), the rewrite is
-skipped at zero cost — picking a fast non-reasoning model is how you keep it.
+The picked model drives both the answer and the rewrite, in both modes. Two
+behaviors are automatic, with no variable to set: if that model is known to
+be a *reasoning* model (those think out loud and return unusable rewrites),
+the rewrite is skipped at zero cost — picking a fast non-reasoning model is
+how you keep it.
 And after two consecutive failed rewrites, a per-session circuit breaker stops
 further attempts and prints a one-time notice to the terminal naming the fix;
 restarting WikiLens resets it.
@@ -210,10 +219,12 @@ Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
 2. Wait for the tray icon to appear (the window starts hidden), then press
    **Ctrl+`** (the key left of 1).
 3. The panel slides in from the right and focuses the input.
-4. Add a key: the header gear (**Settings**) → **Answers** — with **Custom
+4. Pick a source: the header gear (**Settings**) → **Answers**. With **Custom
    API** as the stepper's value, click a provider's line, paste its key in the
-   field that opens, and press **Save** (the key is never displayed again).
-   Then pick which provider answers from the footer chip.
+   field that opens, and press **Save** (the key is never displayed again),
+   then pick which provider answers from the footer chip. Or step to
+   **Local AI** with Ollama running and pick a model from the footer chip —
+   no key needed.
 5. Choose a **game**, then ask a question — e.g. **Conan Exiles** → *"how do I
    make steel bars?"*, or **Core Keeper** → *"best way to get wood"*.
 6. Expect the status to move through *Searching → Reading → Answering*, the answer

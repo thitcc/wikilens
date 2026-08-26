@@ -62,9 +62,23 @@ pub async fn fetch_models(
     provider: &Provider,
     api_key: Option<&str>,
 ) -> Result<Vec<ModelInfo>, AppError> {
-    let mut request = client.get(provider.models_endpoint).timeout(FETCH_TIMEOUT);
+    fetch_models_at(client, provider.kind, provider.models_endpoint, provider.name, api_key).await
+}
+
+/// The fetch core, over runtime values instead of a registry entry — the Local
+/// AI catalog has a user-configured endpoint that no `&'static Provider` can
+/// carry. `provider_name` stays `&'static str` because it feeds
+/// `AppError::Llm.provider`.
+pub async fn fetch_models_at(
+    client: &reqwest::Client,
+    kind: ProviderKind,
+    models_endpoint: &str,
+    provider_name: &'static str,
+    api_key: Option<&str>,
+) -> Result<Vec<ModelInfo>, AppError> {
+    let mut request = client.get(models_endpoint).timeout(FETCH_TIMEOUT);
     if let Some(key) = api_key {
-        request = match provider.kind {
+        request = match kind {
             ProviderKind::Anthropic => request
                 .header("x-api-key", key)
                 .header("anthropic-version", "2023-06-01"),
@@ -78,14 +92,14 @@ pub async fn fetch_models(
     let status = resp.status();
     if !status.is_success() {
         return Err(AppError::Llm {
-            provider: provider.name,
+            provider: provider_name,
             status: status.as_u16(),
             body: http::read_error_body(resp).await,
         });
     }
     let body = http::read_body_capped(resp, http::MAX_RESPONSE_BYTES).await?;
 
-    match provider.kind {
+    match kind {
         ProviderKind::Anthropic => parse_anthropic_models(&body),
         ProviderKind::OpenAiCompatible => parse_openai_models(&body),
     }
@@ -571,6 +585,43 @@ mod http_tests {
         assert_eq!(requests.len(), 1);
         assert!(requests[0].headers.get("authorization").is_none());
         assert!(requests[0].headers.get("x-api-key").is_none());
+    }
+
+    /// `fetch_models_at` is the runtime-endpoint core the Local AI catalog
+    /// rides on: no registry entry, and Ollama's bare `/v1/models` payload
+    /// (id-only rows) must parse — label falls back to the id, vision and
+    /// reasoning stay unknown-conservative.
+    #[tokio::test]
+    async fn runtime_endpoint_fetch_parses_a_bare_ollama_payload() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(
+                r#"{"object":"list","data":[{"id":"llama3.2:3b","object":"model","created":1723800000,"owned_by":"library"}]}"#,
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = crate::http::build_client();
+        let models = fetch_models_at(
+            &client,
+            ProviderKind::OpenAiCompatible,
+            &format!("{}/v1/models", server.uri()),
+            "Local",
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            models,
+            vec![ModelInfo {
+                id: "llama3.2:3b".into(),
+                label: "llama3.2:3b".into(),
+                vision: false,
+                reasoning: None,
+            }]
+        );
     }
 
     #[tokio::test]

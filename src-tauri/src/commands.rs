@@ -103,13 +103,16 @@ pub struct KeyStatus {
     pub has_key: bool,
 }
 
-/// Whether the packaged Default model source is configured in this
-/// environment (`WIKILENS_DEFAULT_*` — configured means the resolver
-/// succeeds), and whether it reads images. Sensed per command call.
-#[derive(Debug, Clone, Copy, Serialize)]
-pub struct DefaultModeInfo {
-    pub configured: bool,
+/// The Local AI mode's state as the frontend sees it. `base_url` is the
+/// *effective* address (the stored one, or the baked Ollama default), so the
+/// Settings field always shows where an ask would actually go. `has_key` is
+/// presence only — key material never crosses back (the KeyStatus rule).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalModeInfo {
+    pub base_url: String,
     pub vision: bool,
+    pub has_key: bool,
 }
 
 /// The overlay placement as the frontend sees it — the stepper's value plus
@@ -138,7 +141,7 @@ pub struct SettingsInfo {
     pub hotkeys: HotkeysInfo,
     /// The persisted model-source choice; `None` (→ JSON null) = never chosen.
     pub mode: Option<Mode>,
-    pub default_mode: DefaultModeInfo,
+    pub local_mode: LocalModeInfo,
     pub position: PositionInfo,
 }
 
@@ -154,16 +157,30 @@ fn hotkey_info(settings: &SettingsStore, role: HotkeyRole) -> HotkeyInfo {
     }
 }
 
-/// Pure over its inputs (the guardrail pins call it with a fixed
-/// `DefaultModeInfo`); commands pass `sense_default_mode()`.
-pub(crate) fn settings_info(settings: &SettingsStore, default_mode: DefaultModeInfo) -> SettingsInfo {
+/// The settings envelope every mutating command resolves with — one place
+/// spells the KeyStore-derived input, so a new command can't pass the wrong
+/// bool. The pure `settings_info` below stays separate for the guardrail
+/// pin, which feeds a literal.
+fn fresh_settings(settings: &SettingsStore, keys: &impl KeyStore) -> SettingsInfo {
+    settings_info(settings, keys.has_key(LOCAL_KEY_ID))
+}
+
+/// Pure over its inputs: the store holds the Local config, but key presence
+/// lives in the KeyStore, so it arrives as the one extra argument (commands
+/// go through `fresh_settings`; the guardrail pin passes a literal).
+pub(crate) fn settings_info(settings: &SettingsStore, local_has_key: bool) -> SettingsInfo {
+    let local = settings.local();
     SettingsInfo {
         hotkeys: HotkeysInfo {
             summon: hotkey_info(settings, HotkeyRole::Summon),
             capture: hotkey_info(settings, HotkeyRole::Capture),
         },
         mode: settings.mode(),
-        default_mode,
+        local_mode: LocalModeInfo {
+            base_url: target::effective_local_base_url(local.base_url.as_deref()),
+            vision: local.vision,
+            has_key: local_has_key,
+        },
         position: position_info(settings),
     }
 }
@@ -179,23 +196,28 @@ pub(crate) fn position_info(settings: &SettingsStore) -> PositionInfo {
     }
 }
 
-/// Pure over an injected env lookup — the multi-threaded suite never mutates
-/// env, so tests drive this with closures. `configured` is resolver success
-/// (not mere var presence), so the panel's "isn't set up" note and the ask
-/// path's error can never disagree — an invalid `_API_PROVIDER` counts as
-/// unconfigured here too.
-fn default_mode_info(env: impl Fn(&str) -> Option<String>) -> DefaultModeInfo {
-    DefaultModeInfo {
-        configured: crate::target::resolve_default_targets(&env).is_ok(),
-        // Vision is opt-in (no id heuristic exists for an arbitrary target);
-        // same truthy semantics as WIKILENS_DEBUG.
-        vision: env("WIKILENS_DEFAULT_VISION").is_some_and(|v| crate::debug::is_truthy(&v)),
-    }
-}
+/// The DPAPI-store id the Local AI mode's optional key lives under. Not a
+/// registry provider id — the registry-iterating surfaces (`key_status`,
+/// `provider_infos`) never enumerate it, so it can't leak into the Custom
+/// key lines; only the `*_local_api_key` commands and the Local ask/model
+/// paths read it.
+pub(crate) const LOCAL_KEY_ID: &str = "local";
 
-/// The impure half: real env reads (`env_nonempty` trims and drops blanks).
-fn sense_default_mode() -> DefaultModeInfo {
-    default_mode_info(providers::env_nonempty)
+/// The stored Local key for a request, `String::new()` when none is stored
+/// (keyless server — llm.rs then omits the auth header). A GHOST key —
+/// `has_key` true but undecryptable, the restored-from-another-machine state
+/// keys.rs documents — errors with the re-paste pointer instead of silently
+/// degrading to keyless: the keyed server's raw 401 would otherwise carry no
+/// hint (Custom mode's identical state gets `MissingApiKey` copy).
+fn local_request_key(keys: &dyn KeyStore) -> Result<String, String> {
+    match keys.get(LOCAL_KEY_ID) {
+        Some(key) => Ok(key),
+        None if keys.has_key(LOCAL_KEY_ID) => Err(String::from(
+            "The stored Local AI key can't be read on this PC — remove it in \
+             Settings and paste it again.",
+        )),
+        None => Ok(String::new()),
+    }
 }
 
 /// One row per registry provider, in registry order. Presence only — reading
@@ -368,12 +390,49 @@ pub fn list_providers(keys: State<'_, DpapiKeyStore>) -> Vec<ProviderInfo> {
 /// exists, else a fresh fetch, else the curated fallback (see
 /// `models::resolve_model_list`). Fallbacks are never cached, so a transient
 /// failure retries on the next menu open.
+///
+/// The reserved `"local"` id routes to the Local AI server instead of the
+/// registry: never cached (the address is editable mid-session; the cache
+/// exists for OpenRouter's megabytes, not a LAN's dozen rows), no curated
+/// fallback (there is no meaningful offline list for an arbitrary server —
+/// a down server errors with "is it running?" copy instead of a silent
+/// empty menu). The stored local key rides along when present: keyed
+/// servers (LM Studio/llama.cpp `--api-key`) guard `/v1/models` with the
+/// same token as chat.
 #[tauri::command]
 pub async fn list_models(
     state: State<'_, AppState>,
     keys: State<'_, DpapiKeyStore>,
+    settings: State<'_, SettingsStore>,
     provider_id: String,
 ) -> Result<ModelList, String> {
+    if provider_id == LOCAL_KEY_ID {
+        // The same validated base the ask path resolves — the two surfaces
+        // must never disagree about a hand-edited settings.json.
+        let base = target::resolved_local_base(settings.local().base_url.as_deref())?;
+        let api_key = local_request_key(&*keys)?;
+        let models = models::fetch_models_at(
+            &state.http,
+            providers::ProviderKind::OpenAiCompatible,
+            &target::local_models_endpoint(&base),
+            target::LOCAL_TARGET_NAME,
+            (!api_key.is_empty()).then_some(api_key.as_str()),
+        )
+        .await
+        .map_err(|e| match e {
+            // Network-level failure = the server isn't there; name the
+            // address (user-entered config) and the likeliest fix.
+            AppError::Http(_) => format!(
+                "Couldn't reach your local AI server at {base} — is it running?"
+            ),
+            other => String::from(other),
+        })?;
+        return Ok(ModelList {
+            models,
+            source: ModelSource::Live,
+        });
+    }
+
     let provider = providers::find_provider(&provider_id)
         .ok_or_else(|| String::from(AppError::UnknownProvider(provider_id.clone())))?;
 
@@ -465,8 +524,11 @@ pub fn toggle_debug_window(app: AppHandle) {
 /// Current settings, for the popover and the overlay's dynamic copy (prompt
 /// placeholder, capture chip title).
 #[tauri::command]
-pub fn get_settings(settings: State<'_, SettingsStore>) -> SettingsInfo {
-    settings_info(&settings, sense_default_mode())
+pub fn get_settings(
+    settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
+) -> SettingsInfo {
+    fresh_settings(&settings, &*keys)
 }
 
 /// Change one shortcut: parse, refuse the other role's combo, prove the OS
@@ -476,13 +538,14 @@ pub fn get_settings(settings: State<'_, SettingsStore>) -> SettingsInfo {
 pub async fn set_hotkey(
     app: AppHandle,
     settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
     role: HotkeyRole,
     accelerator: String,
 ) -> Result<SettingsInfo, String> {
     let new = hotkey::parse_accelerator(&accelerator).map_err(String::from)?;
     let current = settings.shortcut(role);
     if new == current {
-        return Ok(settings_info(&settings, sense_default_mode()));
+        return Ok(fresh_settings(&settings, &*keys));
     }
     let other = match role {
         HotkeyRole::Summon => HotkeyRole::Capture,
@@ -514,7 +577,7 @@ pub async fn set_hotkey(
         }
     }
     crate::tray::update_summon_tooltip(&app);
-    Ok(settings_info(&settings, sense_default_mode()))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Drop the OS hotkey registrations while the settings recorder is armed —
@@ -580,9 +643,74 @@ pub fn remove_api_key(
 /// Writable gate + persist-then-commit live in `SettingsStore::set_mode`
 /// (the `set_hotkey` shape).
 #[tauri::command]
-pub fn set_mode(settings: State<'_, SettingsStore>, mode: Mode) -> Result<SettingsInfo, String> {
+pub fn set_mode(
+    settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
+    mode: Mode,
+) -> Result<SettingsInfo, String> {
     settings.set_mode(mode).map_err(String::from)?;
-    Ok(settings_info(&settings, sense_default_mode()))
+    Ok(fresh_settings(&settings, &*keys))
+}
+
+/// Store the Local AI server address. The pasted text is normalized here
+/// (`target::normalize_local_base_url` — scheme-less pastes get `http://`,
+/// bare origins gain `/v1`); an empty field clears back to the baked Ollama
+/// default. Per the keys-are-not-a-mode-choice ADR, saving an address never
+/// flips the mode.
+#[tauri::command]
+pub fn set_local_base_url(
+    settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
+    base_url: String,
+) -> Result<SettingsInfo, String> {
+    let normalized = target::normalize_local_base_url(&base_url)?;
+    settings.set_local_base_url(normalized).map_err(String::from)?;
+    Ok(fresh_settings(&settings, &*keys))
+}
+
+/// Flip the Local AI "reads images" toggle — the capture chip follows it in
+/// Local mode (local model catalogs carry no capability metadata, so the
+/// player declares it).
+#[tauri::command]
+pub fn set_local_vision(
+    settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
+    vision: bool,
+) -> Result<SettingsInfo, String> {
+    settings.set_local_vision(vision).map_err(String::from)?;
+    Ok(fresh_settings(&settings, &*keys))
+}
+
+/// Store (or replace) the Local AI server's optional API key — the same
+/// single-crossing rule as `set_api_key`: key material goes webview → Rust
+/// here and never back (the response carries only `localMode.hasKey`).
+/// Dedicated command rather than a relaxed `set_api_key`: that one returns
+/// registry-shaped `Vec<KeyStatus>`, which structurally can't report this
+/// key's state. Storing a key never flips the mode.
+#[tauri::command]
+pub fn set_local_api_key(
+    settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
+    key: String,
+) -> Result<SettingsInfo, String> {
+    // Trim here: a pasted trailing newline would poison the auth header.
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("Paste an API key first.".to_string());
+    }
+    keys.set(LOCAL_KEY_ID, key).map_err(String::from)?;
+    Ok(fresh_settings(&settings, &*keys))
+}
+
+/// Drop the Local AI server's stored key. Absent = the trait's no-op leg, so
+/// a double-clicked trash stays quiet.
+#[tauri::command]
+pub fn remove_local_api_key(
+    settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
+) -> Result<SettingsInfo, String> {
+    keys.remove(LOCAL_KEY_ID).map_err(String::from)?;
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// The Position stepper's wire value: one of the five anchors, or Manual.
@@ -621,6 +749,7 @@ impl PositionChoice {
 pub fn set_panel_position(
     app: AppHandle,
     settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
     choice: PositionChoice,
 ) -> Result<SettingsInfo, String> {
     // Before reading the store: a pending drag settle re-checks the
@@ -646,7 +775,7 @@ pub fn set_panel_position(
     // invalidation).
     window::clear_drag_override(&app);
     window::apply_layout(&app);
-    Ok(settings_info(&settings, sense_default_mode()))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Flip the Position padlock. Locked = the header never drags, in every mode
@@ -656,10 +785,11 @@ pub fn set_panel_position(
 #[tauri::command]
 pub fn set_position_locked(
     settings: State<'_, SettingsStore>,
+    keys: State<'_, DpapiKeyStore>,
     locked: bool,
 ) -> Result<SettingsInfo, String> {
     settings.set_position_locked(locked).map_err(String::from)?;
-    Ok(settings_info(&settings, sense_default_mode()))
+    Ok(fresh_settings(&settings, &*keys))
 }
 
 /// Start a region capture: hide the panel, freeze the monitor under the cursor,
@@ -868,8 +998,8 @@ fn resolve_custom_targets(
     })?;
     let model = effective_model(model, provider.model());
     // The picked model drives both the answer and the pre-search rewrite —
-    // one model choice, one destination for player text. (Default mode has
-    // its own optional WIKILENS_DEFAULT_REWRITE_MODEL.)
+    // one model choice, one destination for player text (Local mode works
+    // the same way).
     // A known-Reasoning model makes the rewrite a call we *know* fails: its
     // reply lands in `reasoning_content`, the parser reads `content` → zero
     // candidates after a multi-second think. Skip it outright (zero latency,
@@ -918,15 +1048,20 @@ async fn run_ask(
         .ok_or_else(|| AppError::UnknownGame(game_id.to_string()))?;
 
     // Resolve the ask's targets up front, before any status event, so a
-    // missing key / unconfigured Default fails instantly (no stuck
+    // missing key / missing Local model pick fails instantly (no stuck
     // "Searching…"). The AskGuard still releases the slot on this early
     // return. The mode is snapshotted ONCE here — a mid-ask switch can't tear
     // the pair (the gear is disabled while busy anyway; this is the backstop).
     let mode = settings.mode().unwrap_or(Mode::Custom);
     let targets = match mode {
-        // Default mode: one env-configured target; the request's
-        // provider_id/model args are deliberately ignored.
-        Mode::Default => target::sense_default_targets().map_err(AppError::DefaultMode)?,
+        // Local mode: the stored address + optional key, the request's
+        // picked model; `provider_id` is deliberately ignored.
+        Mode::Local => {
+            let local = settings.local();
+            let api_key = local_request_key(keys).map_err(AppError::LocalMode)?;
+            target::resolve_local_targets(local.base_url.as_deref(), api_key, model)
+                .map_err(AppError::LocalMode)?
+        }
         Mode::Custom => resolve_custom_targets(keys, provider_id, model)?,
     };
     let rewrite_skip_reasoning = targets.rewrite_skip_reasoning;
@@ -1273,23 +1408,16 @@ async fn run_ask(
         answer: answer.clone(),
         sources: sources.clone(),
         provider_name: targets.answer.name.to_string(),
-        model: history_model(mode, &targets.answer),
+        // Both modes record the resolved model: a local model id is the
+        // player's own pick, not a hidden vendor detail (the Default-mode
+        // `None` carve-out died with that mode; old entries stay null).
+        model: Some(targets.answer.model.clone()),
         had_image: image_png.is_some(),
     }) {
         eprintln!("wikilens: couldn't record the ask in history: {e}");
     }
 
     Ok(AskResult { answer, sources })
-}
-
-/// The model a history entry records: the resolved model in Custom mode,
-/// `None` in Default mode — the vendor model id stays dev-only there (the
-/// debug table's carve-out doesn't extend to a user-facing, persisted store).
-fn history_model(mode: Mode, answer: &LlmTarget) -> Option<String> {
-    match mode {
-        Mode::Default => None,
-        Mode::Custom => Some(answer.model.clone()),
-    }
 }
 
 /// The model an `ask` should use: the frontend's requested id, or the
@@ -1377,40 +1505,6 @@ fn merge_hits(raw: &[String], candidates: &[Vec<String>], limit: usize) -> Vec<S
 fn push_unique(out: &mut Vec<String>, title: &str, limit: usize) {
     if out.len() < limit && !out.iter().any(|e| e.eq_ignore_ascii_case(title)) {
         out.push(title.to_string());
-    }
-}
-
-#[cfg(test)]
-mod history_model_tests {
-    use super::*;
-    use crate::providers::ProviderKind;
-
-    fn target(model: &str) -> LlmTarget {
-        LlmTarget {
-            kind: ProviderKind::Anthropic,
-            endpoint: "https://api.example/v1/messages".to_string(),
-            api_key: "test-key".to_string(),
-            model: model.to_string(),
-            name: "Anthropic",
-            debug_id: "anthropic",
-            extra_headers: &[],
-        }
-    }
-
-    #[test]
-    fn custom_mode_records_the_resolved_model() {
-        assert_eq!(
-            history_model(Mode::Custom, &target("claude-sonnet-5")),
-            Some("claude-sonnet-5".to_string())
-        );
-    }
-
-    #[test]
-    fn default_mode_keeps_the_vendor_model_dev_only() {
-        assert_eq!(
-            history_model(Mode::Default, &target("some-vendor-model")),
-            None
-        );
     }
 }
 
@@ -1712,53 +1806,53 @@ mod tests {
         assert!(err.contains("Unknown provider"), "was: {err}");
     }
 
+    /// The keys.rs-documented ghost state: a blob that exists but no longer
+    /// decrypts on this machine (`has_key` never decrypts; `get` does).
+    struct GhostKeyStore;
+    impl KeyStore for GhostKeyStore {
+        fn set(&self, _: &str, _: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn remove(&self, _: &str) -> Result<(), AppError> {
+            Ok(())
+        }
+        fn has_key(&self, _: &str) -> bool {
+            true
+        }
+        fn get(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    /// A ghost Local key must error with the re-paste pointer, never
+    /// silently degrade to keyless (a keyed server's raw 401 carries no
+    /// hint) — the Local twin of Custom mode's `MissingApiKey` recovery.
     #[test]
-    fn default_mode_requires_all_four_vars_and_vision_is_opt_in() {
-        let full = |name: &str| match name {
-            "WIKILENS_DEFAULT_API_KEY" => Some("k".to_string()),
-            "WIKILENS_DEFAULT_API_PROVIDER" => Some("anthropic".to_string()),
-            "WIKILENS_DEFAULT_API_URL" => Some("https://proxy.example/v1".to_string()),
-            "WIKILENS_DEFAULT_ANSWER_MODEL" => Some("some-model".to_string()),
-            _ => None,
-        };
-        let info = default_mode_info(full);
-        assert!(info.configured);
-        assert!(!info.vision, "vision defaults off");
+    fn a_ghost_local_key_errors_with_the_repaste_pointer() {
+        let err = local_request_key(&GhostKeyStore).unwrap_err();
+        assert!(err.contains("paste it again"), "{err}");
+        // The plain legs stay plain: unset → keyless, stored → the key.
+        let keys = InMemoryKeyStore::default();
+        assert_eq!(local_request_key(&keys).unwrap(), "");
+        keys.set(LOCAL_KEY_ID, "tok").unwrap();
+        assert_eq!(local_request_key(&keys).unwrap(), "tok");
+    }
 
-        // Configured means resolver success, not mere presence: an invalid
-        // protocol word (e.g. a vendor id) must read as unconfigured, so the
-        // panel's note and the ask-path error can't disagree.
-        let info = default_mode_info(|name| {
-            if name == "WIKILENS_DEFAULT_API_PROVIDER" {
-                Some("deepseek".to_string())
-            } else {
-                full(name)
-            }
-        });
-        assert!(!info.configured, "vendor id is not a protocol word");
-
-        // Any one required var missing → unconfigured.
-        for missing in [
-            "WIKILENS_DEFAULT_API_KEY",
-            "WIKILENS_DEFAULT_API_PROVIDER",
-            "WIKILENS_DEFAULT_API_URL",
-            "WIKILENS_DEFAULT_ANSWER_MODEL",
-        ] {
-            let info = default_mode_info(|name| if name == missing { None } else { full(name) });
-            assert!(!info.configured, "should be unconfigured without {missing}");
-        }
-
-        // Vision is opt-in with the WIKILENS_DEBUG truthy semantics.
-        for (value, expected) in [("1", true), ("true", true), ("0", false), ("off", false)] {
-            let info = default_mode_info(|name| {
-                if name == "WIKILENS_DEFAULT_VISION" {
-                    Some(value.to_string())
-                } else {
-                    full(name)
-                }
-            });
-            assert_eq!(info.vision, expected, "WIKILENS_DEFAULT_VISION={value}");
-        }
+    /// The Local key lives in the same DPAPI store under a reserved id —
+    /// the registry-iterating surfaces must never enumerate it: no ghost
+    /// "Local" row in the Custom key lines or the provider picker.
+    #[test]
+    fn local_key_never_leaks_into_registry_surfaces() {
+        let keys = InMemoryKeyStore::default();
+        keys.set(LOCAL_KEY_ID, "tok-1").unwrap();
+        assert!(
+            key_status(&keys).iter().all(|row| row.id != LOCAL_KEY_ID),
+            "key_status must stay registry-only"
+        );
+        assert!(
+            provider_infos(&keys).is_empty(),
+            "a local key must not make any registry provider appear keyed"
+        );
     }
 
     #[tokio::test]

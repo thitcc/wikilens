@@ -21,7 +21,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   preprocessQuery, simplifyQuery, searchFull, mergeHits, rewriteQuery, resolveTitles,
-  loadDefaultTarget, loadFixture, sleep, appendJsonl, ciEq, SEARCH_LIMIT, REWRITE_SEARCH_LIMIT,
+  loadEvalTarget, loadFixture, sleep, appendJsonl, ciEq, SEARCH_LIMIT, REWRITE_SEARCH_LIMIT,
 } from './lib.mjs';
 
 import { TitleIndex, fetchAllTitles } from './titles.mjs';
@@ -52,7 +52,7 @@ if (args.game) questions = questions.filter((q) => q.game === args.game);
 if (args.source) questions = questions.filter((q) => q.source === args.source);
 for (const q of questions) if (!WIKIS[q.game]) throw new Error(`${q.id}: unknown wiki ${q.game}`);
 
-const target = args['no-rewrite'] ? null : loadDefaultTarget().rewrite;
+const target = args['no-rewrite'] ? null : loadEvalTarget().rewrite;
 const meta = {
   startedAt: new Date().toISOString(), rounds: ROUNDS, pace: PACE,
   filters: { only: args.only ?? null, game: args.game ?? null, source: args.source ?? null },

@@ -93,9 +93,9 @@ export interface AskResult {
 }
 
 /** One answered ask, from the `list_history` command (newest first). Recorded
- * Rust-side on success only — no entry can be forged from the frontend. In
- * Default mode `model` is `null`: the vendor id stays dev-only, matching the
- * footer's bare "Default". */
+ * Rust-side on success only — no entry can be forged from the frontend.
+ * `model` is `null` only on rows the removed Default mode wrote (its vendor
+ * id was deliberately dev-only); new entries always carry the id. */
 export interface HistoryEntry {
   id: string;
   /** Unix millis when the answer landed; render via `relativeTime`. */
@@ -128,8 +128,8 @@ export interface HotkeyInfo {
   isDefault: boolean;
 }
 
-/** The model-source choice ("default" | "custom"), mirroring Rust `Mode`. */
-export type Mode = "default" | "custom";
+/** The model-source choice ("custom" | "local"), mirroring Rust `Mode`. */
+export type Mode = "custom" | "local";
 
 /** Where an anchored overlay docks, mirroring Rust `PanelAnchor`. */
 export type PanelAnchor =
@@ -172,21 +172,28 @@ export interface KeyStatus {
   hasKey: boolean;
 }
 
+/** The Local AI mode's state (mirrors Rust `LocalModeInfo`). `baseUrl` is
+ * the *effective* address — the stored one, or the baked Ollama default —
+ * so the Settings field always shows where an ask would actually go. */
+export interface LocalModeInfo {
+  baseUrl: string;
+  /** The manual "reads images" toggle — local model catalogs carry no
+   * capability metadata, so the player declares it. */
+  vision: boolean;
+  /** Presence only — key material never crosses back (the KeyStatus rule). */
+  hasKey: boolean;
+}
+
 /** Extensible settings envelope — future config-panel tenants join here. */
 export interface SettingsInfo {
   hotkeys: {
     summon: HotkeyInfo;
     capture: HotkeyInfo;
   };
-  /** Persisted model-source choice; `null` = never chosen (Rust auto-senses
-   * on first launch, so this is only null when that persist failed). */
+  /** Persisted model-source choice; `null` = never chosen (treated as
+   * Custom everywhere). */
   mode: Mode | null;
-  /** Whether the packaged Default source is configured in this environment
-   * (`WIKILENS_DEFAULT_*`), and whether it reads images. */
-  defaultMode: {
-    configured: boolean;
-    vision: boolean;
-  };
+  localMode: LocalModeInfo;
   position: PositionInfo;
 }
 
