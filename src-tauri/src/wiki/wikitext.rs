@@ -1,11 +1,13 @@
-//! Best-effort MediaWiki wikitext → plaintext conversion.
+//! Best-effort MediaWiki wikitext → plaintext conversion — the **fallback**
+//! cleaner.
 //!
-//! WikiLens reads page content as raw wikitext (`prop=revisions`) and cleans it
-//! here — this works on every MediaWiki wiki, including the many game wikis that
-//! lack the TextExtracts extension (Core Keeper, Stardew). This is a pragmatic
-//! cleaner, not a full parser: templates and tables are stripped (their rendered
-//! data usually lives in a backend the raw wikitext doesn't contain anyway),
-//! leaving the article prose readable for the LLM.
+//! The primary path reads rendered HTML (`fetch.rs` → `html.rs`); pages whose
+//! parse call fails or times out arrive here as raw wikitext (`prop=revisions`,
+//! one batched request), which every MediaWiki wiki serves, including the many
+//! game wikis that lack the TextExtracts extension (Core Keeper, Stardew). This
+//! is a pragmatic cleaner, not a full parser: templates and tables are stripped
+//! (their rendered data lives in a backend the raw wikitext doesn't contain
+//! anyway), leaving the article prose readable for the LLM.
 
 /// Convert wikitext to readable plaintext.
 pub fn to_plaintext(wikitext: &str) -> String {

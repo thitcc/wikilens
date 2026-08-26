@@ -2,49 +2,65 @@
 
 [![CI](https://github.com/thitcc/wikilens/actions/workflows/ci.yml/badge.svg)](https://github.com/thitcc/wikilens/actions/workflows/ci.yml)
 
-A Windows desktop overlay for wiki-heavy games (Stardew Valley, Conan Exiles,
-Core Keeper, …). Press a global hotkey while in-game, type a natural-language
-question, and get a concise answer drawn **only** from the game's official wiki,
-with links to the source pages.
+A Windows overlay that answers your in-game question from the game's own wiki —
+without alt-tabbing. Press a hotkey over the running game, type the question,
+get a short answer drawn **only** from the wiki, with links to the pages it came
+from.
 
-**How it works:** hotkey → a glass panel slides in from the right edge and takes
-focus → you type a question → WikiLens searches the game's MediaWiki, fetches the
-top pages as plaintext, sends them to an LLM with instructions to answer *only*
-from that content, and streams the answer back with its sources.
+<!-- screenshot: docs/screenshot.png — the panel over a running game (to be captured) -->
 
-Built with **Tauri v2 + Rust** (backend) and **Vite + React + TypeScript**
-(frontend). All network access happens in Rust; the webview has no HTTP
-permissions and never sees your API key.
-
----
+**How it works:** hotkey → a glass panel slides in and takes focus → you type →
+WikiLens searches the game's MediaWiki, reads the top pages, hands them to a
+language model with orders to answer *only* from that text, and streams the
+answer back with its sources. If the pages don't contain the answer, it says so
+instead of guessing.
 
 ## Requirements
 
-- **Windows 10/11** (this is the only supported target for now).
+- **Windows 10/11** (the only supported target).
 - **WebView2 runtime** — preinstalled on Windows 11 and current Windows 10; if
   missing, install the [Evergreen WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
-- **Node.js ≥ 18** and npm.
-- **Rust** (stable toolchain) + Cargo.
-- A model to answer with — either an **API key** for a supported LLM provider
-  (**Anthropic**, **DeepSeek**, or **OpenRouter**), or a **locally running
-  OpenAI-compatible server** (Ollama, LM Studio, llama.cpp, vLLM).
+- A model to answer with: an **API key** for Anthropic, DeepSeek or OpenRouter,
+  **or** a local OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM).
+- A game running in **borderless or windowed** mode — exclusive fullscreen paints
+  over every overlay.
 
-## Setup: where answers come from
+## Install
 
-Open the header gear (**Settings**). The **Answers** stepper says which model
-writes your answers: **Custom API** (your own cloud provider) or **Local AI**
-(a server running on your machine). Exactly one is the value.
+Download the installer from the [Releases page](https://github.com/thitcc/wikilens/releases):
+`WikiLens_<version>_x64-setup.exe` (bootstraps WebView2 if needed) or the
+`.msi`. Prefer building from source? See below.
 
-The provider lines below — Anthropic, DeepSeek, OpenRouter — are not that
-choice. They only hold keys: click one to paste a key in the field that opens,
-and press **Save**. Saving stores the key and nothing else, so it never switches
-what is answering out from under you; when you want your own provider to answer,
-click that row. Which provider it uses is the footer chip on the panel itself.
-Stored keys are encrypted for your Windows user (DPAPI) in the app-data dir, are
-read **in the Rust process only**, and are never displayed back in any form —
-the only action on a stored key is the trash beside its line. Keys are read at
-ask time, so adding one needs no restart. If the selected provider has no key yet, the app
-answers with *"No API key for `<provider>` yet — add one in Settings."*
+The installers are **unsigned**, so Windows SmartScreen will say *"Windows
+protected your PC — Unknown publisher"*: click **More info → Run anyway**. A
+code-signing certificate is a recurring cost this hobby project doesn't carry.
+Antivirus heuristics may also take a second look — a global hotkey plus screen
+capture is the same behavioral profile as a keylogger — and the trust-but-verify
+path is to build it yourself from this repo.
+
+## First run
+
+1. Launch WikiLens. Nothing opens: it lives in the **system tray**.
+2. Press **Ctrl+`** (the key left of 1). The panel slides in and focuses the input.
+3. Open the header gear (**Settings**) and pick where answers come from — next section.
+4. Pick a **game** from the chip in the header, ask something, and watch the
+   status move through *Searching → Reading → Answering* while the answer
+   streams in with 2–4 source links beneath it.
+5. **Esc** (or Ctrl+` again) hides the panel; focus returns to the game.
+
+## Where answers come from
+
+The **Answers** stepper in Settings names which model writes your answers:
+**Custom API** (your own cloud provider) or **Local AI** (a server on your
+machine). Exactly one is the value.
+
+**Custom API.** The provider lines below the stepper — Anthropic, DeepSeek,
+OpenRouter — only hold keys: click one, paste the key in the field that opens,
+**Save**. Saving stores the key and nothing else; which provider actually
+answers is the **model chip in the panel footer**, where you also pick the
+model. Keys are read at ask time, so adding one needs no restart. Without a key
+for the selected provider the app answers *"No API key for `<provider>` yet —
+add one in Settings."*
 
 | Provider | Default model | Model override var |
 |---|---|---|
@@ -52,16 +68,8 @@ answers with *"No API key for `<provider>` yet — add one in Settings."*
 | DeepSeek | `deepseek-v4-flash` | `WIKILENS_DEEPSEEK_MODEL` |
 | OpenRouter | `openai/gpt-4o-mini` | `WIKILENS_OPENROUTER_MODEL` |
 
-> **Migrating from the env-var era:** `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` /
-> `OPENROUTER_API_KEY` are no longer read. Paste those keys into
-> **Settings → Answers** once, then remove them from your `.env` — it
-> now only serves the model overrides and tuning vars below. WikiLens prints a
-> one-line startup reminder if any legacy variable is still set.
-
-**Changing the model:** each provider ships a sensible default; override it without
-touching code by setting that provider's `WIKILENS_*_MODEL` variable. This matters
-because model ids drift over time (e.g. DeepSeek retired its `deepseek-chat` alias
-in favor of `deepseek-v4-flash`).
+Model ids drift; set that provider's `WIKILENS_*_MODEL` variable to point at a
+different default without touching code (an explicit footer pick still wins).
 
 ### Local AI mode
 
@@ -87,14 +95,127 @@ models your server actually has loaded — pick one there like any provider.
   (LLaVA, Qwen-VL, …) and the capture chip arms; off means text-only.
 
 Two timing notes for local servers: the first ask against a cold model waits
-for it to load (a very large model can exceed WikiLens's 60-second stream
-patience), and the quick pre-search query rewrite has a 4-second budget a
-cold model will miss — after two misses WikiLens skips rewrites for the
-session (asks still work). Keeping the model warm avoids both: `ollama run
-<model>` before playing, or raise `OLLAMA_KEEP_ALIVE` (Ollama unloads idle
-models after ~5 minutes).
+for it to load (WikiLens gives up after 60 seconds without a byte, which a
+very large model can exceed), and the quick pre-search query rewrite has a
+4-second budget a cold model will miss — after two misses WikiLens skips
+rewrites for the session (asks still work). Keeping the model warm avoids
+both: `ollama run <model>` before playing, or raise `OLLAMA_KEEP_ALIVE`
+(Ollama unloads idle models after ~5 minutes).
 
-## Retrieval tuning (advanced)
+## Using it
+
+- **Ctrl+`** shows or hides the panel from anywhere (also in the tray menu).
+  **Enter** sends the question; **Shift+Enter** adds a newline; **Esc** hides.
+- **Game** is the chip in the header; **provider · model** is the chip in the
+  footer. Both are owned menus, both picks are remembered between sessions.
+- **Ask about what's on screen.** Press **Ctrl+Shift+C** (or the footer capture
+  chip), drag a region, and it attaches to your next question as an image —
+  vision-capable models only (rows marked *Image*; the eye, for Local AI).
+- **The running game is offered, never forced.** Summon over a game WikiLens
+  recognises and an accent chip beside the game chip names it; one click
+  switches the wiki. Ignore it and nothing changes. Games it doesn't know —
+  including ones you added yourself — produce no suggestion.
+- **History.** The header's History button reopens any of your last 50 answers
+  without asking again; **Clear history** wipes them.
+- **Stop** (in the status row) halts a streaming answer and keeps what
+  arrived; the header's **Start over** clears the panel for a fresh question.
+- **Shortcuts.** Settings → Shortcuts: **Change** on a row, press the new combo
+  (Esc cancels), **Reset** restores the default. Both the summon and capture
+  shortcuts are configurable and persist across restarts.
+- **Position.** The panel docks top-right by default. **Settings → Position**
+  docks it to any corner or the center — or just drag it by its header, which
+  flips Position to **Manual** and remembers the exact spot across restarts.
+  Anchors and the dragged spot are remembered independently, so stepping
+  between them restores each. Dropped near the bottom of the screen, the
+  panel grows and opens its menus upward, like the bottom anchors. The
+  padlock on the Position heading stops accidental drags (in every mode);
+  the stepper keeps working while locked.
+- **Theme.** Settings → Theme steps between **Default** and **Micrographics**;
+  the pick applies live and is remembered.
+- WikiLens only quits from the tray's **Quit** — closing the panel just hides it.
+
+## Games
+
+| Game | Wiki |
+|---|---|
+| Stardew Valley | stardewvalleywiki.com |
+| Core Keeper | core-keeper.fandom.com |
+| Conan Exiles | conanexiles.fandom.com |
+| Warframe | wiki.warframe.com |
+| Guild Wars 2 | wiki.guildwars2.com |
+| Path of Exile | poewiki.net |
+| Path of Exile 2 | poe2wiki.net |
+| Abiotic Factor | abioticfactor.wiki.gg |
+| Dave the Diver | dave-the-diver.fandom.com |
+| The Elder Scrolls V: Skyrim | en.uesp.net |
+| Fallout 4 | fallout.fandom.com |
+| Grounded | grounded.wiki.gg |
+| Grounded 2 | grounded.fandom.com |
+| Terraria | terraria.wiki.gg |
+| Minecraft | minecraft.wiki |
+
+Stardew's self-hosted wiki uses the legacy search backend, so short keyword
+questions (*"cauliflower"*) find pages more reliably there than full sentences.
+
+**Add your own.** Any MediaWiki works: open the game menu, pick **Add a game…**,
+paste the wiki's URL. WikiLens checks it live (site info plus one test search)
+before saving, and the game stays across restarts. Built-in games are a
+one-entry change in the source — see `CONTRIBUTING.md`.
+
+<details>
+<summary>How content is read</summary>
+
+WikiLens reads each page's rendered HTML (`action=parse&prop=text`, one request
+per page) and reduces it to plaintext, keeping infobox rows and data tables as
+`label | value` lines — the numbers a wiki keeps in templates. If a page's
+parse call fails or times out it falls back to one batched raw-wikitext request
+(`prop=revisions`), which works on every MediaWiki but yields prose only, so a
+stat living solely in an infobox can be missing on that path. `prop=extracts`
+is avoided either way: many game wikis lack the TextExtracts extension, and
+whole-article extracts are capped to a single page.
+
+</details>
+
+## Privacy
+
+- Your provider API keys are stored encrypted for your Windows user (DPAPI, in
+  `keys.json` in the app-data dir — another account or machine can't read them)
+  and stay in the Rust process; a pasted key crosses to Rust once and is never
+  sent back to the panel, displayed, or written to logs.
+- The panel is locked down by CSP to talk only to the local Tauri IPC — it has
+  no direct network, HTTP, or filesystem access. Every outbound request (wiki +
+  the selected LLM provider) is made from Rust.
+- Your question, the fetched wiki excerpts, and any screenshot you attached are
+  sent to the model you selected, to generate the answer. The screenshot stays
+  in the Rust process and goes out only with that one ask.
+- Answer history lives in `history.json` in the app-data dir, local only.
+- To suggest the game you're playing, WikiLens reads the name of the program
+  owning the window it covers, each time you summon the panel. That stays on
+  your machine: the executable's path and the window's title never leave the
+  Rust process, and the only thing that reaches the panel is the id of a
+  matched game (or nothing). It is never logged, never stored, and never sent
+  to a provider. WikiLens asks Windows only for permission to read a process's
+  name — never to read its memory.
+- Wiki content is fetched at ask time and shown with links to its source pages;
+  it stays under each wiki's own license (typically CC BY-SA).
+
+## Build from source
+
+Node.js **22** and a stable Rust toolchain, then from the repo root:
+
+```
+npm install
+npm run tauri dev      # dev build; reads .env
+npm run tauri build    # installers under src-tauri/target/release/bundle/
+```
+
+<details>
+<summary>Advanced: environment variables and debugging</summary>
+
+Set these as OS environment variables (a dev build also reads `.env`; a
+packaged build does not).
+
+### Retrieval tuning (advanced)
 
 Before answering, WikiLens runs a small retrieval pipeline: a raw keyword search
 and an LLM **query rewrite** run concurrently, their hits are merged, and a local
@@ -107,166 +228,48 @@ these variables are escape hatches for when you want to change or trace it.
 | `WIKILENS_TITLE_INDEX` | on | Set to `0`/`false`/`off`/`no` to disable the last-resort fuzzy match of short queries against the game's page titles (it only fires when every search returned nothing). |
 | `WIKILENS_TRACE_RETRIEVAL` | off | Set (to anything) to log each retrieval round as a JSON line on stderr for offline evaluation — public wiki data only, never keys or answer text. |
 
-The picked model drives both the answer and the rewrite, in both modes. Two
-behaviors are automatic, with no variable to set: if that model is known to
-be a *reasoning* model (those think out loud and return unusable rewrites),
-the rewrite is skipped at zero cost — picking a fast non-reasoning model is
-how you keep it.
-And after two consecutive failed rewrites, a per-session circuit breaker stops
-further attempts and prints a one-time notice to the terminal naming the fix;
-restarting WikiLens resets it.
+The picked model drives both the answer and the rewrite, in both modes. If
+that model is known to be a *reasoning* model (they think out loud and return
+unusable rewrites), the rewrite is skipped automatically; and after two
+consecutive failed rewrites a per-session circuit breaker stops further
+attempts and prints a one-time notice to the terminal. Restarting resets it.
 
-## Debugging
+### Debugging
 
-Set `WIKILENS_DEBUG=1` to watch what each ask costs. You get two views of the
-same data: a per-ask table on stderr (phase timings, models, token counts,
-queries, page titles + char counts — printed even when an ask fails), and an
-**always-on-top glass debug panel** — same look as the overlay — with live
-progress bars per phase, expandable details, and a history of the session's
-asks. Like the overlay, it starts hidden: show or hide it with the **Debug**
-chip in the overlay's footer (or the tray's "Show debug panel"); it appears
-at the top-left and you can drag it anywhere by its header. It never takes
-keyboard focus from your game, and it records asks even while hidden, so
-nothing is lost before you open it or after you close it. Neither view ever
-shows wiki text or API keys.
+Set `WIKILENS_DEBUG=1` to watch what each ask costs: a per-ask table on stderr
+(phase timings, models, token counts, queries, page titles + char counts —
+printed even when an ask fails) and an always-on-top glass **debug panel** with
+live progress per phase and the session's ask history. It starts hidden — show
+it with the **Debug** chip in the panel footer or the tray's "Show debug panel";
+it never takes keyboard focus from your game. Neither view ever shows wiki text
+or API keys.
 
-## Commands
+### Migrating from the env-var era
 
-Run frontend/Tauri commands from the repo root; run `cargo` commands in `src-tauri/`.
+`ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY` are no longer
+read. Paste those keys into **Settings → Answers** once and remove them from
+your environment; WikiLens prints a one-line startup reminder while any legacy
+variable is still set.
 
-| Task | Command |
-|---|---|
-| Run the app (dev) | `npm install` then `npm run tauri dev` |
-| Build the installers locally (releases build in CI) | `npm run tauri build` |
-| Bump the release version (release PR only) | `npm run bump 0.2.0` |
-| Frontend production build | `npm run build` |
-| Type-check the frontend | `npx tsc --noEmit` |
-| Check the Rust code | `cd src-tauri && cargo check` |
-| Lint the Rust code | `cd src-tauri && cargo clippy --all-targets -- -D warnings` |
-| Run Rust unit tests | `cd src-tauri && cargo test` |
-
-## Development workflow
-
-All changes land through a pull request — no direct commits to `main`:
-
-1. Branch off `main` as `<type>/<slug>` (e.g. `ci/github-actions-pipeline`).
-2. Commit with conventional prefixes (`feat:`, `fix:`, `chore:`, `ci:`, `docs(vault):`).
-3. Verify locally before pushing — the same gates CI runs: `npx tsc --noEmit`,
-   `cargo clippy --all-targets -- -D warnings`, `cargo test`.
-4. Open a PR — title: an imperative, sentence-case headline (no `type:` prefix);
-   description per `.github/PULL_REQUEST_TEMPLATE.md` (plain-language summary,
-   behavior-level bullets, technical details quoted); CI
-   (`.github/workflows/ci.yml`) must be green before merging.
-5. Merge with a **merge commit** (never squash) — the planning vault pins commit
-   hashes from PR branches, and squashing would orphan them.
-
-## Using it
-
-- **Ctrl+`** (the key left of 1) — show/hide the overlay from anywhere (also
-  available from the tray).
-- Pick your **LLM provider** and **game** from the dropdowns in the header; both
-  choices are remembered between sessions.
-- If WikiLens recognises the game you're playing, it offers it: a chip appears
-  beside the game chip with that game's name, and one click switches to its
-  wiki. It never switches on its own — ignore the chip and nothing changes.
-  Games it doesn't recognise (including any you added yourself) simply don't
-  produce a suggestion.
-- When shown, the panel takes focus so you can type immediately.
-- **Enter** sends your question; **Shift+Enter** adds a newline.
-- **Esc** (or Ctrl+` again) hides the panel; focus returns to the game.
-- **Changing the shortcuts:** the header's gear opens **Settings** — in its
-  Shortcuts section, press **Change** on a row, then press the new combo (Esc
-  cancels). Both the summon and capture shortcuts are configurable; choices
-  persist in `settings.json` in the app-data dir, and **Reset** restores a
-  default.
-- **Moving the panel:** it docks top-right by default. **Settings → Position**
-  docks it to any corner or the center — or just drag it by its header, which
-  flips Position to **Manual** and remembers the exact spot across restarts.
-  Anchors and the dragged spot are remembered independently, so stepping
-  between them restores each. Dropped near the bottom of the screen, the
-  panel grows and opens its menus upward, like the bottom anchors. The
-  padlock on the Position heading stops accidental drags (in every mode);
-  the stepper keeps working while locked.
-- The app starts hidden and lives in the **system tray**. It only quits via the
-  tray's **Quit** item — closing the window just hides it.
-
-## Supported games
-
-Adding a game is a one-line change in `src-tauri/src/wiki/games.rs`.
-
-| Game | Wiki | Search | Answer content | Notes |
-|---|---|---|---|---|
-| **Conan Exiles** | Fandom | ✅ | ✅ | Full support. |
-| **Core Keeper** | Fandom | ✅ | ✅ | Full support. |
-| **Stardew Valley** | Self-hosted | ✅ (keyword) | ✅ | Search works best with short keyword queries (its legacy search backend is strict about multi-word phrases). |
-
-> **How content is read.** WikiLens fetches each page's raw wikitext
-> (`prop=revisions`, one batched request) and converts it to plaintext. This works
-> on **every** MediaWiki wiki — unlike `prop=extracts` (the *TextExtracts*
-> extension), which many game wikis lack (Core Keeper, Stardew) *and* which caps
-> whole-article requests to a single page. The conversion keeps article **prose**
-> but drops template/infobox tables, so a stat that lives only in an infobox may
-> be missing. Endpoints verified 2026-07-02.
-
-## Manual smoke test
-
-> Maintainers: this is the quick first-run walkthrough. The full pre-release
-> checklist (hotkey, tray, DPI, transparency, Esc layering, packaged build) is
-> [`docs/smoke-checklist.md`](docs/smoke-checklist.md), and the release walk
-> itself is [`docs/release.md`](docs/release.md).
-
-1. From the repo root: `npm install` then `npm run tauri dev`.
-2. Wait for the tray icon to appear (the window starts hidden), then press
-   **Ctrl+`** (the key left of 1).
-3. The panel slides in from the right and focuses the input.
-4. Pick a source: the header gear (**Settings**) → **Answers**. With **Custom
-   API** as the stepper's value, click a provider's line, paste its key in the
-   field that opens, and press **Save** (the key is never displayed again),
-   then pick which provider answers from the footer chip. Or step to
-   **Local AI** with Ollama running and pick a model from the footer chip —
-   no key needed.
-5. Choose a **game**, then ask a question — e.g. **Conan Exiles** → *"how do I
-   make steel bars?"*, or **Core Keeper** → *"best way to get wood"*.
-6. Expect the status to move through *Searching → Reading → Answering*, the answer
-   to **stream in** as markdown, and **2–4 source links** to appear beneath it.
-   Clicking a source opens the wiki page in your browser.
-7. Try the other providers (whichever keys you added) — the same question should
-   stream an answer from each. Press **Esc** to hide the panel.
-
-> **Stardew Valley** search works best with short keyword queries (e.g. *"cauliflower"*
-> rather than a full sentence), because its self-hosted wiki uses the legacy search
-> backend. Its page content reads fine via the wikitext fallback.
+</details>
 
 ## Caveats
 
-- **Borderless / windowed only.** The overlay works over games running in
-  borderless-windowed or windowed mode. Games in **exclusive fullscreen** will
-  paint over the overlay — that's expected, not a bug. Switch the game to
-  borderless mode.
-- **Windows only** for now (macOS/Linux are not targeted).
-- **Global shortcuts swallow their combo system-wide.** That's why the defaults
-  are Ctrl-based: the original **Shift+C** summon key made a capital **C**
-  untypeable everywhere (registered as a bare Shift+letter, it fired instead of
-  typing) — resolved by the **Ctrl+`** default, and the reason the shortcut
-  recorder refuses Shift-only combos.
-- Answers are only as good as the wiki. WikiLens will say so when the pages don't
+- **Borderless / windowed only.** Exclusive fullscreen paints over the overlay —
+  expected, not a bug. Switch the game to borderless mode.
+- **Windows only.** macOS and Linux are not targeted.
+- **Global shortcuts swallow their combo system-wide**, which is why the
+  defaults are Ctrl-based and the recorder refuses Shift-only combos (the
+  original Shift+C summon key made a capital C untypeable everywhere).
+- Answers are only as good as the wiki. WikiLens says so when the pages don't
   contain the answer, rather than guessing.
 
-## Security & privacy
+## Contributing · License
 
-- Your provider API keys are stored encrypted for your Windows user (DPAPI, in
-  `keys.json` in the app-data dir — another account or machine can't read them)
-  and stay in the Rust process; a pasted key crosses to Rust once and is never
-  sent back to the webview, displayed, or written to logs.
-- The webview is locked down by CSP to talk only to the local Tauri IPC — it has
-  no direct network, HTTP, or filesystem access. Every outbound request (wiki +
-  the selected LLM provider) is made from Rust.
-- Your question and the fetched wiki excerpts are sent to the LLM provider you
-  select, to generate the answer.
-- To suggest the game you're playing, WikiLens reads the name of the program
-  owning the window it covers, each time you summon the panel. That stays on
-  your machine: the executable's path and the window's title never leave the
-  Rust process, and the only thing that reaches the panel is the id of a
-  matched game (or nothing). It is never logged, never stored, and never sent
-  to a provider. WikiLens asks Windows only for permission to read a process's
-  name — never to read its memory.
+Bug reports and game requests use the issue forms; the development workflow,
+verification commands, and how to add a built-in game are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`.github/SECURITY.md`](.github/SECURITY.md).
+
+WikiLens is released under the [MIT License](LICENSE). The wiki pages kept as
+test fixtures stay under their wikis' Creative Commons licenses — see
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
