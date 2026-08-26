@@ -1,0 +1,34 @@
+name: Game request
+description: Ask for a game to be built in.
+labels: [game]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You may not need to wait: the game menu's **Add a game…** accepts any MediaWiki URL, checks it live, and keeps it across restarts. Built-in games additionally get a verified search setup and, when the executable is known, the running-game suggestion chip.
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      placeholder: "Valheim"
+    validations:
+      required: true
+  - type: input
+    id: wiki
+    attributes:
+      label: Wiki URL
+      description: Prefer the official or independent wiki over a stale Fandom copy when both exist.
+      placeholder: "https://valheim.fandom.com"
+    validations:
+      required: true
+  - type: input
+    id: exe
+    attributes:
+      label: Executable name (optional)
+      description: As shown in Task Manager while the game runs — enables the running-game suggestion.
+      placeholder: "valheim.exe"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: A test question the wiki should be able to answer helps verify the search works.

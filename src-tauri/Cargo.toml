@@ -2,7 +2,9 @@
 name = "wikilens"
 version = "0.1.1"
 description = "A Windows desktop overlay for wiki-heavy games"
-authors = ["you"]
+authors = ["Thiago Tenório"]
+license = "MIT"
+repository = "https://github.com/thitcc/wikilens"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -121,7 +121,7 @@ pub static PROVIDERS: &[Provider] = &[
         // Optional attribution headers OpenRouter uses for its app leaderboard.
         // Harmless to send; ignored by other providers.
         extra_headers: &[
-            ("HTTP-Referer", "https://wikilens.app"),
+            ("HTTP-Referer", "https://github.com/thitcc/wikilens"),
             ("X-Title", "WikiLens"),
         ],
     },

@@ -31,8 +31,9 @@ jobs:
           node-version: 22
           cache: npm
       # Fail in seconds, not after the 20-minute build: the tag must name the
-      # version the manifests already carry (v0.2.0 ↔ 0.2.0) — catches tagging
-      # the wrong commit, the same hazard class `npm run bump` exists for.
+      # version the manifests already carry (v0.2.0 ↔ 0.2.0) — catches a tag
+      # whose number was never bumped (not a correctly-numbered tag on a later
+      # commit), the same hazard class `npm run bump` exists for.
       # package.json alone suffices: bump keeps the three manifests in
       # lockstep. $GITHUB_REF_NAME is read as an env var, never `${{ }}`-
       # interpolated into the script, so an odd tag name can't shell-inject.

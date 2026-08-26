@@ -2,6 +2,11 @@
   "name": "wikilens",
   "private": true,
   "version": "0.1.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thitcc/wikilens.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
