@@ -35,9 +35,13 @@ use wiki::user::UserWikiStore;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Load a `.env` (dev convenience) before anything reads a provider key. Real
-    // OS env vars are NOT overwritten, so exported/`setx` vars take precedence.
-    // `.ok()` ignores "no .env found". See CLAUDE.md for the packaged-app caveat.
+    // Load a `.env` (dev convenience) before anything reads an env override.
+    // Real OS env vars are NOT overwritten, so exported/`setx` vars take
+    // precedence; `.ok()` ignores "no .env found". Debug builds only: dotenvy
+    // walks the cwd and every ancestor, so a release binary reading it would
+    // let a planted `.env` beside the launch dir inject config — packaged
+    // installs take OS env vars (README, CLAUDE.md §5).
+    #[cfg(debug_assertions)]
     dotenvy::dotenv().ok();
     // Returning-dev nudge: name any env var this build no longer reads
     // (vendor keys → the DPAPI store; rewrite pins → the picked model).

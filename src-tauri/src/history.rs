@@ -158,14 +158,23 @@ impl HistoryStore {
         Ok(())
     }
 
-    /// Wipe the history (the menu's pinned "Clear history" action).
+    /// Wipe the history (the menu's pinned "Clear history" action). Also
+    /// removes the sideways `history.json.bak` a corrupt-file load leaves
+    /// behind — after a clear it would be the sole surviving copy of answers
+    /// the player believes deleted.
     pub fn clear(&self) -> Result<(), AppError> {
         self.guard_writable()?;
         let mut guard = self.write();
         let next = Vec::new();
         self.persist(&next)?;
         *guard = next;
-        Ok(())
+        match fs::remove_file(self.path.with_extension("json.bak")) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(AppError::History(format!(
+                "history cleared, but its .bak copy couldn't be removed: {e}"
+            ))),
+        }
     }
 
     /// Crash-safe write: temp file in the same dir, then rename over the
@@ -298,6 +307,27 @@ mod tests {
         let bak = fs::read_to_string(dir.path().join("history.json.bak")).unwrap();
         assert_eq!(bak, "definitely not json");
         assert!(!path.exists(), "corrupt file should have been renamed away");
+    }
+
+    #[test]
+    fn clear_removes_the_sideways_backup_too() {
+        // After "Clear history" the .bak from a corrupt-file load must not
+        // outlive the answers the player just deleted (security review
+        // 2026-08-15, item S6).
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.json");
+        let bak = dir.path().join("history.json.bak");
+        fs::write(&path, "definitely not json").unwrap();
+
+        let store = HistoryStore::load(path.clone());
+        assert!(bak.exists(), "precondition: the corrupt file was kept as .bak");
+        store.append(sample("a question")).unwrap();
+        store.clear().unwrap();
+
+        assert!(!bak.exists(), "clear() must remove history.json.bak");
+        assert!(HistoryStore::load(path).list().is_empty());
+        // Clearing again, with no .bak around, is still a clean success.
+        store.clear().unwrap();
     }
 
     #[test]

@@ -89,9 +89,13 @@ fn directive_set(directives: &BTreeMap<String, Vec<String>>, name: &str) -> BTre
 }
 
 /// CLAUDE.md §4: "All HTTP happens in Rust. The webview has no network/http/fs
-/// permissions." No capability file may grant an `http:` or `fs:` permission.
+/// permissions." No capability file may grant an `http:` or `fs:` permission —
+/// nor a `shell:` one, nor `global-shortcut:` (every hotkey registers
+/// Rust-side in `hotkey.rs`; a webview able to register OS-global shortcuts is
+/// the key-swallowing failure class the Shift+C history documents).
 #[test]
 fn no_capability_grants_http_or_fs_permissions() {
+    const FORBIDDEN_PREFIXES: [&str; 4] = ["http:", "fs:", "shell:", "global-shortcut:"];
     let mut checked = 0;
     for (path, cap) in capability_files() {
         let perms = cap["permissions"]
@@ -100,7 +104,7 @@ fn no_capability_grants_http_or_fs_permissions() {
         for perm in perms {
             let id = permission_identifier(perm);
             assert!(
-                !id.starts_with("http:") && !id.starts_with("fs:"),
+                !FORBIDDEN_PREFIXES.iter().any(|prefix| id.starts_with(prefix)),
                 "{} grants forbidden webview permission: {id}",
                 path.display()
             );
@@ -108,6 +112,35 @@ fn no_capability_grants_http_or_fs_permissions() {
         }
     }
     assert!(checked > 0, "vacuous run — no permissions were checked");
+}
+
+/// The overlay's grant list is an allowlist, pinned exactly: a new permission
+/// has to be added here on purpose, with the prose reason, instead of riding
+/// in unnoticed (the unused `global-shortcut:allow-register` grant did, for a
+/// month — security review 2026-08-15, item G1).
+#[test]
+fn overlay_capability_grants_exactly_the_expected_permissions() {
+    let cap = read_json(&manifest_dir().join("capabilities").join("default.json"));
+    let granted: BTreeSet<&str> = cap["permissions"]
+        .as_array()
+        .expect("permissions array")
+        .iter()
+        .map(permission_identifier)
+        .collect();
+    let expected: BTreeSet<&str> = [
+        "core:default",
+        "core:window:allow-hide",
+        "core:window:allow-show",
+        "core:window:allow-set-focus",
+        "core:window:allow-set-position",
+        "core:window:allow-set-size",
+        "core:window:allow-start-dragging",
+        "core:event:default",
+        "opener:allow-open-url",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(granted, expected, "default.json permission set drifted");
 }
 
 /// CLAUDE.md §5 gotcha: `opener:allow-open-url` needs its inline http(s) URL

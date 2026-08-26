@@ -260,7 +260,6 @@ impl KeyStore for DpapiKeyStore {
 /// from ever popping a dialog under the overlay.
 #[cfg(windows)]
 fn protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
         CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
@@ -293,13 +292,13 @@ fn protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
     if ok == 0 {
         return Err(std::io::Error::last_os_error().to_string());
     }
-    // A successful call owns pbData: copy then LocalFree in straight-line
-    // code, with no early return between them.
+    // A successful call owns pbData: copy, wipe, then LocalFree in
+    // straight-line code, with no early return between them.
     let bytes = unsafe {
         let copied = (!output.pbData.is_null() && output.cbData != 0)
             .then(|| std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec());
         if !output.pbData.is_null() {
-            LocalFree(output.pbData.cast());
+            wipe_and_free(output.pbData, output.cbData as usize);
         }
         copied
     };
@@ -311,7 +310,6 @@ fn protect(plaintext: &[u8]) -> Result<Vec<u8>, String> {
 /// callers add their own context.
 #[cfg(windows)]
 fn unprotect(ciphertext: &[u8]) -> Option<Vec<u8>> {
-    use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
         CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
     };
@@ -344,14 +342,31 @@ fn unprotect(ciphertext: &[u8]) -> Option<Vec<u8>> {
     if ok == 0 {
         return None;
     }
+    // The OS buffer holds the decrypted key: copy it out, then wipe it before
+    // the heap gets it back, so no dead plaintext lingers for a pagefile or
+    // crash dump to catch (security review 2026-08-15, item S3).
     unsafe {
         let copied = (!output.pbData.is_null() && output.cbData != 0)
             .then(|| std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec());
         if !output.pbData.is_null() {
-            LocalFree(output.pbData.cast());
+            wipe_and_free(output.pbData, output.cbData as usize);
         }
         copied
     }
+}
+
+/// Zero a DPAPI output buffer, then release it. `write_bytes` is a volatile
+/// enough wipe here: the pointer escapes to `LocalFree` right after, so the
+/// optimizer can't prove the store dead and elide it.
+///
+/// # Safety
+/// `ptr` must be a non-null buffer of `len` bytes owned by the caller via
+/// `LocalAlloc` (what `CryptProtectData`/`CryptUnprotectData` hand back).
+#[cfg(windows)]
+unsafe fn wipe_and_free(ptr: *mut u8, len: usize) {
+    use windows_sys::Win32::Foundation::LocalFree;
+    std::ptr::write_bytes(ptr, 0, len);
+    LocalFree(ptr.cast());
 }
 
 // Honest non-Windows stubs (the window.rs FFI precedent): the crate keeps its

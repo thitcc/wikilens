@@ -11,11 +11,15 @@ commit:
 
 # Whole-project security review — API-key storage and user-information handling
 
-> **Status (2026-08-26):** a point-in-time record, audited at `fc380b6`. The
-> Tier-2 items below are still open at the commit that takes the repo public
-> ([[2026-08-26_open-source-release-0-2-0]]): S3, F6, S6 and G1 are scheduled
-> as their own fix PR; S2, S4, S7 and S8 stay open by decision. The threat
-> model was written while the repo was private.
+> **Status (2026-08-26):** a point-in-time record, audited at `fc380b6`. Of
+> the Tier-2 items below, S3 (DPAPI buffer wiped before `LocalFree`), F6
+> (`.env` load gated to debug builds), S6 (`history.json.bak` removed by
+> Clear history — the `keys.json.bak` half stays) and G1 (the
+> `global-shortcut` grant dropped; the capability sweep now also refuses
+> `shell:`/`global-shortcut:` and pins the overlay's grant set) were fixed in
+> the open-source prep ([[2026-08-26_open-source-release-0-2-0]]); S2, S4, S7
+> and S8 stay open by decision. The threat model was written while the repo
+> was private.
 
 ## In simple terms
 
@@ -259,14 +263,14 @@ are retained deliberately so the reader sees what was checked and dismissed.
 |---|---|---|---|---|---|
 | S1 | Default-mode key plaintext in env (no DPAPI) | refuted | 3 | 9 | src-tauri/src/target.rs:65 |
 | S2 | No zeroization of key material | partial | 2 | 8 | src-tauri/src/keys.rs:228 |
-| S3 | `unprotect()` LocalFrees plaintext un-wiped | partial | 2 | 8 | src-tauri/src/keys.rs:351 |
+| S3 | `unprotect()` LocalFrees plaintext un-wiped | fixed 2026-08-26 | 2 | 8 | src-tauri/src/keys.rs:351 |
 | S4 | Cross-host redirect carries `x-api-key` | partial | 2 | 8 | src-tauri/src/http.rs:148 |
-| F6 | Release `.env` load → config-injection redirect | partial | 2 | 8 | src-tauri/src/lib.rs:41 |
+| F6 | Release `.env` load → config-injection redirect | fixed 2026-08-26 | 2 | 8 | src-tauri/src/lib.rs:41 |
 | S5 | Full-PNG-over-IPC fallback on thumb failure | refuted | 3 | 9 | src-tauri/src/capture.rs:92 |
-| S6 | `history.json.bak` survives Clear history | partial | 2 | 8 | src-tauri/src/history.rs:92 |
+| S6 | `history.json.bak` survives Clear history | fixed 2026-08-26 (history; `keys.json.bak` open) | 2 | 8 | src-tauri/src/history.rs:92 |
 | S7 | siteinfo `server` controls persisted endpoint + http downgrade | partial | 2 | 8 | src-tauri/src/wiki/probe.rs:122 |
 | S8 | No per-window scoping of app commands (no app ACL manifest) | confirmed | 2 | 9 | src-tauri/build.rs:2 |
-| G1 | Unused `global-shortcut` grant; sweep is a prefix filter | critic-flagged | 2 | 0.6 | src-tauri/capabilities/default.json:15 |
+| G1 | Unused `global-shortcut` grant; sweep is a prefix filter | fixed 2026-08-26 | 2 | 0.6 | src-tauri/capabilities/default.json:15 |
 
 ### Files reviewed
 

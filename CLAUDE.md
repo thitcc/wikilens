@@ -413,10 +413,12 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Opening links needs both the opener command **and** a URL scope: the capability
   grants `opener:allow-open-url` **with** an inline `http(s)://*` scope. Without the
   scope, `open_url` returns `ForbiddenUrl` at runtime (compiles fine).
-- `.env` is loaded via dotenvy at the top of `run()` for dev; a **packaged app's
-  cwd is unpredictable**, so shipped installs should supply env config (model
-  overrides, tuning vars) via OS env vars. API keys don't ride env at all —
-  they live in the DPAPI store (`keys.rs`).
+- `.env` is loaded via dotenvy at the top of `run()` **in debug builds only**
+  (`#[cfg(debug_assertions)]`): dotenvy walks the cwd and every ancestor, so a
+  release binary reading it would let a planted `.env` inject config — and a
+  packaged app's cwd is unpredictable anyway. Shipped installs supply env
+  config (model overrides, tuning vars) via OS env vars. API keys don't ride
+  env at all — they live in the DPAPI store (`keys.rs`).
 - OpenAI-compatible SSE (DeepSeek/OpenRouter) emits `:` comment/keep-alive lines
   and can report errors mid-stream on an HTTP-200 body; `parse_openai_sse_line`
   (via the `SseLine` enum) handles `[DONE]`, comments, null content, and errors.

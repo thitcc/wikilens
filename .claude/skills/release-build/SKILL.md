@@ -48,8 +48,9 @@ only with a deliberate rename.
   have no console (`windows_subsystem = "windows"` in `main.rs`) and every
   window is created hidden — the app is the tray icon plus the summon
   hotkey (default Ctrl+`).
-- **`.env` stops working.** A packaged app's cwd is unpredictable, so
-  dotenv is dev-only: the `WIKILENS_*_MODEL` overrides and the
+- **`.env` stops working.** Release builds don't read it at all (the load
+  is `#[cfg(debug_assertions)]`-gated in `lib.rs` — a planted `.env` beside
+  the launch dir must not inject config), so the `WIKILENS_*_MODEL` overrides and the
   retrieval-tuning/debug vars (README "Retrieval tuning (advanced)") must be
   **OS env vars** for a packaged install. Those README tables are the var
   contracts — don't re-list them.
