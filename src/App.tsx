@@ -902,12 +902,23 @@ function App() {
 
   // The history menu's pinned action. On success the chip unmounts (empty
   // history), so close the menu with it; a rejection propagates to the menu,
-  // which shows it inline and stays open.
+  // which shows it inline and stays open — but first re-list from Rust, the
+  // store of record: the menu must never offer a row the store no longer has
+  // (a clear that failed halfway once left deleted answers selectable). A
+  // failed re-list keeps the rows it had; the original error still surfaces.
   function handleHistoryClear(): Promise<void> {
-    return clearHistory().then(() => {
-      setHistory([]);
-      closeMenu();
-    });
+    return clearHistory().then(
+      () => {
+        setHistory([]);
+        closeMenu();
+      },
+      (e: unknown) =>
+        listHistory()
+          .then(setHistory, () => undefined)
+          .then(() => {
+            throw e;
+          }),
+    );
   }
 
   async function handleSubmit() {
