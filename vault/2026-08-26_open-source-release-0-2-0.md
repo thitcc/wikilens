@@ -160,6 +160,13 @@ an empty path and may abort instead of replacing the old copy.
   owner (MIT; interim identifier `io.github.thitcc.wikilens` + GitHub
   Referer; publisher/copyright "Thiago Tenório"; flip after v0.2.0 is
   published). PR 1 opened from this doc; its code commit is `9145706`.
+- 2026-08-26 — PR 3 (README rework + `CONTRIBUTING.md`) opened, stacked on
+  PR 1: the public README follows the outline above (275 lines, ~55 of them
+  in the collapsed Advanced fold — longer than the ~150 target because the
+  Local AI section and the retrieval-tuning table are CLAUDE.md-pinned
+  single sources and stay verbatim), the contributor material moved out, and `wikitext.rs`'s
+  header now calls itself the fallback so it can't re-seed the README's old
+  "wikitext first" claim.
 - 2026-09-04 — an external review of the four PRs was verified claim by
   claim: #81's clear-history ordering fixed (`.bak` first), MSVC Build
   Tools added to the build prerequisites, the UAC wording dropped from

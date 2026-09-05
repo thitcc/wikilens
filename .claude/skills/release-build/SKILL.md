@@ -61,7 +61,7 @@ only with a deliberate rename.
 ## After building
 
 Walk `docs/smoke-checklist.md` — the packaged/runtime surface (overlay,
-hotkey, tray, DPI, keys) has no automated coverage. Item 10 specifically
+hotkey, tray, DPI, keys) has no automated coverage. Item 11 specifically
 runs on the packaged **installer**; a quick exe sanity check (tray icon
 appears, Ctrl+` summons over a borderless window) covers a non-release
 build.
