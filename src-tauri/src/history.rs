@@ -162,19 +162,28 @@ impl HistoryStore {
     /// removes the sideways `history.json.bak` a corrupt-file load leaves
     /// behind — after a clear it would be the sole surviving copy of answers
     /// the player believes deleted.
+    ///
+    /// The `.bak` goes *first*: a clear must leave the store either fully
+    /// cleared or fully intact. Removing it last meant a `.bak` another
+    /// process held open (an editor, an AV scan) failed the command after the
+    /// live file and the in-memory list were already empty — an error the
+    /// frontend read as "nothing happened", keeping deleted rows selectable.
     pub fn clear(&self) -> Result<(), AppError> {
         self.guard_writable()?;
         let mut guard = self.write();
+        match fs::remove_file(self.path.with_extension("json.bak")) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(AppError::History(format!(
+                    "its .bak copy couldn't be removed: {e} — nothing was cleared"
+                )))
+            }
+        }
         let next = Vec::new();
         self.persist(&next)?;
         *guard = next;
-        match fs::remove_file(self.path.with_extension("json.bak")) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(AppError::History(format!(
-                "history cleared, but its .bak copy couldn't be removed: {e}"
-            ))),
-        }
+        Ok(())
     }
 
     /// Crash-safe write: temp file in the same dir, then rename over the
@@ -328,6 +337,48 @@ mod tests {
         assert!(HistoryStore::load(path).list().is_empty());
         // Clearing again, with no .bak around, is still a clean success.
         store.clear().unwrap();
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn clear_leaves_everything_intact_when_the_bak_is_locked() {
+        // A .bak another process holds open without FILE_SHARE_DELETE (an
+        // editor, an AV scan) can't be removed. The clear must then fail
+        // *before* touching the live file — a half-cleared store made the
+        // menu keep offering rows Rust had already deleted.
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.json");
+        let bak = dir.path().join("history.json.bak");
+        fs::write(&path, "definitely not json").unwrap();
+
+        let store = HistoryStore::load(path.clone());
+        assert!(bak.exists(), "precondition: the corrupt file was kept as .bak");
+        store.append(sample("a question")).unwrap();
+
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&bak)
+            .unwrap();
+        let err = store.clear().unwrap_err().to_string();
+        assert!(
+            err.contains("nothing was cleared"),
+            "the error must say the history is intact: {err}"
+        );
+        assert_eq!(store.list().len(), 1, "in-memory list must be untouched");
+        let on_disk: Vec<HistoryEntry> =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(on_disk.len(), 1, "live file must be untouched");
+        assert!(bak.exists());
+
+        // Once the other process lets go, the same clear succeeds whole.
+        drop(lock);
+        store.clear().unwrap();
+        assert!(store.list().is_empty());
+        assert!(!bak.exists());
+        assert!(HistoryStore::load(path).list().is_empty());
     }
 
     #[test]
