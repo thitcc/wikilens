@@ -3,7 +3,7 @@ title: Open-source prep and the 0.2.0 release
 type: plan
 status: active
 created: 2026-08-26
-updated: 2026-08-26
+updated: 2026-09-04
 tags: [build, security, vault]
 related:
   - "[[2026-08-26_mit-license]]"
@@ -131,7 +131,16 @@ default token → read, flip public, enable secret scanning + push
 protection, Dependabot alerts (alerts only — the documented no-bot stance
 stays), private vulnerability reporting, a ruleset on `main`. Copy the
 dev machine's `%APPDATA%\com.wikilens.app` to the new identifier's folder
-once (DPAPI is per-user; the keys survive the copy).
+once (DPAPI is per-user; the keys survive the copy) — and
+`%LOCALAPPDATA%\com.wikilens.app` too: Tauri keeps the WebView2 profile
+under `LocalData/<identifier>`, and that is where the panel's remembered
+picks (game, recents, model, theme — `localStorage`) live; skip it and they
+reset. The `game` label the game-request issue form names already exists
+(created 2026-09-04; templates don't create labels). Before smoking the
+0.2.0 installer, **uninstall the 0.1.x dev install by hand**: the NSIS
+template stores the install dir under `Software\<publisher>\WikiLens`, the
+publisher string changed with this PR, so an NSIS-over-NSIS upgrade reads
+an empty path and may abort instead of replacing the old copy.
 
 ## Decisions & trade-offs
 - License: MIT — [[2026-08-26_mit-license]] (dependency tree verified
@@ -151,3 +160,9 @@ once (DPAPI is per-user; the keys survive the copy).
   owner (MIT; interim identifier `io.github.thitcc.wikilens` + GitHub
   Referer; publisher/copyright "Thiago Tenório"; flip after v0.2.0 is
   published). PR 1 opened from this doc; its code commit is `9145706`.
+- 2026-09-04 — an external review of the four PRs was verified claim by
+  claim: #81's clear-history ordering fixed (`.bak` first), MSVC Build
+  Tools added to the build prerequisites, the UAC wording dropped from
+  PR 1's body, the `game` label created; the owner step gained the
+  `%LOCALAPPDATA%` profile move and the 0.1.x manual uninstall. The
+  missing third-party license texts became their own follow-up branch.
