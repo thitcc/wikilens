@@ -102,6 +102,30 @@ test("Clear history unmounts the chip and leaves the panel untouched", async () 
   expect(screen.getByText("Winter Seeds")).toBeTruthy();
 });
 
+test("a rejected clear re-lists from the store and keeps the menu open", async () => {
+  const backend = installBackend({
+    list_history: () => HISTORY,
+    clear_history: () => {
+      throw new Error("history.json.bak is in use");
+    },
+  });
+  const user = userEvent.setup();
+  await renderApp();
+  await user.click(historyChip()!);
+  expect(document.querySelectorAll(".model-row")).toHaveLength(2);
+
+  // Rust is the store of record: whatever it lists after the failure is what
+  // the menu shows — here one row survived, so the other must disappear.
+  backend.onCommand("list_history", () => [HISTORY[0]]);
+  await user.click(screen.getByRole("button", { name: "Clear history" }));
+
+  await screen.findByText(/history\.json\.bak is in use/);
+  expect(screen.getByRole("dialog", { name: "Answer history" })).toBeTruthy();
+  expect(document.querySelectorAll(".model-row")).toHaveLength(1);
+  // Once on mount, once from the rejection.
+  expect(backend.callsTo("list_history")).toHaveLength(2);
+});
+
 test("the chip is disabled while an ask is in flight", async () => {
   const backend = installBackend({ list_history: () => HISTORY });
   const gate = deferred<AskResult>();
