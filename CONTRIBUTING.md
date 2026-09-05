@@ -5,7 +5,10 @@ conventions; the short version is below, the long version is `CLAUDE.md`.
 
 ## Set up
 
-Windows 10/11, Node.js 22, a stable Rust toolchain, and the WebView2 runtime.
+Windows 10/11, Node.js 22, a stable Rust toolchain, the Visual Studio C++
+Build Tools (workload *Desktop development with C++*, which the MSVC target
+links with — see [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/#windows)),
+and the WebView2 runtime.
 
 ```
 npm install
@@ -13,8 +16,10 @@ npm run tauri dev
 ```
 
 The panel starts hidden in the tray — press **Ctrl+`** over a borderless or
-windowed game. `WIKILENS_DEBUG=1` prints a per-ask table and opens a debug
-panel; `.env.example` lists every variable a dev build reads.
+windowed game. `WIKILENS_DEBUG=1` prints a per-ask table and creates a debug
+panel that also starts hidden — show it with the footer **Debug** chip or the
+tray's "Show debug panel"; `.env.example` lists every variable a dev build
+reads.
 
 ## Verify before you push
 

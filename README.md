@@ -201,7 +201,11 @@ whole-article extracts are capped to a single page.
 
 ## Build from source
 
-Node.js **22** and a stable Rust toolchain, then from the repo root:
+Node.js **22**, a stable Rust toolchain, and the **Visual Studio C++ Build
+Tools** (workload *Desktop development with C++* — the MSVC target links with
+it; rustup's Windows installer offers to install it, and
+[Tauri's prerequisites page](https://v2.tauri.app/start/prerequisites/#windows)
+walks through it), then from the repo root:
 
 ```
 npm install
