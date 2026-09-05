@@ -48,11 +48,16 @@ and the fix (`npm run licenses`, commit the result).
   rendered without dates, versions or machine paths, so the file is a pure
   function of the two lockfiles and CI can byte-compare it.
 
-## Expected warnings (not failures)
-cargo-about prints `unable to find text for license … falling back to
-canonical text` for the ~10 crates that ship no license file (the
-`webview2-com*` trio, the `unic-*` family, `alloc-stdlib`, `selectors`) —
-the canonical SPDX text is used. Only a non-zero exit is a failure.
+## Two things cargo-about does quietly
+- Crates that ship no license file (the `webview2-com*` trio, the `unic-*`
+  family, `alloc-stdlib`, `selectors`) get the canonical SPDX text. At its
+  default log level cargo-about says nothing about it; `cargo about generate
+  -L debug …` from `src-tauri/` names them. Only a non-zero exit is a failure.
+- Its file scan walks `src/` too, so a source file carrying a license header
+  can outrank the crate's LICENSE. The script fails when a text contains Rust
+  items; the fix is a `[<name>.clarify]` table at the end of
+  `about.toml` pinning the real files by sha256 (encoding_rs and
+  schemars_derive are pinned that way).
 
 ## Invariants
 - The release PR stays bump-only: the app crate is excluded, so `npm run bump`

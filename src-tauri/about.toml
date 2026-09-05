@@ -42,3 +42,20 @@ private = { ignore = true }
 # the stock unicode-ident workaround pins a Unicode-DFS-2016 checksum the
 # current release no longer matches — its shipped license files detect fine.
 workarounds = []
+
+# Crates whose license text cargo-about's file scan gets wrong — it walks
+# `src/` too, and a source file carrying a license header outranks the real
+# LICENSE file. Pin the shipped files (sha256 of the published crate file; a
+# version bump that changes them fails the run, which is the point). These
+# tables must stay LAST in this file: a `[<name>.clarify]` header would
+# swallow any top-level key written after it.
+[encoding_rs.clarify]
+license = "(Apache-2.0 OR MIT) AND BSD-3-Clause"
+files = [
+    { path = "LICENSE-MIT", license = "MIT", checksum = "3fa4ca83dcc9237839b1bdeb2e6d16bdfb5ec0c5ce42b24694d8bbf0dcbef72c" },
+    { path = "LICENSE-WHATWG", license = "BSD-3-Clause", checksum = "838118388fe5c2e7f1dbbaeed13e1c7f3ebf88be91319c7c1d77c18e987d1a50" },
+]
+
+[schemars_derive.clarify]
+license = "MIT"
+files = [{ path = "LICENSE", checksum = "1954992a2b32e8a2af24a4c11b726902e344c1934b947a77f04d404908f8db30" }]

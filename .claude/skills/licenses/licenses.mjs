@@ -39,6 +39,11 @@ export const CARGO_ABOUT_INSTALL = `cargo install cargo-about --locked --version
 /** The app crate: its presence in the inventory means the exclusion broke. */
 const APP_CRATE = 'wikilens';
 
+/** cargo-about scans `src/` too, and a source file carrying a license header
+ * can outrank the real LICENSE file (encoding_rs and schemars_derive did). A
+ * "license text" with Rust items in it is that bug, never a license. */
+const LOOKS_LIKE_SOURCE_RE = /^\s*(#!\[|pub(\(crate\))? (fn|static|const|struct|enum|mod|use|trait) |use [a-z_:]+;|impl[ <]|fn [a-z_]+\()/m;
+
 /** Production packages whose license file the readdir rule can't find, mapped
  * to the file to use (relative to the repo root). plugin-opener ships only a
  * `LICENSE.spdx` document; its holder and terms are @tauri-apps/api's. */
@@ -72,8 +77,8 @@ const readText = (path, rel) => {
 // ---------- subprocess ----------
 
 // Injectable so unit tests never spawn cargo. stdout is captured (the version
-// probe reads it); stderr inherits so cargo-about's "falling back to canonical
-// text" warnings stay visible. One command string through the shell (see
+// probe reads it); stderr inherits so cargo-about's own errors (an unaccepted
+// license names the crate) stay visible. One command string through the shell (see
 // bump.mjs: npm/cargo shims need it on Windows, and the args are constants
 // plus a quoted temp path).
 function execCommand(tool, args, cwd) {
@@ -109,7 +114,7 @@ export function collectRust(root, exec) {
   try {
     const { status, error } = exec('cargo', args, cwd) ?? {};
     if (error || status !== 0) {
-      fail(`\`cargo about generate\` ${error ? `failed to start: ${error}` : `exited with status ${status}`} — a crate under an unaccepted license? (src-tauri/about.toml)`);
+      fail(`\`cargo about generate\` ${error ? `failed to start: ${error}` : `exited with status ${status}`} — see its error above: an unaccepted license, a stale clarify checksum, or a config error in src-tauri/about.toml`);
     }
     if (!existsSync(out)) fail('`cargo about generate` exited 0 but wrote no output');
     return reduceCargoAbout(JSON.parse(readFileSync(out, 'utf8')));
@@ -135,6 +140,9 @@ export function reduceCargoAbout(json) {
   }));
   for (const e of entries) {
     if (!e.id || !e.text) fail(`cargo-about entry "${e.name || e.id}" has no id or text`);
+    if (LOOKS_LIKE_SOURCE_RE.test(e.text)) {
+      fail(`cargo-about picked a source file as the ${e.id} text for ${e.usedBy.map((c) => c.name).join(', ')} — pin the real file with a \`[<name>.clarify]\` table in src-tauri/about.toml`);
+    }
     if (e.usedBy.some((c) => c.name === APP_CRATE)) {
       fail(`the app crate "${APP_CRATE}" leaked into the inventory — keep \`publish = false\` in src-tauri/Cargo.toml and \`private = { ignore = true }\` in src-tauri/about.toml`);
     }
@@ -219,12 +227,22 @@ function readPackageLicense(dir) {
 
 const RULE = '-'.repeat(80);
 
+const componentKey = (u) => `${u.name}@${u.version}`;
+
+/** Distinct components across entries — a crate listed under two texts (an
+ * `AND` expression, or two MIT variants) is still one crate. */
+export const distinctComponents = (entries) => new Set(entries.flatMap((e) => e.usedBy.map(componentKey))).size;
+
 function countByIdLine(entries) {
-  const counts = new Map();
-  for (const e of entries) counts.set(e.id, (counts.get(e.id) ?? 0) + e.usedBy.length);
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || byCodePoint(a[0], b[0]))
-    .map(([id, n]) => `${id} (${n})`)
+  const byId = new Map();
+  for (const e of entries) {
+    const set = byId.get(e.id) ?? new Set();
+    for (const u of e.usedBy) set.add(componentKey(u));
+    byId.set(e.id, set);
+  }
+  return [...byId.entries()]
+    .sort((a, b) => b[1].size - a[1].size || byCodePoint(a[0], b[0]))
+    .map(([id, set]) => `${id} (${set.size})`)
     .join(', ');
 }
 
@@ -236,8 +254,8 @@ function renderEntry(e, describe) {
 }
 
 export function render({ rust, npm }) {
-  const crates = rust.reduce((n, e) => n + e.usedBy.length, 0);
-  const packages = npm.reduce((n, e) => n + e.usedBy.length, 0);
+  const crates = distinctComponents(rust);
+  const packages = distinctComponents(npm);
   const head = [
     'WikiLens — third-party licenses',
     '===============================',
@@ -283,8 +301,8 @@ export function runLicenses({ root = DEFAULT_ROOT, check = false, exec = execCom
   const path = join(root, OUTPUT_REL);
   const existing = existsSync(path) ? readFileSync(path, 'utf8') : null;
   const counts = {
-    crates: rust.reduce((n, e) => n + e.usedBy.length, 0),
-    packages: npm.reduce((n, e) => n + e.usedBy.length, 0),
+    crates: distinctComponents(rust),
+    packages: distinctComponents(npm),
     kb: Math.round(Buffer.byteLength(content, 'utf8') / 1024),
   };
   if (existing === content) return { status: 'unchanged', counts };

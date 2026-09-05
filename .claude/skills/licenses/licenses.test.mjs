@@ -14,6 +14,7 @@ import {
   checkTool,
   collectNpm,
   findLicenseFile,
+  distinctComponents,
   normalizeText,
   reduceCargoAbout,
   render,
@@ -40,6 +41,13 @@ const CARGO_ABOUT_JSON = {
       id: 'Apache-2.0',
       text: APACHE + '\r\n',
       used_by: [{ crate: { name: 'beta', version: '0.3.1', repository: null } }],
+    },
+    // alpha is `MIT AND Unicode-3.0`: listed under two texts, still one crate.
+    {
+      name: 'Unicode License v3',
+      id: 'Unicode-3.0',
+      text: 'UNICODE LICENSE V3\n\nPermission is hereby granted...',
+      used_by: [{ crate: { name: 'alpha', version: '1.0.0', repository: 'https://example.com/alpha' } }],
     },
   ],
 };
@@ -156,7 +164,7 @@ test('reduceCargoAbout: sorts entries and crates, normalizes text, drops machine
   const rust = reduceCargoAbout(CARGO_ABOUT_JSON);
   assert.deepEqual(
     rust.map((e) => e.id),
-    ['Apache-2.0', 'MIT'],
+    ['Apache-2.0', 'MIT', 'Unicode-3.0'],
   );
   assert.deepEqual(
     rust[1].usedBy.map((c) => c.name),
@@ -165,6 +173,15 @@ test('reduceCargoAbout: sorts entries and crates, normalizes text, drops machine
   assert.equal(rust[0].text, APACHE.replace(/\n$/, ''));
   assert.equal(rust[0].usedBy[0].repository, '');
   assert.ok(!('used_by' in rust[0]));
+});
+
+test('reduceCargoAbout: a source file mistaken for a license text is an error', () => {
+  const source = { licenses: [{ ...CARGO_ABOUT_JSON.licenses[0], text: '#![allow(clippy::all)]\n// Copied from regex_syntax\n// MIT License\npub fn escape(text: &str) -> String {}' }] };
+  assert.throws(() => reduceCargoAbout(source), (e) => e instanceof LicensesError && /source file as the MIT text for alpha, zeta/.test(e.message) && /clarify/.test(e.message));
+  const header = { licenses: [{ ...CARGO_ABOUT_JSON.licenses[0], text: '// Copyright (c) Example\n// Permission is hereby granted...\npub(crate) static TABLE: [u16; 2] = [1, 2];' }] };
+  assert.throws(() => reduceCargoAbout(header), LicensesError);
+  // Prose that merely mentions "use" or "fn" is still a license.
+  assert.doesNotThrow(() => reduceCargoAbout({ licenses: [{ ...CARGO_ABOUT_JSON.licenses[0], text: 'Permission to use, copy, modify... fn is not a keyword here.' }] }));
 });
 
 test('reduceCargoAbout: the app crate leaking in is an error', () => {
@@ -178,7 +195,9 @@ test('render: header counts, both parts, one trailing newline, no CR, order-inde
   const npm = collectNpm(root, { warn: () => {} });
   const text = render({ rust, npm });
   assert.match(text, /^WikiLens — third-party licenses\n/);
-  assert.match(text, /3 crates under 2 license texts\.\n  MIT \(2\), Apache-2\.0 \(1\)\n/);
+  // alpha sits under MIT and Unicode-3.0: 4 memberships, 3 distinct crates.
+  assert.match(text, /3 crates under 3 license texts\.\n  MIT \(2\), Apache-2\.0 \(1\), Unicode-3\.0 \(1\)\n/);
+  assert.equal(distinctComponents(rust), 3);
   assert.match(text, /6 packages under 2 license texts\./);
   assert.match(text, /PART 1 — RUST CRATES\n/);
   assert.match(text, /PART 2 — NPM PACKAGES\n/);

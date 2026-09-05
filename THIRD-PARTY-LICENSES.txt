@@ -9,8 +9,8 @@ project's two lockfiles and ships next to WikiLens.exe — edit the
 generator (.claude/skills/licenses/licenses.mjs), not this file.
 
 Part 1 — Rust crates linked into wikilens.exe (x86_64-pc-windows-msvc,
-normal dependencies only): 286 crates under 128 license texts.
-  MIT (248), Unicode-3.0 (19), Apache-2.0 (7), BSD-3-Clause (5), MPL-2.0 (5), MIT-0 (1), Zlib (1)
+normal dependencies only): 277 crates under 126 license texts.
+  MIT (244), Unicode-3.0 (19), Apache-2.0 (7), MPL-2.0 (5), BSD-3-Clause (4), MIT-0 (1), Zlib (1)
 
 Part 2 — npm packages bundled into the frontend (production dependencies
 only): 89 packages under 27 license texts.
@@ -730,66 +730,6 @@ limitations under the License.
 --------------------------------------------------------------------------------
 BSD 3-Clause "New" or "Revised" License (BSD-3-Clause)
 Used by:
-  - encoding_rs 0.8.35 — https://github.com/hsivonen/encoding_rs
-
-// Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this
-//    list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice,
-//    this list of conditions and the following disclaimer in the documentation
-//    and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the copyright holder nor the names of its
-//    contributors may be used to endorse or promote products derived from
-//    this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-/// The PUA code points special-cased in the GB18030 encoder.
-pub(crate) static GB18030_2022_OVERRIDE_PUA: [u16; 18] = [
-    0xE78D, 0xE78E, 0xE78F, 0xE790, 0xE791, 0xE792, 0xE793, 0xE794, 0xE795, 0xE796, 0xE81E, 0xE826,
-    0xE82B, 0xE82C, 0xE832, 0xE843, 0xE854, 0xE864,
-];
-
-/// The bytes corresponding to the PUA code points special-cased in the GB18030 encoder.
-pub(crate) static GB18030_2022_OVERRIDE_BYTES: [[u8; 2]; 18] = [
-    [0xA6, 0xD9],
-    [0xA6, 0xDA],
-    [0xA6, 0xDB],
-    [0xA6, 0xDC],
-    [0xA6, 0xDD],
-    [0xA6, 0xDE],
-    [0xA6, 0xDF],
-    [0xA6, 0xEC],
-    [0xA6, 0xED],
-    [0xA6, 0xF3],
-    [0xFE, 0x59],
-    [0xFE, 0x61],
-    [0xFE, 0x66],
-    [0xFE, 0x67],
-    [0xFE, 0x6D],
-    [0xFE, 0x7E],
-    [0xFE, 0x90],
-    [0xFE, 0xA0],
-];
-
---------------------------------------------------------------------------------
-BSD 3-Clause "New" or "Revised" License (BSD-3-Clause)
-Used by:
   - alloc-no-stdlib 2.0.4 — https://github.com/dropbox/rust-alloc-no-stdlib
   - brotli 8.0.4 — https://github.com/dropbox/rust-brotli
 
@@ -881,65 +821,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-
---------------------------------------------------------------------------------
-MIT License (MIT)
-Used by:
-  - schemars_derive 0.8.22 — https://github.com/GREsau/schemars
-
-#![allow(clippy::all)]
-// Copied from regex_syntax crate to avoid pulling in the whole crate just for a utility function
-// https://github.com/rust-lang/regex/blob/431c4e4867e1eb33eb39b23ed47c9934b2672f8f/regex-syntax/src/lib.rs
-//
-// Copyright (c) 2014 The Rust Project Developers
-//
-// Permission is hereby granted, free of charge, to any
-// person obtaining a copy of this software and associated
-// documentation files (the "Software"), to deal in the
-// Software without restriction, including without
-// limitation the rights to use, copy, modify, merge,
-// publish, distribute, sublicense, and/or sell copies of
-// the Software, and to permit persons to whom the Software
-// is furnished to do so, subject to the following
-// conditions:
-//
-// The above copyright notice and this permission notice
-// shall be included in all copies or substantial portions
-// of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-// ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-// TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-// PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-// SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-// CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-// IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-
-pub fn escape(text: &str) -> String {
-    let mut quoted = String::new();
-    escape_into(text, &mut quoted);
-    quoted
-}
-
-fn escape_into(text: &str, buf: &mut String) {
-    buf.reserve(text.len());
-    for c in text.chars() {
-        if is_meta_character(c) {
-            buf.push('\\');
-        }
-        buf.push(c);
-    }
-}
-
-fn is_meta_character(c: char) -> bool {
-    match c {
-        '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$'
-        | '#' | '&' | '-' | '~' => true,
-        _ => false,
-    }
-}
 
 --------------------------------------------------------------------------------
 MIT License (MIT)
