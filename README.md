@@ -274,6 +274,8 @@ Bug reports and game requests use the issue forms; the development workflow,
 verification commands, and how to add a built-in game are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md). Security reports: [`.github/SECURITY.md`](.github/SECURITY.md).
 
-WikiLens is released under the [MIT License](LICENSE). The wiki pages kept as
-test fixtures stay under their wikis' Creative Commons licenses — see
-[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+WikiLens is released under the [MIT License](LICENSE). The Rust crates and npm
+packages compiled into the app are listed with their license texts in
+[`THIRD-PARTY-LICENSES.txt`](THIRD-PARTY-LICENSES.txt), which is installed next
+to `WikiLens.exe`. The wiki pages kept as test fixtures stay under their wikis'
+Creative Commons licenses — see [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).

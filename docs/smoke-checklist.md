@@ -296,6 +296,10 @@ failure that costs anything.
 - [ ] Ask a question, quit via the tray, relaunch: the History chip is there
       and the ask restores — `history.json` persists in app-data across
       restarts (vault/2026-08-03_answer-history.md).
+- [ ] `THIRD-PARTY-LICENSES.txt` sits next to `WikiLens.exe` in the install
+      folder, opens as plain text with the WikiLens header, and the
+      uninstaller removes it (the `bundle.resources` entry —
+      vault/2026-08-26_open-source-release-0-2-0.md).
 
 ## Live test suite cadence
 

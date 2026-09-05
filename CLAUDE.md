@@ -25,6 +25,7 @@ Tauri v2 + Rust backend, Vite + React + TypeScript frontend.
 ```
 wikilens/
 ├── index.html, capture.html, debug.html, vite.config.ts, tsconfig*.json   # Vite/TS config; three rollup inputs (overlay + region-select + debug pages)
+├── THIRD-PARTY-LICENSES.txt      # generated inventory of every shipped crate/npm package's license text (`npm run licenses`; CI byte-checks it); bundled next to the exe
 ├── vault/                        # planning vault: plans, decisions, notes (see §6)
 ├── docs/                         # dev guides: smoke checklist, release runbook, explainers
 ├── eval/                         # retrieval eval suite: questions.json fixture + Node mirror of the ask pipeline (lib/html .mjs, parity-tested), run-retrieval / run-answer / aggregate (see eval/README.md; output in gitignored eval/out/)
@@ -97,9 +98,18 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
 - Frontend build: `npm run build` · Type-check: `npx tsc --noEmit` ·
   Tests: `npm test` (Vitest; `npm run test:watch` while developing)
 - Tooling tests: `npm run test:node` — unit tests for the Node scripts under
-  `.claude/skills/` (vault-lint, sync-agents) and the `eval/` mirror's parity
-  tests (against the Rust test vectors + insta snapshots), on Node's built-in
-  runner. Vitest's `include` is `src/**` only, so these need their own step
+  `.claude/skills/` (vault-lint, sync-agents, bump, licenses) and the `eval/`
+  mirror's parity tests (against the Rust test vectors + insta snapshots), on
+  Node's built-in runner. Vitest's `include` is `src/**` only, so these need
+  their own step
+- Third-party licenses: `npm run licenses` regenerates
+  `THIRD-PARTY-LICENSES.txt` (cargo-about 0.9 over `src-tauri/about.toml` +
+  a walk of `package-lock.json`; needs `cargo install cargo-about --locked
+  --version 0.9.2 --features cli` once) and `npm run licenses -- --check`
+  is CI's freshness gate — run after any `Cargo.lock` / `package-lock.json`
+  change. The file ships next to the exe via `bundle.resources`; the app
+  crate is excluded, so a release bump never stales it (skill:
+  `.claude/skills/licenses/SKILL.md`)
 - Retrieval eval (live, paced, uses the `.env` `WIKILENS_EVAL_*` model —
   eval-owned, the app reads none of it):
   `npm run eval:retrieval -- --out eval/out/<name> --rounds 3` →
@@ -114,8 +124,9 @@ Frontend/Tauri from repo root; `cargo` from `src-tauri/`:
   adding/changing a game or provider, ~monthly otherwise
   (see `docs/smoke-checklist.md`)
 - Verify all: `/check` bundles the type-check + `npm test` + `npm run test:node`
-  + clippy + `cargo test` — the code gates CI runs (`.github/workflows/ci.yml`, every PR
-  and push to main). CI additionally audits dependencies (`cargo audit`,
+  + clippy + `cargo test` + `npm run licenses -- --check` — the code gates CI
+  runs (`.github/workflows/ci.yml`, every PR and push to main). CI
+  additionally audits dependencies (`cargo audit`,
   `npm audit --audit-level=high`) — CI-only, since they depend on the network
   and advisory databases
 - Release: a `v*` tag push triggers `release.yml` — CI builds the installers
