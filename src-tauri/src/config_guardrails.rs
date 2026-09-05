@@ -181,6 +181,33 @@ fn config_windows_defer_creation_to_setup() {
     }
 }
 
+/// The third-party license inventory ships next to the exe as a bundled
+/// resource (`npm run licenses` generates it; CI byte-checks it): the map
+/// form places it at the install root (the list form would land it under
+/// `_up_/`), and `licenseFile` stays absent — it would add an EULA page to
+/// both installers (vault/2026-08-26_open-source-release-0-2-0.md).
+#[test]
+fn third_party_licenses_ship_as_a_bundled_resource() {
+    let conf = read_json(&manifest_dir().join("tauri.conf.json"));
+    let bundle = &conf["bundle"];
+    assert_eq!(
+        bundle["resources"]["../THIRD-PARTY-LICENSES.txt"],
+        Value::String("THIRD-PARTY-LICENSES.txt".to_string()),
+        "bundle.resources must map ../THIRD-PARTY-LICENSES.txt to the install root"
+    );
+    assert!(
+        bundle.get("licenseFile").is_none(),
+        "bundle.licenseFile adds an EULA page to the installers — the texts ship as a resource instead"
+    );
+    let inventory = std::fs::read_to_string(manifest_dir().join("../THIRD-PARTY-LICENSES.txt"))
+        .expect("THIRD-PARTY-LICENSES.txt exists at the repo root — run `npm run licenses`");
+    assert!(
+        inventory.contains("MIT License") && inventory.contains("react@"),
+        "the inventory must carry the shipped license texts (crates and npm packages)"
+    );
+    assert!(!inventory.contains('\r'), "the inventory is LF-only (pinned in .gitattributes)");
+}
+
 /// `default-src` is the fallback for every unlisted directive (media, frames,
 /// workers, …) — it must stay exactly `'self'`.
 #[test]
