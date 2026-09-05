@@ -15,7 +15,8 @@ dist-ssr
 # Rust / Tauri build output (also ignored in src-tauri/.gitignore)
 src-tauri/target
 
-# Secrets — never commit provider API keys (.env holds the ANTHROPIC / DEEPSEEK / OPENROUTER keys)
+# Local env overrides (model pins, tuning vars, the eval suite's target). API
+# keys live in the app's DPAPI store, never here — but keep .env out anyway.
 .env
 .env.*
 !.env.example
@@ -57,3 +58,30 @@ vault/.claudian/
 # Retrieval eval run output (eval/run-*.mjs): raw JSONL per round, answers,
 # judge verdicts — local measurement data; summaries go in the vault.
 eval/out/
+
+# Tool runtime state that reappears in any clone (Claude Code scheduling /
+# agent files, impeccable hook caches and live sessions) — machine-local and
+# full of absolute paths; ignored here rather than in .git/info/exclude so a
+# fresh checkout can never `git add -A` them.
+**/.claude/scheduled_tasks.lock
+**/.claude/scheduled_tasks.json
+**/.claude/routines/.state/
+**/.claude/worktrees/
+**/.claude/checkpoints/
+**/.claude/mailbox/
+**/.claude/agent-registry.json
+**/.claude/agent-memory-local
+**/.claude/first-run
+**/.claude/assistant-daemon-state.json
+.impeccable/hook.cache.json
+.impeccable/hook.pending.json
+.impeccable/config.local.json
+.impeccable/live/server.json
+.impeccable/live/previews/
+.impeccable/live/annotations/
+.impeccable/live/cache/
+.impeccable/live/manual-edit-*
+.impeccable/live/pending-manual-edits.json
+.impeccable/live/deferred-svelte-component-accepts.json
+.impeccable-live.json
+.impeccable-live/

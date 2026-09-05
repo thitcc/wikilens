@@ -183,7 +183,7 @@ mod tests {
         // ever fails, machine-identifying material is one refactor away from
         // crossing IPC.
         let cases = [
-            r"C:\Users\Thiago\AppData\Roaming\Some Game\game.exe",
+            r"C:\Users\x\AppData\Roaming\Some Game\game.exe",
             r"C:\game.exe",
             r"\\fileserver\share\Games\Path of Exile\PathOfExileSteam.exe",
             "D:/steam/steamapps/common/Stardew Valley/Stardew Valley.exe",

@@ -1259,7 +1259,7 @@ mod http_tests {
         let server = MockServer::start().await;
         let target = LlmTarget {
             extra_headers: &[
-                ("HTTP-Referer", "https://wikilens.app"),
+                ("HTTP-Referer", "https://github.com/thitcc/wikilens"),
                 ("X-Title", "WikiLens"),
             ],
             ..mock_target(
@@ -1269,7 +1269,7 @@ mod http_tests {
         };
         Mock::given(method("POST"))
             .and(path("/chat"))
-            .and(header("HTTP-Referer", "https://wikilens.app"))
+            .and(header("HTTP-Referer", "https://github.com/thitcc/wikilens"))
             .and(header("X-Title", "WikiLens"))
             .respond_with(
                 ResponseTemplate::new(200)

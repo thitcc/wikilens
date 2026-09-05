@@ -3,13 +3,19 @@ title: Whole-project security review — API-key storage and user-information ha
 type: research
 status: done
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-26
 tags: [security, rust, tauri, frontend, llm]
 related: ["[[2026-07-26_api-key-storage-dpapi]]", "[[2026-07-29_keys-are-not-a-mode-choice]]", "[[2026-08-04_game-auto-detection]]", "[[2026-07-13_testing-audit]]"]
 commit:
 ---
 
 # Whole-project security review — API-key storage and user-information handling
+
+> **Status (2026-08-26):** a point-in-time record, audited at `fc380b6`. The
+> Tier-2 items below are still open at the commit that takes the repo public
+> ([[2026-08-26_open-source-release-0-2-0]]): S3, F6, S6 and G1 are scheduled
+> as their own fix PR; S2, S4, S7 and S8 stay open by decision. The threat
+> model was written while the repo was private.
 
 ## In simple terms
 
@@ -57,7 +63,8 @@ crate sources on the audited machine** — primary evidence, stronger than docs:
 
 ## Scope & threat model
 
-Single-user Windows gaming desktop; private repo. Three trust boundaries: (a) the
+Single-user Windows gaming desktop; private repo at the time of this audit
+(2026-08-15 — it goes public with 0.2.0). Three trust boundaries: (a) the
 WebView2 webview → Rust command surface, (b) untrusted remote content — LLM output, wiki
 HTML/wikitext, a user-added wiki's self-reported siteinfo — entering the app, (c)
 at-rest files in the app-data dir (`settings.json`, `keys.json`, `history.json`,

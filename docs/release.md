@@ -63,9 +63,11 @@ The tag push triggers `.github/workflows/release.yml`
 builds the installers with `tauri-apps/tauri-action` and attaches them to
 a **draft** GitHub Release named after the tag. A draft is invisible to
 everyone but collaborators — nothing is published yet. The workflow first
-checks the tag against `package.json`'s version and fails in seconds on a
-mismatch (the tagged-the-wrong-commit case); a cold build then takes
-15–25 minutes.
+checks the tag name against `package.json`'s version and fails in seconds
+on a mismatch — it catches a tag whose number was never bumped, not a
+correctly-numbered tag placed on a later commit, so tag the release PR's
+merge commit (`git log --first-parent -1` before `git tag`); a cold build
+then takes 15–25 minutes.
 
 When the run goes green, download both installers from the draft
 (GitHub → Releases → WikiLens v0.2.0):
@@ -83,7 +85,7 @@ fallback when CI is down; artifact paths and packaged-runtime caveats
 
 Then the real gate; the version is a promise that it ran:
 
-- Walk `docs/smoke-checklist.md`: item 10 runs on the **downloaded**
+- Walk `docs/smoke-checklist.md`: item 11 runs on the **downloaded**
   installer, not the dev build. Tick the boxes as you go; they get
   pasted into the release notes.
 - Run the live wiki/API suites: `cargo test -- --ignored` from

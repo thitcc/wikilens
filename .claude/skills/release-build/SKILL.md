@@ -37,8 +37,10 @@ downloads the WiX + NSIS toolchains, so it needs network once.
 (Start-menu entry, uninstall, WebView2 bootstrap); the raw exe is fine for
 local use but assumes WebView2 is present (it ships with Windows 10/11).
 
-Expected log noise: the `com.wikilens.app` identifier warning is a
-macOS-only concern — ignore it on Windows.
+The installers name their publisher and copyright from `tauri.conf.json`'s
+`bundle` block (`publisher`, `copyright`) — that string is what Add/Remove
+Programs shows and what the NSIS upgrade check matches on, so it changes
+only with a deliberate rename.
 
 ## Running the packaged app — what changes vs `npm run tauri dev`
 

@@ -12,6 +12,11 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only token for every job: checkout + build + audits write nothing to
+# the repo. release.yml elevates `contents: write` per job where it must.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
