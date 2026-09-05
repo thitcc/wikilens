@@ -30,7 +30,14 @@ npx tsc --noEmit                                   # frontend types
 npm test                                           # Vitest (src/**)
 npm run test:node                                  # tooling + eval-mirror parity tests
 cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo test
+npm run licenses -- --check                        # after a dependency change (needs cargo-about 0.9)
 ```
+
+`THIRD-PARTY-LICENSES.txt` is the generated inventory of every shipped crate
+and npm package's license text (it ships next to the exe); `npm run licenses`
+regenerates it after a `Cargo.lock` / `package-lock.json` change, with
+`cargo install cargo-about --locked --version 0.9.2 --features cli` installed
+once.
 
 `cargo test -- --ignored` (from `src-tauri/`) runs the live wiki/API suites —
 needed when you touch a game or provider. Retrieval changes are measured with
@@ -78,7 +85,8 @@ repo carries that workflow in the open:
   Written in-session as work happens; "the owner" in those notes is the sole
   maintainer. Open the folder in Obsidian for the dashboards, or just `grep`.
 - `.claude/` — slash commands and skills (the version bump, the vault linter,
-  the release-build notes); `.codex/config.toml` points a second agent at the
+  the third-party license inventory, the release-build notes);
+  `.codex/config.toml` points a second agent at the
   same `CLAUDE.md`; `.impeccable/` and `DESIGN.md` hold the design tokens.
 
 None of that is required to build or run the app.

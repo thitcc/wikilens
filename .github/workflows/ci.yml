@@ -84,3 +84,32 @@ jobs:
       # high/critical, warn below" (the gate stays credible, noise stays yellow).
       - run: cargo audit
         working-directory: src-tauri
+
+  licenses:
+    # THIRD-PARTY-LICENSES.txt is generated from both lockfiles and ships next
+    # to WikiLens.exe (tauri.conf.json bundle.resources); regenerate and fail
+    # if the committed copy is stale, so a dependency change can't ship
+    # without its notice. OS-independent by construction (target-filtered
+    # crate graph, sorted, LF), so the cheap runner suffices. cargo-about is
+    # pinned: a tool upgrade can change canonical license texts — upgrade it
+    # and regenerate in the same PR (.claude/skills/licenses/SKILL.md).
+    name: Third-party licenses (freshness)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          # Only `cargo metadata` runs — registry sources, nothing compiled.
+          cache-targets: false
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+      - run: npm run licenses -- --check

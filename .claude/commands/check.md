@@ -13,6 +13,10 @@ output; otherwise report pass/fail per step and an overall result.
 4. `cargo clippy --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings`
    — Rust compiles warning-free (clippy subsumes `cargo check`)
 5. `cargo test --manifest-path src-tauri/Cargo.toml` — Rust tests pass
+6. `npm run licenses -- --check` — `THIRD-PARTY-LICENSES.txt` matches the two
+   lockfiles (needs `cargo install cargo-about --locked --version 0.9.2
+   --features cli` once; if it reports stale, run `npm run licenses` and
+   commit the result)
 
 These are the code gates CI enforces (`.github/workflows/ci.yml`) — run this
 before pushing a branch or opening a PR, so local-green means CI-green for

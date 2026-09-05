@@ -10,6 +10,14 @@ capture date are also recorded in the first two lines of every fixture.
 
 Historical revisions of this repository contain the same files.
 
+## Shipped third-party code
+
+The open-source components compiled into the application — every Rust crate
+linked into `wikilens.exe` and every npm package bundled into the frontend —
+are inventoried with their full license texts in `THIRD-PARTY-LICENSES.txt`
+at the repository root. That file is generated (`npm run licenses`), checked
+for freshness by CI, and installed next to `WikiLens.exe`.
+
 ## CC BY-SA 3.0 — Core Keeper Wiki (core-keeper.fandom.com)
 
 Page: *Copper Ore*, captured 2026-07-13.

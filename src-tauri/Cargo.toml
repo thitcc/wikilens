@@ -6,6 +6,9 @@ authors = ["Thiago Tenório"]
 license = "MIT"
 repository = "https://github.com/thitcc/wikilens"
 edition = "2021"
+# Not a registry crate — and cargo-about (about.toml `private.ignore`) keys
+# the app crate's exclusion from THIRD-PARTY-LICENSES.txt on this.
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

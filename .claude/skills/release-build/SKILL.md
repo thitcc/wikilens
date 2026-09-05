@@ -28,6 +28,10 @@ downloads the WiX + NSIS toolchains, so it needs network once.
 
 - `src-tauri/target/release/wikilens.exe` — standalone, double-clickable
   (~13 MB).
+- `src-tauri/target/release/THIRD-PARTY-LICENSES.txt` — the bundled resource
+  (`bundle.resources`) tauri-build copies beside the exe on every build; both
+  installers place it next to `WikiLens.exe` in the install folder. Regenerate
+  it with `npm run licenses` after a dependency change (CI byte-checks it).
 - `src-tauri/target/release/bundle/nsis/WikiLens_<version>_x64-setup.exe` —
   NSIS installer; bootstraps WebView2 if the machine lacks it.
 - `src-tauri/target/release/bundle/msi/WikiLens_<version>_x64_en-US.msi` —

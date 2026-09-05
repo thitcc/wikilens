@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:node": "node --test \".claude/skills/**/*.test.mjs\" \"eval/*.test.mjs\"",
     "bump": "node .claude/skills/bump/bump.mjs",
+    "licenses": "node .claude/skills/licenses/licenses.mjs",
     "tauri": "tauri",
     "eval:retrieval": "node eval/run-retrieval.mjs",
     "eval:answer": "node eval/run-answer.mjs",
