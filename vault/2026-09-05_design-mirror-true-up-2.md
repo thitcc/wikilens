@@ -1,7 +1,7 @@
 ---
 title: True up the Claude Design mirror to the shipped overlay, second pass
 type: plan
-status: active
+status: done
 created: 2026-09-05
 updated: 2026-09-05
 tags: [frontend, overlay]
@@ -11,7 +11,7 @@ related:
   - "[[2026-08-14_draggable-overlay-position-modes]]"
   - "[[2026-08-24_replace-default-mode-with-local-ai]]"
   - "[[2026-08-04_game-auto-detection]]"
-commit:
+commit: f54656b
 ---
 
 # True up the Claude Design mirror to the shipped overlay, second pass
@@ -32,7 +32,7 @@ chip and A-05 (08-05), the Theme picker and the Micrographics theme
 (08-12/13), the settings steppers with popover, rail and frame plus A-06
 (08-13), anchor-aware layout, the Position stepper, padlock and header drag
 with the placement-aware A-01 (08-14), and Local AI replacing Default mode —
-server rows, the vision eye, the `Local AI · model` footer chip (08-25).
+server rows, the vision eye, the `Local · <model>` footer chip (08-25).
 
 Token drift, unlike 07-30, is real: the `:root` block's `--shadow-room-*`
 moved with the symmetric apron, and the whole `:root[data-theme="micrographics"]`
@@ -51,7 +51,9 @@ eye.
   current (default + Micrographics blocks byte-equal to `src/styles.css`), the
   proposal sheet retired, every card re-inlined with a Default/Micrographics
   toggle, the settings/panel/controls/motion/colors/type cards carrying the
-  surface listed above, a History card, the brief re-dated.
+  surface listed above, a History card, the brief re-dated. Card widths
+  track the app (`PANEL_WIDTH` = 420 CSS px; the settings card is the panel
+  minus its pads) so the Micrographics chip labels wrap exactly as shipped.
 - Goal: `DESIGN.md` §1 and §5 corrected (this PR).
 - Non-goal: reopening the design loop; any app code change; committing cards
   to the repo (restated from 2026-07-05 and 07-30 — they are generated
@@ -90,4 +92,29 @@ Two tracks, landing in different places:
 ## Status log
 - 2026-09-05 — created from the owner's "does the Claude Design mirror need
   an update?" audit. Track A (DESIGN.md §1 count, §5 icon inventory) landed
-  in this branch; Track B waits on `/design-login`.
+  in this branch (`f54656b`); Track B waited on `/design-login`.
+- 2026-09-05 — reconciled after login. The 08-03 "design mirror updated"
+  note was the sidecar, not a push: the remote panel/controls cards still
+  showed the pre-hug header without the Start over whirl. The project also
+  held the 08-12 exploration card (`previews/theme-micrographics.html`, ruler
+  + barcode, 0.12em) and five owner-uploaded screenshots under `uploads/`;
+  the card was rewritten to the shipped state, the screenshots left alone
+  (owner's call). No `/design-sync` skill surfaced, so the 07-30 ritual
+  stood.
+- 2026-09-05 — staged with a small build (`design-sync/build.mjs`, session
+  scratchpad): it extracts the `:root` and theme blocks from `src/styles.css`
+  verbatim into every card and the token sheet, injects the app's motion
+  block and instrument rules where a card uses them, and adds one shared
+  Default / Micrographics toggle (writes the app's own `data-theme`, swaps the
+  JS-owned underscore labels; `#micrographics` deep-links the second theme).
+  Browser pass: the Chrome extension wasn't connected, so headless Chrome
+  screenshots of ten card/theme views stood in, plus a jsdom harness over all
+  13 cards (stylesheet parses, toggle round-trips, deep link, every Replay
+  fires). Two real defects caught: the toggle's first sync ran before the
+  card had parsed (deferred to DOMContentLoaded), and `display: revert` on
+  micro-only rows flattened flex rows (now hidden outside the theme only).
+- 2026-09-05 — pushed: finalize_plan (15 writes, 1 delete) → write_files in
+  three batches (tokens → 12 updated cards → the new History card + brief)
+  → delete_files (the proposal sheet). Post-push `list_files` matches the
+  plan and the token sheet round-tripped byte-exact. Closed; `commit:` is the
+  DESIGN.md fix only — the mirror deliverable lives in the project.
