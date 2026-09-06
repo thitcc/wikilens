@@ -59,7 +59,9 @@ eye.
   to the repo (restated from 2026-07-05 and 07-30 — they are generated
   artifacts of `styles.css`).
 - Non-goal: theming the debug and capture pages in the mirror — they stay on
-  the default appearance by design (DESIGN.md §8), and their cards say so.
+  the default appearance by design (DESIGN.md §8). Their two cards were left
+  untouched (no shipped change since 08-02); the brief, the Micrographics
+  card's spec note and the motion card's shimmer caption carry that statement.
 
 ## Approach
 Two tracks, landing in different places:
