@@ -195,8 +195,8 @@ game is the main character; WikiLens borrows the screen and gives it back.
 - Controls are quiet until touched — bare ink at rest, a faint veil on hover.
 - Two altitudes exactly: the panel above the game, menus above the panel.
 - State changes are instant; motion is governed by the Named-Question Rule
-  and speaks the Quiet Directional voice (see Motion) — six admitted
-  motions: five on the overlay and the debug window's shimmer.
+  and speaks the Quiet Directional voice (see Motion) — seven admitted
+  motions: six on the overlay and the debug window's shimmer.
 
 ## 2. Colors
 
@@ -452,6 +452,13 @@ ink on hover/selection. The system's only *pictorial* mark that is typography �
 the three vector glyphs beside it, the header gear, the header's Start over
 whirl, and the key line's trash, are 12px Bootstrap Icons, admitted where no
 typographic mark reads as the action.
+Two more are hand-drawn on the trash's 16-grid and rendered at the same 12px:
+the Position heading's padlock and the Local AI heading's vision eye — icon
+toggles seated on their heading's right rail (`lock-btn`, the trash/caret
+recipe: a fixed 20×20 seat, bare muted ink at rest, veil on hover), accent
+ink while engaged (locked; reading images) and muted while free. Engaged is a
+held state, so the One Signal Rule covers them the way it covers the armed
+recorder.
 The gear sits in a square 20×20 seat (`icon-chip`, equal 4px padding): a
 circular glyph in the quiet-chip's landscape padding read off-center whenever
 the veil lit, and the square echoes the monogram tile's footprint.
