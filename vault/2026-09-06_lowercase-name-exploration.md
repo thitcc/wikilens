@@ -1,12 +1,12 @@
 ---
 title: Explore short lowercase names with dry humor
 type: plan
-status: active
+status: done
 created: 2026-09-06
 updated: 2026-09-06
 tags: [overlay]
 related: ["[[2026-07-02_scaffold]]"]
-commit:
+commit: b9626be
 ---
 
 # Explore short lowercase names with dry humor
@@ -69,3 +69,4 @@ These are agent screening decisions, not explicit owner declines.
 ## Status log
 - 2026-09-06 — Created the exploration plan. The owner requested lowercase, simple names and dry humor; no candidate has been selected or explicitly declined yet.
 - 2026-09-06 — Published `lowercase-name-sheet.html` locally and asked for optional favorite names and explicit declines during the session. Agent recommendations: fucei for personality, nemsai for the product promise, vuzoi for an abstract sound. No owner pick is assumed.
+- 2026-09-06 — Completed the requested shortlist and research round. No owner selections or explicit declines were received before delivery; the three recommendations remain exploratory. Browser inspection confirmed the specimens in both themes and a separate preview verified the shortlist interaction. All six `/check` steps passed; vault lint has zero errors and four pre-existing warnings. No application rename is part of this work.
