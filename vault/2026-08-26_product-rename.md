@@ -50,9 +50,10 @@ and DESIGN/PRODUCT prose.
   identifier `io.github.thitcc.loreno`, env prefix `LORENO_`, crate
   `loreno_lib`, localStorage `loreno.*`, product name / exe `loreno`.
 - Availability at pick time: loreno.app and loreno.gg free (RDAP / DNS);
-  loreno.com registered (a given name / surname — a music producer and a
-  clothing shop use it, no software); GitHub user @loreno taken, 7 unrelated
-  repos with that name; crates.io, npm and winget free. The .com requirement
+  loreno.com registered but parked for sale at GoDaddy (the word is otherwise
+  a given name / surname — a music producer and a clothing shop use it, no
+  software); GitHub user @loreno taken, 7 personal repos with that name (0–1
+  stars, no descriptions); crates.io, npm and winget free. The .com requirement
   was relaxed to .app on round 5. No trademark search was done — owner's
   step before the rename ships.
 - Whether to migrate app-data across the identifier change or accept a
