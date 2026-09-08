@@ -1,9 +1,9 @@
 ---
 title: Rename the product away from the wikilens.app collision
 type: plan
-status: idea
+status: todo
 created: 2026-08-26
-updated: 2026-08-26
+updated: 2026-09-08
 tags: [build, overlay]
 related:
   - "[[2026-08-26_open-source-release-0-2-0]]"
@@ -44,6 +44,17 @@ crate name, the vault's own name (docs are permanent IDs — leave them),
 and DESIGN/PRODUCT prose.
 
 ## Decisions & trade-offs
+- **Name: loreno** (owner's pick, 2026-09-08, proof sheet round 5). Lowercase
+  in the Default theme; the Micrographics instrument rule keeps uppercasing
+  the brand (`LORENO`), decided on round 4. Slug `loreno` everywhere:
+  identifier `io.github.thitcc.loreno`, env prefix `LORENO_`, crate
+  `loreno_lib`, localStorage `loreno.*`, product name / exe `loreno`.
+- Availability at pick time: loreno.app and loreno.gg free (RDAP / DNS);
+  loreno.com registered (a given name / surname — a music producer and a
+  clothing shop use it, no software); GitHub user @loreno taken, 7 unrelated
+  repos with that name; crates.io, npm and winget free. The .com requirement
+  was relaxed to .app on round 5. No trademark search was done — owner's
+  step before the rename ships.
 - Whether to migrate app-data across the identifier change or accept a
   reset is the fork to settle when the name is chosen; a folder copy at
   first launch is cheap and keeps DPAPI keys valid (per-user scope).
@@ -51,3 +62,20 @@ and DESIGN/PRODUCT prose.
 ## Status log
 - 2026-08-26 — created as an idea during the open-source prep; the interim
   identifier/Referer change ships in that PR.
+- 2026-09-06 — name search rounds 1–3 on one proof sheet
+  (`.impeccable/critique/product-name-sheet.html`, artifact): game-metaphor
+  coinages (lorewisp, lorepeek, runelet…), movement compounds (overskim,
+  flitback…) and lowercase invented words (vwibo, fwoop…) — all declined.
+  The mechanical sweep (RDAP .app/.com, DNS .gg, GitHub user + exact-name
+  repo search, crates.io, npm, winget, one web search per survivor) showed
+  every real English or pt-BR word, slang included, taken on .com and nearly
+  always on .app.
+- 2026-09-08 — round 4, two-word companion names (search fella, wiki
+  fella, wiki homie…): declined. Micrographics brand case decided: keep the
+  shipped caps rule; lowercase-kept variants (0.14em, 0.1em) declined.
+  Round 5, built on "lore": **pick = loreno**. Declined: lore fella, lore
+  buff, lore peek/hint/ping/monk, lore buddy/pal/tap/scout (list A entirely),
+  loreiro, loreano, loresi, loredino, lorinho, lorimo, lorezo, lorela,
+  lorico. Ruled out by the sweep: lore seeker (shipping game + studio), lore
+  guide (LoreGuide.com), lorista (a losartan brand), wiki pal (shipping
+  apps). Status → todo; the rename arc starts when the owner says so.
