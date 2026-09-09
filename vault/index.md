@@ -3,7 +3,7 @@ title: WikiLens planning vault — index
 type: note
 status: active
 created: 2026-07-02
-updated: 2026-08-05
+updated: 2026-09-09
 tags: []
 related: []
 ---
@@ -83,9 +83,10 @@ Frontmatter is the source of truth; these read it directly:
 
 ## Tag registry (closed — add a tag here before using it)
 
-`wiki` · `llm` · `rag` · `frontend` · `rust` · `tauri` · `overlay` · `hotkey` · `capture` · `security` · `build` · `vault` · `testing`
+`wiki` · `llm` · `rag` · `frontend` · `rust` · `tauri` · `overlay` · `hotkey` · `capture` · `security` · `build` · `vault` · `testing` · `i18n`
 
 `vault` = the planning vault's own tooling and conventions. `capture` = in-game
 screenshot capture and image attachments. `testing` = test infrastructure and
-coverage work (harnesses, CI, guardrail suites). Reserved for when that work
+coverage work (harnesses, CI, guardrail suites). `i18n` = language support:
+UI copy, answer language, wiki language. Reserved for when that work
 starts: `cache`, `perf`.
