@@ -14,7 +14,7 @@ related:
   - "[[2026-08-22_retrieval-eval-suite]]"
   - "[[2026-08-17_core-pipeline-analysis]]"
   - "[[2026-07-04_query-preprocessing-zero-hit-retry]]"
-commit:
+commit: 2ae431a
 ---
 
 # pt-BR feasibility — what "only English works" actually means, measured

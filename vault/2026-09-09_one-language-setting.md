@@ -13,7 +13,7 @@ related:
   - "[[2026-08-12_theme-persistence-localstorage]]"
   - "[[2026-07-29_keys-are-not-a-mode-choice]]"
   - "[[2026-08-24_local-ai-mode]]"
-commit:
+commit: 2ae431a
 ---
 
 # One Rust-owned language setting drives answers, retrieval and UI copy
